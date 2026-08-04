@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/pactole-cli",
+  "crates/pactole-core",
+  "crates/pactole-storage-fs",
+]
+
+[workspace.dependencies]

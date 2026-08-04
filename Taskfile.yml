@@ -1,0 +1,4 @@
+version: "3"
+
+tasks:
+  doc: cargo doc --workspace --no-deps
