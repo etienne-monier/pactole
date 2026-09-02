@@ -1,15 +1,17 @@
-use pactole_storage_fs::LedgerFileStorage;
-
-const TEST_STRING: &str = "
-# A test
-2026-08-04 * Boulanger
-    ; A metadata
-    Expenses:Food      2
-    Assets:Cash
-";
+use pactole_core::ReadableStorage;
+use pactole_storage_fs::PactoleFileStorage;
+use std::env;
+use std::path::PathBuf;
 
 fn main() {
-    let storage = LedgerFileStorage::from(TEST_STRING.to_string());
-    let transactions = storage.get_all();
-    dbg!(transactions)
+    let path = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "test.toml".to_string());
+
+    let storage = PactoleFileStorage::from(PathBuf::from(path));
+    let entries = storage.get_all();
+
+    for entry in &entries {
+        println!("{entry:#?}");
+    }
 }

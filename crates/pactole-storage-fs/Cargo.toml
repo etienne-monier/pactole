@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 pactole-core = { version = "0.1.0", path = "../pactole-core" }
+toml = "1.1.5"
