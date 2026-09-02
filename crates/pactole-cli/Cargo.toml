@@ -4,3 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+pactole-storage-fs = { version = "0.1.0", path = "../pactole-storage-fs" }

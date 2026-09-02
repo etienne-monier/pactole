@@ -1,14 +1,26 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use pactole_core::Transaction;
+use std::fs;
+use std::path::PathBuf;
+
+pub struct LedgerFileStorage {
+    filepath: PathBuf,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl LedgerFileStorage {
+    fn parse_string(buffer: String) -> Self {
+        todo!()
+    }
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl From<PathBuf> for LedgerFileStorage {
+    fn from(value: PathBuf) -> Self {
+        let contents = fs::read_to_string(value).expect("Should have been able to read the file");
+        Self::from(contents)
+    }
+}
+
+impl From<String> for LedgerFileStorage {
+    fn from(value: String) -> Self {
+        Self::parse_string(value)
     }
 }

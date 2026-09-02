@@ -1,0 +1,70 @@
+# Exemple de journal (inspiré de ledger/beancount)
+# Chaque [[entries]] correspond à une variante de `Entry`.
+# Le champ `type` sert de tag pour distinguer les variantes.
+
+[[entries]]
+type = "commodity"
+date = "2026-01-01"
+name = "EUR"
+
+[[entries]]
+type = "open"
+date = "2026-01-01"
+account = "Actifs:Banque:Checking"
+description = "Compte chèque principal"
+
+[[entries]]
+type = "open"
+date = "2026-01-01"
+account = "Depenses:Epicerie"
+
+[[entries]]
+type = "open"
+date = "2026-01-01"
+account = "Revenus:Salaire"
+
+[[entries]]
+type = "transaction"
+date = "2026-09-01"
+status = "cleared"
+payee = "Employeur Inc."
+narration = "Paie de fin de mois"
+tags = ["salaire"]
+links = []
+
+[[entries.postings]]
+account = "Actifs:Banque:Checking"
+amount = { number = "2500.00", commodity = "EUR" }
+
+[[entries.postings]]
+account = "Revenus:Salaire"
+amount = { number = "-2500.00", commodity = "EUR" }
+
+[[entries]]
+type = "transaction"
+date = "2026-09-02"
+status = "pending"
+payee = "Metro"
+narration = "Epicerie de la semaine"
+tags = []
+links = []
+
+[[entries.postings]]
+account = "Depenses:Epicerie"
+amount = { number = "83.47", commodity = "EUR" }
+
+[[entries.postings]]
+account = "Actifs:Banque:Checking"
+amount = { number = "-83.47", commodity = "EUR" }
+
+[[entries]]
+type = "balance"
+date = "2026-09-03"
+account = "Actifs:Banque:Checking"
+amount = { number = "2416.53", commodity = "EUR" }
+tolerance = "0.01"
+
+[[entries]]
+type = "close"
+date = "2026-12-31"
+account = "Depenses:Epicerie"
