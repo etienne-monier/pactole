@@ -1,0 +1,20 @@
+====================================
+Open account statement
+====================================
+
+2026-09-03 open Actifs:Compte Joint
+  description Le compte joint
+  test blabla
+
+---
+
+(source_file
+  (directive
+    (date)
+    (account)
+    (property
+      (key)
+      (value))
+    (property
+      (key)
+      (value))))

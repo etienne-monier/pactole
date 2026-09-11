@@ -1,0 +1,41 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "pactole",
+      "camelcase": "Pactole",
+      "title": "Pactole",
+      "scope": "source.pactole",
+      "file-types": [
+        "pactole"
+      ],
+      "injection-regex": "^pactole$",
+      "class-name": "TreeSitterPactole"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "A parser for pactole file",
+    "authors": [
+      {
+        "name": "Etienne Monier",
+        "url": ""
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/tree-sitter/tree-sitter-pactole",
+      "funding": ""
+    }
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "java": false,
+    "node": false,
+    "python": false,
+    "rust": true,
+    "swift": false,
+    "zig": false
+  }
+}

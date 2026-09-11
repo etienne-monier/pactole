@@ -1,0 +1,102 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
+  "name": "pactole",
+  "rules": {
+    "source_file": {
+      "type": "REPEAT",
+      "content": {
+        "type": "SYMBOL",
+        "name": "directive"
+      }
+    },
+    "directive": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "date"
+        },
+        {
+          "type": "PATTERN",
+          "value": "[\\ \\t]{2,}"
+        },
+        {
+          "type": "STRING",
+          "value": "open"
+        },
+        {
+          "type": "PATTERN",
+          "value": "[\\ \\t]{2,}"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "account"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "property"
+          }
+        }
+      ]
+    },
+    "property": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "PATTERN",
+          "value": "[\\ \\t]{2,}"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "key"
+        },
+        {
+          "type": "PATTERN",
+          "value": "[\\ \\t]{2,}"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "value"
+        }
+      ]
+    },
+    "key": {
+      "type": "PATTERN",
+      "value": "[a-z_\\-]+"
+    },
+    "value": {
+      "type": "PATTERN",
+      "value": "[^\\n]+"
+    },
+    "date": {
+      "type": "PATTERN",
+      "value": "\\d{4}-\\d{2}-\\d{2}"
+    },
+    "account": {
+      "type": "PATTERN",
+      "value": "[A-Za-z0-9:]+(?: [A-Za-z0-9:]+)*"
+    },
+    "comment": {
+      "type": "PATTERN",
+      "value": "\\#.+"
+    }
+  },
+  "extras": [
+    {
+      "type": "PATTERN",
+      "value": "\\r"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "comment"
+    }
+  ],
+  "conflicts": [],
+  "precedences": [],
+  "externals": [],
+  "inline": [],
+  "supertypes": [],
+  "reserved": {}
+}
