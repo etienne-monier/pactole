@@ -2,19 +2,269 @@
 Open account statement
 ====================================
 
-2026-09-03 open Actifs:Compte Joint
-  description Le compte joint
-  test blabla
+2026-09-03 open Actifs:Compte-Joint
+  description: "Le compte joint"
+  opened_on: 2026-09-03
 
 ---
 
 (source_file
   (directive
-    (date)
-    (account)
+    (open
+      (date)
+      (account))
     (property
       (key)
-      (value))
+      (value
+        (string)))
     (property
       (key)
-      (value))))
+      (value
+        (date)))))
+
+====================================
+Close account statement
+====================================
+
+2026-12-31 close Actifs:Compte-Joint
+
+---
+
+(source_file
+  (directive
+    (close
+      (date)
+      (account))))
+
+====================================
+Commodity statement
+====================================
+
+2026-01-01 commodity EUR
+
+---
+
+(source_file
+  (directive
+    (commodity
+      (date)
+      (commodity_name))))
+
+====================================
+Blank lines and comments between directives
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+
+2026-01-01 commodity EUR
+
+; a trailing comment
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account)))
+  (directive
+    (commodity
+      (date)
+      (commodity_name)))
+  (comment))
+
+====================================
+Balance assertion
+====================================
+
+2026-09-03 balance Actifs:Compte-Joint 1234.56 EUR
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (commodity_name))))
+
+====================================
+Balance assertion with tolerance
+====================================
+
+2026-09-03 balance Actifs:Compte-Joint 1234.56 ~ 0.01 EUR
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (tolerance)
+      (commodity_name))))
+
+====================================
+Balance assertion with negative number and properties
+====================================
+
+2026-09-03 balance Passifs:CarteCredit -458.20 EUR
+  source: "relevé bancaire"
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (commodity_name))
+    (property
+      (key)
+      (value
+        (string)))))
+
+====================================
+Metadata values: string, date and number
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+  description: "Le compte joint"
+  opened_on: 2026-09-03
+  initial_balance: 1234.56
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account))
+    (property
+      (key)
+      (value
+        (string)))
+    (property
+      (key)
+      (value
+        (date)))
+    (property
+      (key)
+      (value
+        (number)))))
+
+====================================
+Full transaction with effective date, payee, narration, tags, links, reference and metadata
+====================================
+
+2026-09-03=2026-09-05 * "Carrefour" "Courses de la semaine" #alimentation ^remboursement (CB-00123)
+  note: "ticket scanné"
+  Depenses:Alimentation 45.30 EUR
+    montant_ttc: 45.30
+  Actifs:Compte-Joint -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      effective_date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string))
+      (tag)
+      (link)
+      (reference))
+    (property
+      (key)
+      (value
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      (posting_property
+        (key)
+        (value
+          (number))))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Minimal transaction with payee only and elided last posting amount
+====================================
+
+2026-09-03 ! "Bailleur"
+  Depenses:Logement 750.00 EUR
+  Actifs:Compte-Joint
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account))))
+
+====================================
+Transaction with uncleared status, payee and narration
+====================================
+
+2026-09-03 ? "Loyer" "Acompte mensuel"
+  Depenses:Divers 10.00 EUR
+  Actifs:Compte-Joint -10.00 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Include directive
+====================================
+
+include "comptes/2026.pactole"
+
+---
+
+(source_file
+  (directive
+    (include
+      (path
+        (string)))))

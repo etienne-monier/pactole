@@ -1,5 +1,24 @@
-2026-09-03 open Actifs:Compte Joint
-  description Le compte joint
-  test blabla
+include "comptes/ouvertures.pactole"
+include "comptes/2026.pactole"
 
-# test
+2026-09-03 open Actifs:Compte-Joint
+  description: "Le compte joint"
+  opened_on: 2026-09-03
+
+2026-01-01 commodity EUR
+
+2026-12-31 close Actifs:Compte-Joint
+
+; test
+
+2026-09-03 balance Actifs:Compte-Joint 1234.56 ~ 0.01 EUR
+
+2026-09-03=2026-09-05 * "Carrefour" "Courses de la semaine" #alimentation ^remboursement (CB-00123)
+  note: "ticket scanné"
+  Depenses:Alimentation 45.30 EUR
+    montant_ttc: 45.30
+  Actifs:Compte-Joint -45.30 EUR
+
+2026-09-03 ! "Bailleur"
+  Depenses:Logement 750.00 EUR
+  Actifs:Compte-Joint

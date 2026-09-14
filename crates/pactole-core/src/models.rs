@@ -23,6 +23,7 @@ pub enum Entry {
     Event(Event),
     Declaration(Declaration),
     Assertion(Assertion),
+    Include(Include),
 }
 
 // `Entry` groups three different sub-enums (`Declaration`, `Event`,
@@ -42,6 +43,7 @@ impl<'de> Deserialize<'de> for Entry {
             Close(Close),
             Transaction(Transaction),
             Balance(Balance),
+            Include(Include),
         }
 
         Ok(match TaggedEntry::deserialize(deserializer)? {
@@ -50,6 +52,7 @@ impl<'de> Deserialize<'de> for Entry {
             TaggedEntry::Close(c) => Entry::Declaration(Declaration::Close(c)),
             TaggedEntry::Transaction(t) => Entry::Event(Event::Transaction(t)),
             TaggedEntry::Balance(b) => Entry::Assertion(Assertion::Balance(b)),
+            TaggedEntry::Include(i) => Entry::Include(i),
         })
     }
 }
@@ -154,6 +157,15 @@ pub struct Balance {
     pub tolerance: Option<Decimal>,
     #[serde(default)]
     pub meta: Metadata,
+}
+
+// -------------------------------------------------
+// Includes
+// -------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Include {
+    pub path: String,
 }
 
 // -------------------------------------------------
