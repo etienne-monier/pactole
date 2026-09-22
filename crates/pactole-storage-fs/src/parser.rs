@@ -2,7 +2,7 @@ use crate::errors::PactoleFsStorageError;
 use chrono::NaiveDate;
 use pactole_core::{
     AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Include, Journal,
-    Metadata, Open, Posting, Transaction, TransactionStatus,
+    Metadata, MetadataKey, Open, Posting, Transaction, TransactionStatus,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -77,12 +77,12 @@ impl<'src> AstBuilder<'src> {
         Decimal::from_str(text).map_err(|e| self.error(format!("invalid number `{text}`: {e}")))
     }
 
-    fn parse_account(&self, node: Node<'_>) -> AccountName {
-        AccountName(self.text(node).to_string())
+    fn parse_account(&self, node: Node<'_>) -> Result<AccountName, PactoleFsStorageError> {
+        Ok(AccountName::new(self.text(node))?)
     }
 
-    fn parse_commodity_name(&self, node: Node<'_>) -> CommodityName {
-        CommodityName(self.text(node).to_string())
+    fn parse_commodity_name(&self, node: Node<'_>) -> Result<CommodityName, PactoleFsStorageError> {
+        Ok(CommodityName::new(self.text(node))?)
     }
 
     /// Unquote a `string` node's text, e.g. `"foo"` -> `foo`.
@@ -130,7 +130,7 @@ impl<'src> AstBuilder<'src> {
                 continue;
             }
 
-            let key = self.text(self.require_child(child, "key")?).to_string();
+            let key = MetadataKey::new(self.text(self.require_child(child, "key")?))?;
             let value = self.parse_metadata_value(self.require_child(child, "value")?)?;
             meta.insert(key, value);
         }
@@ -174,7 +174,7 @@ impl<'src> AstBuilder<'src> {
 
     fn build_open(&self, directive: Node<'_>, open: Node<'_>) -> Result<Open, PactoleFsStorageError> {
         let date = self.parse_date(self.require_child(open, "date")?)?;
-        let account = self.parse_account(self.require_child(open, "account")?);
+        let account = self.parse_account(self.require_child(open, "account")?)?;
 
         let mut meta = self.build_metadata(directive)?;
         let description = meta.remove("description");
@@ -189,7 +189,7 @@ impl<'src> AstBuilder<'src> {
 
     fn build_close(&self, directive: Node<'_>, close: Node<'_>) -> Result<Close, PactoleFsStorageError> {
         let date = self.parse_date(self.require_child(close, "date")?)?;
-        let account = self.parse_account(self.require_child(close, "account")?);
+        let account = self.parse_account(self.require_child(close, "account")?)?;
         let meta = self.build_metadata(directive)?;
 
         Ok(Close { date, account, meta })
@@ -201,9 +201,7 @@ impl<'src> AstBuilder<'src> {
         commodity: Node<'_>,
     ) -> Result<Commodity, PactoleFsStorageError> {
         let date = self.parse_date(self.require_child(commodity, "date")?)?;
-        let name = self
-            .text(self.require_child(commodity, "commodity_name")?)
-            .to_string();
+        let name = self.parse_commodity_name(self.require_child(commodity, "commodity_name")?)?;
         let meta = self.build_metadata(directive)?;
 
         Ok(Commodity { date, name, meta })
@@ -215,9 +213,9 @@ impl<'src> AstBuilder<'src> {
         balance: Node<'_>,
     ) -> Result<Balance, PactoleFsStorageError> {
         let date = self.parse_date(self.require_child(balance, "date")?)?;
-        let account = self.parse_account(self.require_child(balance, "account")?);
+        let account = self.parse_account(self.require_child(balance, "account")?)?;
         let number = self.parse_number(self.require_child(balance, "number")?)?;
-        let commodity = self.parse_commodity_name(self.require_child(balance, "commodity_name")?);
+        let commodity = self.parse_commodity_name(self.require_child(balance, "commodity_name")?)?;
         let tolerance = self
             .find_child(balance, "tolerance")
             .map(|n| self.parse_number(n))
@@ -242,7 +240,7 @@ impl<'src> AstBuilder<'src> {
 
     fn build_amount(&self, amount: Node<'_>) -> Result<Amount, PactoleFsStorageError> {
         let number = self.parse_number(self.require_child(amount, "number")?)?;
-        let commodity = self.parse_commodity_name(self.require_child(amount, "commodity_name")?);
+        let commodity = self.parse_commodity_name(self.require_child(amount, "commodity_name")?)?;
 
         Ok(Amount { number, commodity })
     }
@@ -319,7 +317,7 @@ impl<'src> AstBuilder<'src> {
     }
 
     fn build_posting(&self, posting: Node<'_>) -> Result<Posting, PactoleFsStorageError> {
-        let account = self.parse_account(self.require_child(posting, "account")?);
+        let account = self.parse_account(self.require_child(posting, "account")?)?;
         let amount = self
             .find_child(posting, "amount")
             .map(|n| self.build_amount(n))
@@ -333,7 +331,7 @@ impl<'src> AstBuilder<'src> {
                 continue;
             }
 
-            let key = self.text(self.require_child(child, "key")?).to_string();
+            let key = MetadataKey::new(self.text(self.require_child(child, "key")?))?;
             let value = self.parse_metadata_value(self.require_child(child, "value")?)?;
             meta.insert(key, value);
         }

@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 chrono = "0.4.45"
 rust_decimal = "1.43.0"
+thiserror = "2.0.20"
