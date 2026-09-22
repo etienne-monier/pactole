@@ -8,7 +8,7 @@ const SAMPLE_FILE: &str = concat!(
 );
 
 fn pactole_cmd() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_pactole-cli"))
+    Command::new(env!("CARGO_BIN_EXE_pactole"))
 }
 
 #[test]

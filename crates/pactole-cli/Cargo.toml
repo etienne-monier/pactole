@@ -3,6 +3,12 @@ name = "pactole-cli"
 version = "0.1.0"
 edition = "2024"
 
+# Build the `pactole` binary (instead of the default `pactole-cli`), so that
+# `cargo install --path crates/pactole-cli` gives you a `pactole` command.
+[[bin]]
+name = "pactole"
+path = "src/main.rs"
+
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
 pactole-core = { version = "0.1.0", path = "../pactole-core" }
