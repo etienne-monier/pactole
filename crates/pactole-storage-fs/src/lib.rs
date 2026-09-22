@@ -3,8 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 pub mod errors;
 mod parser;
+mod printer;
 
 pub use crate::errors::PactoleFsStorageError;
+pub use crate::printer::format;
 
 pub struct PactoleFileStorage {
     pub filepath: Option<PathBuf>,

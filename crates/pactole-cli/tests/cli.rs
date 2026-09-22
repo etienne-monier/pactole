@@ -51,3 +51,70 @@ fn parse_reports_error_on_missing_file() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("error:"));
 }
+
+#[test]
+fn fmt_prints_canonical_form_to_stdout() {
+    let output = pactole_cmd()
+        .args(["fmt", SAMPLE_FILE])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // The shipped fixture is already in canonical form, so formatting it
+    // must be a no-op.
+    let expected = std::fs::read_to_string(SAMPLE_FILE).unwrap();
+    assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+}
+
+#[test]
+fn fmt_reads_from_stdin_when_file_is_dash() {
+    use std::io::Write;
+
+    let mut child = pactole_cmd()
+        .args(["fmt", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to run pactole-cli");
+
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"2026-01-01   commodity   EUR\n")
+        .unwrap();
+
+    let output = child.wait_with_output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "2026-01-01 commodity EUR\n"
+    );
+}
+
+#[test]
+fn fmt_reports_error_on_syntax_error() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("pactole-fmt-test-{}.pactole", std::process::id()));
+    std::fs::write(&path, "not a valid pactole file\n").unwrap();
+
+    let output = pactole_cmd()
+        .args(["fmt", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("error:"));
+}

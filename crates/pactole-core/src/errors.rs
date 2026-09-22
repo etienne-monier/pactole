@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use thiserror::Error;
 
 /// Errors raised when building or validating core model values.
@@ -18,4 +19,18 @@ pub enum ModelError {
         "invalid metadata key `{0}`: expected only lowercase letters, `_` or `-`"
     )]
     InvalidMetadataKey(String),
+    #[error(
+        "transaction has {0} postings without an amount, but at most one posting can be left \
+         without an amount for auto-balancing"
+    )]
+    TooManyPostingsWithoutAmount(usize),
+    #[error(
+        "cannot auto-balance transaction: unable to determine a single commodity for the \
+         missing amount from the other postings (commodities found: {0:?})"
+    )]
+    AmbiguousAutoBalanceCommodity(Vec<String>),
+    #[error(
+        "transaction is not balanced: postings for commodity `{0}` sum to `{1}` instead of zero"
+    )]
+    TransactionNotBalanced(String, Decimal),
 }

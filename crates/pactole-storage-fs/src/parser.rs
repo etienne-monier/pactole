@@ -364,7 +364,7 @@ impl<'src> AstBuilder<'src> {
             }
         }
 
-        Ok(Transaction {
+        Ok(Transaction::new(
             date,
             effective_date,
             status,
@@ -375,7 +375,7 @@ impl<'src> AstBuilder<'src> {
             links,
             reference,
             meta,
-        })
+        )?)
     }
 
     fn build_posting(&self, posting: Node<'_>) -> Result<Posting, PactoleFsStorageError> {
