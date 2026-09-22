@@ -4,5 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = "0.4.45"
 pactole-core = { version = "0.1.0", path = "../pactole-core" }
+rust_decimal = "1.43.0"
+thiserror = "2.0.20"
 toml = "1.1.5"
+tree-sitter = "0.27.0"
+tree-sitter-pactole = { version = "0.1.0", path = "../tree-sitter-pactole" }

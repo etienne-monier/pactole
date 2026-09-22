@@ -1,5 +1,8 @@
 use crate::models::Entry;
+use std::error::Error;
 
 pub trait ReadableStorage {
-    fn get_all(&self) -> Vec<Entry>;
+    type Error: Error;
+
+    fn get_all(&self) -> Result<Vec<Entry>, Self::Error>;
 }

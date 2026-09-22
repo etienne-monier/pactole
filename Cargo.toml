@@ -6,5 +6,6 @@ members = [
   "crates/pactole-storage-fs",
   "crates/tree-sitter-pactole",
 ]
+default-members = ["crates/pactole-cli"]
 
 [workspace.dependencies]

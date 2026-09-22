@@ -1,40 +1,42 @@
 use pactole_core::{Entry, Journal, ReadableStorage};
 use std::fs;
 use std::path::PathBuf;
+pub mod errors;
+mod parser;
+
+pub use crate::errors::PactoleFsStorageError;
 
 pub struct PactoleFileStorage {
-    filepath: Option<PathBuf>,
-    journal: Journal,
+    pub filepath: Option<PathBuf>,
+    pub content: String,
+    pub journal: Option<Journal>,
 }
 
 impl PactoleFileStorage {
-    fn parse_string(buffer: String) -> Self {
-        let journal: Journal =
-            toml::from_str(&buffer).expect("Should have been able to parse the journal");
-        Self {
-            filepath: None,
-            journal,
-        }
+    pub fn parse(self: &mut Self) -> Result<(), errors::PactoleFsStorageError> {
+        self.journal = Some(parser::parse(&self.content)?);
+        Ok(())
     }
 }
 
-impl From<PathBuf> for PactoleFileStorage {
-    fn from(value: PathBuf) -> Self {
-        let contents = fs::read_to_string(&value).expect("Should have been able to read the file");
-        let mut storage = Self::parse_string(contents);
-        storage.filepath = Some(value);
-        storage
-    }
-}
+impl TryFrom<PathBuf> for PactoleFileStorage {
+    type Error = errors::PactoleFsStorageError;
 
-impl From<String> for PactoleFileStorage {
-    fn from(value: String) -> Self {
-        Self::parse_string(value)
+    fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
+        let contents = fs::read_to_string(&value)?;
+        Ok(Self {
+            filepath: Some(value),
+            content: contents,
+            journal: None,
+        })
     }
 }
 
 impl ReadableStorage for PactoleFileStorage {
-    fn get_all(&self) -> Vec<Entry> {
-        self.journal.entries().to_vec()
+    type Error = PactoleFsStorageError;
+
+    fn get_all(&self) -> Result<Vec<Entry>, Self::Error> {
+        let journal = self.journal.as_ref().ok_or(PactoleFsStorageError::NotParsed)?;
+        Ok(journal.entries().to_vec())
     }
 }
