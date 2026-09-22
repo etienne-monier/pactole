@@ -32,17 +32,15 @@
         {
           "type": "REPEAT",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "property"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "posting"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "property"
+          }
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "posting"
           }
         }
       ]
@@ -84,16 +82,16 @@
           "name": "date"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "STRING",
           "value": "open"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -109,16 +107,16 @@
           "name": "date"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "STRING",
           "value": "close"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -134,16 +132,16 @@
           "name": "date"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "STRING",
           "value": "commodity"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -159,8 +157,8 @@
           "value": "include"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -176,24 +174,24 @@
           "name": "date"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "STRING",
           "value": "balance"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
           "name": "account"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -206,16 +204,16 @@
               "type": "SEQ",
               "members": [
                 {
-                  "type": "STRING",
-                  "value": " "
+                  "type": "SYMBOL",
+                  "name": "_ws"
                 },
                 {
                   "type": "STRING",
                   "value": "~"
                 },
                 {
-                  "type": "STRING",
-                  "value": " "
+                  "type": "SYMBOL",
+                  "name": "_ws"
                 },
                 {
                   "type": "SYMBOL",
@@ -229,8 +227,8 @@
           ]
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -275,16 +273,16 @@
           ]
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
           "name": "status"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -297,8 +295,8 @@
               "type": "SEQ",
               "members": [
                 {
-                  "type": "STRING",
-                  "value": " "
+                  "type": "SYMBOL",
+                  "name": "_ws"
                 },
                 {
                   "type": "SYMBOL",
@@ -317,28 +315,21 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "STRING",
-                "value": " "
+                "type": "SYMBOL",
+                "name": "_ws"
               },
               {
-                "type": "SYMBOL",
-                "name": "tag"
-              }
-            ]
-          }
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": " "
-              },
-              {
-                "type": "SYMBOL",
-                "name": "link"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "tag"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "link"
+                  }
+                ]
               }
             ]
           }
@@ -350,8 +341,8 @@
               "type": "SEQ",
               "members": [
                 {
-                  "type": "STRING",
-                  "value": " "
+                  "type": "SYMBOL",
+                  "name": "_ws"
                 },
                 {
                   "type": "SYMBOL",
@@ -370,8 +361,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "  "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -382,8 +373,8 @@
           "value": ":"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -399,8 +390,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "  "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -413,8 +404,8 @@
               "type": "SEQ",
               "members": [
                 {
-                  "type": "STRING",
-                  "value": " "
+                  "type": "SYMBOL",
+                  "name": "_ws"
                 },
                 {
                   "type": "SYMBOL",
@@ -435,37 +426,8 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "posting_property"
+            "name": "property"
           }
-        }
-      ]
-    },
-    "posting_property": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "    "
-        },
-        {
-          "type": "SYMBOL",
-          "name": "key"
-        },
-        {
-          "type": "STRING",
-          "value": ":"
-        },
-        {
-          "type": "STRING",
-          "value": " "
-        },
-        {
-          "type": "SYMBOL",
-          "name": "value"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_newline"
         }
       ]
     },
@@ -477,8 +439,8 @@
           "name": "number"
         },
         {
-          "type": "STRING",
-          "value": " "
+          "type": "SYMBOL",
+          "name": "_ws"
         },
         {
           "type": "SYMBOL",
@@ -606,11 +568,11 @@
     },
     "commodity_name": {
       "type": "PATTERN",
-      "value": "[A-Z][A-Z0-9_.\\-]*"
+      "value": "[A-Z][A-Z0-9'._\\-]{0,22}[A-Z0-9]"
     },
     "number": {
       "type": "PATTERN",
-      "value": "-?\\d+(\\.\\d+)?"
+      "value": "-?\\d+(,\\d{3})*(\\.\\d+)?"
     },
     "tolerance": {
       "type": "PATTERN",
@@ -619,6 +581,10 @@
     "comment": {
       "type": "PATTERN",
       "value": ";[^\\r\\n]*"
+    },
+    "_ws": {
+      "type": "PATTERN",
+      "value": "[ \\t]+"
     },
     "_newline": {
       "type": "PATTERN",
@@ -631,7 +597,11 @@
       "name": "comment"
     }
   ],
-  "conflicts": [],
+  "conflicts": [
+    [
+      "posting"
+    ]
+  ],
   "precedences": [],
   "externals": [],
   "inline": [],

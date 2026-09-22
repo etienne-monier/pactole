@@ -1,15 +1,33 @@
 use crate::errors::PactoleFsStorageError;
 use chrono::NaiveDate;
 use pactole_core::{
-    AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Include, Journal,
-    Metadata, MetadataKey, Open, Posting, Transaction, TransactionStatus,
+    AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Journal, Metadata,
+    MetadataKey, Open, Posting, Transaction, TransactionStatus,
 };
 use rust_decimal::Decimal;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tree_sitter::{Node, Parser};
 
 /// Parse the source string and return the Journal object.
-pub fn parse(source: &str) -> Result<Journal, PactoleFsStorageError> {
+///
+/// `base_dir` is the directory relative paths in `include` directives are
+/// resolved against. It is typically the directory containing the file
+/// `source` was read from; pass `None` when parsing a string that has no
+/// associated file (relative includes will then fail to resolve).
+pub fn parse(source: &str, base_dir: Option<&Path>) -> Result<Journal, PactoleFsStorageError> {
+    let entries = parse_entries(source, base_dir)?;
+    Ok(Journal { entries })
+}
+
+/// Parse the source string into a flat list of entries, recursively
+/// inlining the entries of any `include`d file in place of the `include`
+/// directive itself.
+fn parse_entries(
+    source: &str,
+    base_dir: Option<&Path>,
+) -> Result<Vec<Entry>, PactoleFsStorageError> {
     let mut parser = Parser::new();
 
     parser
@@ -23,7 +41,7 @@ pub fn parse(source: &str) -> Result<Journal, PactoleFsStorageError> {
     let root = tree.root_node();
     let builder = AstBuilder::new(source);
 
-    builder.build_document(root)
+    builder.build_document(root, base_dir)
 }
 
 /// The AST builder
@@ -74,7 +92,11 @@ impl<'src> AstBuilder<'src> {
 
     fn parse_number(&self, node: Node<'_>) -> Result<Decimal, PactoleFsStorageError> {
         let text = self.text(node);
-        Decimal::from_str(text).map_err(|e| self.error(format!("invalid number `{text}`: {e}")))
+        // Numbers may use `,` as a thousands separator (Beancount-like),
+        // e.g. `1,234,567.89`; strip them before parsing the decimal.
+        let normalized = text.replace(',', "");
+        Decimal::from_str(&normalized)
+            .map_err(|e| self.error(format!("invalid number `{text}`: {e}")))
     }
 
     fn parse_account(&self, node: Node<'_>) -> Result<AccountName, PactoleFsStorageError> {
@@ -138,10 +160,12 @@ impl<'src> AstBuilder<'src> {
         Ok(meta)
     }
 
-    fn build_document(&self, node: Node<'_>) -> Result<Journal, PactoleFsStorageError> {
-        let mut journal = Journal {
-            entries: Vec::new(),
-        };
+    fn build_document(
+        &self,
+        node: Node<'_>,
+        base_dir: Option<&Path>,
+    ) -> Result<Vec<Entry>, PactoleFsStorageError> {
+        let mut entries = Vec::new();
 
         let mut cursor = node.walk();
 
@@ -150,26 +174,35 @@ impl<'src> AstBuilder<'src> {
                 continue;
             }
 
-            journal.entries.push(self.build_directive(child)?);
+            self.build_directive(child, base_dir, &mut entries)?;
         }
 
-        Ok(journal)
+        Ok(entries)
     }
 
-    fn build_directive(&self, node: Node<'_>) -> Result<Entry, PactoleFsStorageError> {
+    fn build_directive(
+        &self,
+        node: Node<'_>,
+        base_dir: Option<&Path>,
+        entries: &mut Vec<Entry>,
+    ) -> Result<(), PactoleFsStorageError> {
         let header = node
             .named_child(0)
             .ok_or_else(|| self.error("directive has no header"))?;
 
         match header.kind() {
-            "open" => Ok(Entry::Open(self.build_open(node, header)?)),
-            "close" => Ok(Entry::Close(self.build_close(node, header)?)),
-            "commodity" => Ok(Entry::Commodity(self.build_commodity(node, header)?)),
-            "transaction" => Ok(Entry::Transaction(self.build_transaction(node, header)?)),
-            "balance" => Ok(Entry::Balance(self.build_balance(node, header)?)),
-            "include" => Ok(Entry::Include(self.build_include(header)?)),
-            other => Err(self.error(format!("unexpected directive header `{other}`"))),
+            "open" => entries.push(Entry::Open(self.build_open(node, header)?)),
+            "close" => entries.push(Entry::Close(self.build_close(node, header)?)),
+            "commodity" => entries.push(Entry::Commodity(self.build_commodity(node, header)?)),
+            "transaction" => {
+                entries.push(Entry::Transaction(self.build_transaction(node, header)?))
+            }
+            "balance" => entries.push(Entry::Balance(self.build_balance(node, header)?)),
+            "include" => entries.extend(self.build_include(header, base_dir)?),
+            other => return Err(self.error(format!("unexpected directive header `{other}`"))),
         }
+
+        Ok(())
     }
 
     fn build_open(&self, directive: Node<'_>, open: Node<'_>) -> Result<Open, PactoleFsStorageError> {
@@ -231,11 +264,40 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
-    fn build_include(&self, include: Node<'_>) -> Result<Include, PactoleFsStorageError> {
-        let path = self.require_child(include, "path")?;
-        Ok(Include {
-            path: self.parse_quoted_text(path)?,
-        })
+    /// Resolve an `include` directive by reading and parsing the included
+    /// file, returning its entries so they can be inlined in place of the
+    /// directive itself. The included path is resolved relative to
+    /// `base_dir` (the directory of the file currently being parsed).
+    fn build_include(
+        &self,
+        include: Node<'_>,
+        base_dir: Option<&Path>,
+    ) -> Result<Vec<Entry>, PactoleFsStorageError> {
+        let path_node = self.require_child(include, "path")?;
+        let raw_path = self.parse_quoted_text(path_node)?;
+        let path = PathBuf::from(&raw_path);
+
+        let resolved = if path.is_absolute() {
+            path
+        } else {
+            let base_dir = base_dir.ok_or_else(|| {
+                self.error(format!(
+                    "cannot resolve relative include `{raw_path}` without a base directory"
+                ))
+            })?;
+            base_dir.join(path)
+        };
+
+        let included_source = fs::read_to_string(&resolved).map_err(|e| {
+            self.error(format!(
+                "failed to read included file `{}`: {e}",
+                resolved.display()
+            ))
+        })?;
+
+        let included_base_dir = resolved.parent().map(Path::to_path_buf);
+
+        parse_entries(&included_source, included_base_dir.as_deref())
     }
 
     fn build_amount(&self, amount: Node<'_>) -> Result<Amount, PactoleFsStorageError> {
@@ -327,7 +389,7 @@ impl<'src> AstBuilder<'src> {
         let mut cursor = posting.walk();
 
         for child in posting.named_children(&mut cursor) {
-            if child.kind() != "posting_property" {
+            if child.kind() != "property" {
                 continue;
             }
 

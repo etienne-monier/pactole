@@ -27,10 +27,13 @@ fn parse_prints_journal_entries() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Spot check a few entries coming from each part of the pipeline
-    // (declarations, assertions, events and includes) to make sure the
-    // CLI, the storage crate and the tree-sitter grammar work together.
-    assert!(stdout.contains("Include("));
-    assert!(stdout.contains("\"comptes/ouvertures.pactole\""));
+    // (declarations, assertions and events) to make sure the CLI, the
+    // storage crate and the tree-sitter grammar work together. Entries
+    // pulled in through `include` directives (e.g. `Depenses:Alimentation`,
+    // opened from `comptes/ouvertures.pactole`) must be inlined directly
+    // into the journal, with no `Include` entry left behind.
+    assert!(!stdout.contains("Include("));
+    assert!(stdout.contains("\"Depenses:Alimentation\""));
     assert!(stdout.contains("Open("));
     assert!(stdout.contains("\"Actifs:Compte-Joint\""));
     assert!(stdout.contains("Balance("));

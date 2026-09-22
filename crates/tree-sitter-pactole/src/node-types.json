@@ -231,26 +231,7 @@
           "named": true
         },
         {
-          "type": "posting_property",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "posting_property",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "key",
-          "named": true
-        },
-        {
-          "type": "value",
+          "type": "property",
           "named": true
         }
       ]
@@ -389,18 +370,6 @@
         }
       ]
     }
-  },
-  {
-    "type": " ",
-    "named": false
-  },
-  {
-    "type": "  ",
-    "named": false
-  },
-  {
-    "type": "    ",
-    "named": false
   },
   {
     "type": "!",

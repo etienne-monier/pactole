@@ -27,7 +27,6 @@ pub enum Entry {
     Commodity(Commodity),
     Transaction(Transaction),
     Balance(Balance),
-    Include(Include),
 }
 
 // -------------------------------------------------
@@ -95,15 +94,6 @@ pub struct Balance {
     pub amount: Amount,
     pub tolerance: Option<Decimal>,
     pub meta: Metadata,
-}
-
-// -------------------------------------------------
-// Includes
-// -------------------------------------------------
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Include {
-    pub path: String,
 }
 
 // -------------------------------------------------
@@ -188,15 +178,16 @@ impl fmt::Display for AccountName {
     }
 }
 
-/// A commodity name: an uppercase letter followed by uppercase letters,
-/// digits, `_`, `.` or `-` (see the `commodity_name` rule in
-/// `grammar.js`).
+/// A commodity name: a Beancount-like currency code of 2 to 24 characters,
+/// starting with an uppercase letter, ending with an uppercase letter or
+/// digit, and made of uppercase letters, digits, `'`, `.`, `_` or `-` in
+/// between (see the `commodity_name` rule in `grammar.js`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CommodityName(String);
 
 impl CommodityName {
     /// Build a new commodity name, validating it against the grammar's
-    /// `commodity_name` rule: `/[A-Z][A-Z0-9_.\-]*/`.
+    /// `commodity_name` rule: `/[A-Z][A-Z0-9'._\-]{0,22}[A-Z0-9]/`.
     pub fn new(value: impl Into<String>) -> Result<Self, ModelError> {
         let value = value.into();
         if is_valid_commodity_name(&value) {
@@ -255,12 +246,25 @@ fn is_account_char(c: char) -> bool {
 }
 
 fn is_valid_commodity_name(value: &str) -> bool {
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_uppercase() => {}
-        _ => return false,
+    let chars: Vec<char> = value.chars().collect();
+    let len = chars.len();
+
+    // Beancount-like currency code: 2 to 24 characters, starting with an
+    // uppercase letter, ending with an uppercase letter or digit, and made
+    // of uppercase letters, digits, `'`, `.`, `_` or `-` in between.
+    if !(2..=24).contains(&len) {
+        return false;
     }
-    chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_' || c == '.' || c == '-')
+    if !chars[0].is_ascii_uppercase() {
+        return false;
+    }
+    let last = chars[len - 1];
+    if !(last.is_ascii_uppercase() || last.is_ascii_digit()) {
+        return false;
+    }
+    chars[1..len - 1]
+        .iter()
+        .all(|&c| c.is_ascii_uppercase() || c.is_ascii_digit() || matches!(c, '\'' | '.' | '_' | '-'))
 }
 
 #[cfg(test)]
@@ -288,14 +292,19 @@ mod tests {
     fn commodity_name_accepts_valid_values() {
         assert!(CommodityName::new("EUR").is_ok());
         assert!(CommodityName::new("BTC.SAT-2").is_ok());
+        assert!(CommodityName::new("BRK'A").is_ok());
+        assert!(CommodityName::new("AB").is_ok());
     }
 
     #[test]
     fn commodity_name_rejects_invalid_values() {
         assert!(CommodityName::new("").is_err());
+        assert!(CommodityName::new("A").is_err()); // too short (min 2 chars)
         assert!(CommodityName::new("eur").is_err());
         assert!(CommodityName::new("1EUR").is_err());
         assert!(CommodityName::new("EU R").is_err());
+        assert!(CommodityName::new("EUR-").is_err()); // must end with letter/digit
+        assert!(CommodityName::new(&format!("A{}", "B".repeat(24))).is_err()); // too long (> 24 chars)
     }
 
     #[test]

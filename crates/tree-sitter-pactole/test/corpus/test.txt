@@ -190,7 +190,7 @@ Full transaction with effective date, payee, narration, tags, links, reference a
       (amount
         (number)
         (commodity_name))
-      (posting_property
+      (property
         (key)
         (value
           (number))))
@@ -268,3 +268,96 @@ include "comptes/2026.pactole"
     (include
       (path
         (string)))))
+
+====================================
+Interleaved tags and links
+====================================
+
+2026-09-03 * "Carrefour" "Courses" #alimentation ^remboursement #urgent ^suivi
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string))
+      (tag)
+      (link)
+      (tag)
+      (link))))
+
+====================================
+Thousands separators in amounts
+====================================
+
+2026-09-03 balance Actifs:Compte-Joint 1,234,567.89 EUR
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (commodity_name))))
+
+====================================
+Commodity name with apostrophe (Beancount-like currency code)
+====================================
+
+2026-01-01 commodity BRK'A
+
+---
+
+(source_file
+  (directive
+    (commodity
+      (date)
+      (commodity_name))))
+
+====================================
+Variable whitespace: tabs and multiple spaces for alignment
+====================================
+
+2026-09-03	open	Actifs:Compte-Joint
+	description:   "Le compte joint"
+
+2026-09-03  *  "Carrefour"   "Courses de la semaine"
+  Depenses:Alimentation    45.30 EUR
+  Actifs:Compte-Joint     -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account))
+    (property
+      (key)
+      (value
+        (string))))
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))

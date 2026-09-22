@@ -9,8 +9,9 @@ pub enum ModelError {
     )]
     InvalidAccountName(String),
     #[error(
-        "invalid commodity name `{0}`: expected an uppercase letter followed by uppercase \
-         letters, digits, `_`, `.` or `-`"
+        "invalid commodity name `{0}`: expected 2 to 24 characters, starting with an uppercase \
+         letter, ending with an uppercase letter or digit, made of uppercase letters, digits, \
+         `'`, `.`, `_` or `-` in between"
     )]
     InvalidCommodityName(String),
     #[error(
