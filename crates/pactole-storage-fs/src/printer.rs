@@ -8,6 +8,7 @@ const INLINE_KINDS: &[&str] = &[
     "open",
     "close",
     "commodity",
+    "payee_declaration",
     "balance",
     "include",
     "transaction",
@@ -79,8 +80,11 @@ impl<'src> Printer<'src> {
         // `balance`, `include`) share their literal token's text as the
         // node kind of their own header node (e.g. the anonymous `"open"`
         // token and the named `open` node are both `kind() == "open"`).
-        // Only recurse for the named node; the anonymous token is always
-        // a plain leaf.
+        // `payee_declaration` is the exception: its literal keyword is
+        // `"payee"`, distinct from its own node kind, since `payee` is
+        // already used for the payee field of a `transaction`. Only
+        // recurse for the named node; the anonymous token is always a
+        // plain leaf.
         if node.is_named() && INLINE_KINDS.contains(&node.kind()) {
             self.join_children(node)
         } else {

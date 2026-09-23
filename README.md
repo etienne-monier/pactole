@@ -36,13 +36,15 @@ cargo uninstall pactole-cli
 ## Usage
 
 A Pactole ledger is a plain `.pactole` text file made of directives
-(`open`, `commodity`, `balance`, `transaction`...). See
+(`open`, `commodity`, `payee`, `balance`, `transaction`...). See
 [`GRAMMAR.md`](GRAMMAR.md) for the full syntax, for example:
 
 ```pactole
 2026-09-03 open Assets:Checking
 
 2026-01-01 commodity EUR
+
+payee "Whole Foods"
 
 2026-09-03 * "Whole Foods" "Weekly groceries"
   Expenses:Groceries 45.30 EUR
@@ -59,7 +61,8 @@ pactole parse path/to/file.pactole
 Check that a file is fully valid: not only that it parses correctly,
 but also that it makes sense from a business point of view (accounts
 are opened before being used or closed, commodities are declared
-before being used, and every transaction balances):
+before being used, every transaction's payee is a known `payee`, and
+every transaction balances):
 
 ```sh
 pactole check path/to/file.pactole

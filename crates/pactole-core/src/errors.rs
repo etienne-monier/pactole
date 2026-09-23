@@ -37,6 +37,8 @@ pub enum ValidationError {
         commodity: CommodityName,
         date: NaiveDate,
     },
+    #[error("payee `{payee}` is not declared (transaction on {date})")]
+    PayeeNotDeclared { payee: String, date: NaiveDate },
     #[error(
         "transaction has {0} postings without an amount, but at most one posting can be left \
          without an amount for auto-balancing"

@@ -9,12 +9,16 @@ use std::collections::{BTreeMap, HashSet};
 ///
 /// This:
 /// - sorts every entry chronologically (a stable sort, so entries sharing
-///   the same date keep their original relative order),
+///   the same date keep their original relative order); [`Payee`]
+///   declarations carry no date and always sort first, so they are known
+///   from the start regardless of where in the file they appear,
 /// - checks that an account is open (i.e. has been `open`ed and not yet
 ///   `close`d) before being used in a transaction posting, a balance
 ///   assertion, or being closed itself,
 /// - checks that a commodity has been declared before being used in a
 ///   transaction posting,
+/// - checks that a transaction's payee (when set) has been declared with
+///   a `payee` directive somewhere in the journal,
 /// - balances every transaction: at most one posting may be left without
 ///   an amount, in which case it is auto-filled from the others, and the
 ///   postings for each commodity must sum to zero.
@@ -26,6 +30,7 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
 
     let mut open_accounts: HashSet<AccountName> = HashSet::new();
     let mut declared_commodities: HashSet<CommodityName> = HashSet::new();
+    let mut declared_payees: HashSet<String> = HashSet::new();
 
     for entry in &mut journal.entries {
         match entry {
@@ -43,6 +48,9 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
             Entry::Commodity(commodity) => {
                 declared_commodities.insert(commodity.name.clone());
             }
+            Entry::Payee(payee) => {
+                declared_payees.insert(payee.name.clone());
+            }
             Entry::Balance(balance) => {
                 if !open_accounts.contains(&balance.account) {
                     return Err(ValidationError::AccountNotOpen {
@@ -52,7 +60,12 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
                 }
             }
             Entry::Transaction(transaction) => {
-                validate_transaction(transaction, &open_accounts, &declared_commodities)?;
+                validate_transaction(
+                    transaction,
+                    &open_accounts,
+                    &declared_commodities,
+                    &declared_payees,
+                )?;
             }
         }
     }
@@ -61,12 +74,23 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
 }
 
 /// Checks that every posting of `transaction` uses an open account and a
-/// declared commodity, then balances it.
+/// declared commodity, and that its payee (when set) has been declared,
+/// then balances it.
 fn validate_transaction(
     transaction: &mut Transaction,
     open_accounts: &HashSet<AccountName>,
     declared_commodities: &HashSet<CommodityName>,
+    declared_payees: &HashSet<String>,
 ) -> Result<(), ValidationError> {
+    if let Some(payee) = &transaction.payee {
+        if !declared_payees.contains(payee) {
+            return Err(ValidationError::PayeeNotDeclared {
+                payee: payee.clone(),
+                date: transaction.date,
+            });
+        }
+    }
+
     for posting in &transaction.postings {
         if !open_accounts.contains(&posting.account) {
             return Err(ValidationError::AccountNotOpen {
@@ -149,7 +173,9 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Balance, Close, Commodity, Metadata, Open, Posting, TransactionStatus};
+    use crate::models::{
+        Balance, Close, Commodity, Metadata, Open, Payee, Posting, TransactionStatus,
+    };
 
     fn date(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -179,6 +205,24 @@ mod tests {
             reference: None,
             meta: Metadata::new(),
         }
+    }
+
+    fn transaction_with_payee(
+        d: chrono::NaiveDate,
+        payee: &str,
+        postings: Vec<Posting>,
+    ) -> Transaction {
+        Transaction {
+            payee: Some(payee.to_string()),
+            ..transaction(d, postings)
+        }
+    }
+
+    fn payee(name: &str) -> Entry {
+        Entry::Payee(Payee {
+            name: name.to_string(),
+            meta: Metadata::new(),
+        })
     }
 
     fn open(d: chrono::NaiveDate, account: &str) -> Entry {
@@ -239,8 +283,11 @@ mod tests {
         let validated = validate_journal(journal).unwrap();
 
         // Entries were sorted chronologically.
-        assert_eq!(validated.entries[0].date(), date(2024, 1, 1));
-        assert_eq!(validated.entries.last().unwrap().date(), date(2024, 1, 5));
+        assert_eq!(validated.entries[0].date(), Some(date(2024, 1, 1)));
+        assert_eq!(
+            validated.entries.last().unwrap().date(),
+            Some(date(2024, 1, 5))
+        );
 
         // The transaction's missing amount was auto-filled.
         let Entry::Transaction(txn) = validated.entries.last().unwrap() else {
@@ -439,5 +486,77 @@ mod tests {
                 "USD".to_string()
             ]))
         );
+    }
+
+    #[test]
+    fn accepts_transaction_with_declared_payee_regardless_of_declaration_order() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Carrefour",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+                // Declared *after* the transaction using it in the file:
+                // this must still be accepted, since a payee has no
+                // date and is not checked chronologically.
+                payee("Carrefour"),
+            ],
+        };
+
+        assert!(validate_journal(journal).is_ok());
+    }
+
+    #[test]
+    fn rejects_transaction_with_undeclared_payee() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Carrefour",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        assert_eq!(
+            validate_journal(journal),
+            Err(ValidationError::PayeeNotDeclared {
+                payee: "Carrefour".to_string(),
+                date: date(2024, 1, 5),
+            })
+        );
+    }
+
+    #[test]
+    fn accepts_transaction_with_no_payee_without_checking_declarations() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 5),
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        assert!(validate_journal(journal).is_ok());
     }
 }

@@ -2,7 +2,7 @@ use crate::errors::PactoleFsStorageError;
 use chrono::NaiveDate;
 use pactole_core::{
     AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Journal, Metadata,
-    MetadataKey, Open, Posting, Transaction, TransactionStatus,
+    MetadataKey, Open, Payee, Posting, Transaction, TransactionStatus,
 };
 use rust_decimal::Decimal;
 use std::fs;
@@ -194,6 +194,9 @@ impl<'src> AstBuilder<'src> {
             "open" => entries.push(Entry::Open(self.build_open(node, header)?)),
             "close" => entries.push(Entry::Close(self.build_close(node, header)?)),
             "commodity" => entries.push(Entry::Commodity(self.build_commodity(node, header)?)),
+            "payee_declaration" => {
+                entries.push(Entry::Payee(self.build_payee_declaration(node, header)?))
+            }
             "transaction" => {
                 entries.push(Entry::Transaction(self.build_transaction(node, header)?))
             }
@@ -250,6 +253,17 @@ impl<'src> AstBuilder<'src> {
         let meta = self.build_metadata(directive)?;
 
         Ok(Commodity { date, name, meta })
+    }
+
+    fn build_payee_declaration(
+        &self,
+        directive: Node<'_>,
+        payee_declaration: Node<'_>,
+    ) -> Result<Payee, PactoleFsStorageError> {
+        let name = self.parse_string(self.require_child(payee_declaration, "string")?);
+        let meta = self.build_metadata(directive)?;
+
+        Ok(Payee { name, meta })
     }
 
     fn build_balance(

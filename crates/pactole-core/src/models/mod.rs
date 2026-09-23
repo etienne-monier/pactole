@@ -4,7 +4,7 @@ mod names;
 mod transaction;
 
 pub use balance::{Amount, Balance};
-pub use declarations::{Close, Commodity, Open};
+pub use declarations::{Close, Commodity, Open, Payee};
 pub use names::{AccountName, CommodityName, Metadata, MetadataKey};
 pub use transaction::{Posting, Transaction, TransactionStatus};
 
@@ -28,6 +28,7 @@ pub enum Entry {
     Open(Open),
     Close(Close),
     Commodity(Commodity),
+    Payee(Payee),
     Transaction(Transaction),
     Balance(Balance),
 }
@@ -35,13 +36,20 @@ pub enum Entry {
 impl Entry {
     /// Returns the date this entry is recorded at, used to sort a journal
     /// chronologically before validating it.
-    pub fn date(&self) -> chrono::NaiveDate {
+    ///
+    /// Returns `None` for a [`Payee`] declaration, which carries no date
+    /// (see its doc comment): entries with no date sort before every
+    /// dated entry (a stable sort keeps their relative order), so a
+    /// payee is always known by the time any transaction is validated,
+    /// regardless of where in the file it was declared.
+    pub fn date(&self) -> Option<chrono::NaiveDate> {
         match self {
-            Entry::Open(open) => open.date,
-            Entry::Close(close) => close.date,
-            Entry::Commodity(commodity) => commodity.date,
-            Entry::Transaction(transaction) => transaction.date,
-            Entry::Balance(balance) => balance.date,
+            Entry::Open(open) => Some(open.date),
+            Entry::Close(close) => Some(close.date),
+            Entry::Commodity(commodity) => Some(commodity.date),
+            Entry::Payee(_) => None,
+            Entry::Transaction(transaction) => Some(transaction.date),
+            Entry::Balance(balance) => Some(balance.date),
         }
     }
 }

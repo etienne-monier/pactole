@@ -5,6 +5,7 @@
 "open" @keyword
 "close" @keyword
 "commodity" @keyword
+"payee" @keyword
 "balance" @keyword
 "include" @keyword
 

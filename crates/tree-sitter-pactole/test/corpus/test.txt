@@ -322,6 +322,37 @@ Commodity name with apostrophe (Beancount-like currency code)
       (commodity_name))))
 
 ====================================
+Payee declaration
+====================================
+
+payee "Carrefour"
+
+---
+
+(source_file
+  (directive
+    (payee_declaration
+      (string))))
+
+====================================
+Payee declaration with metadata
+====================================
+
+payee "Carrefour"
+  note: "hypermarché du quartier"
+
+---
+
+(source_file
+  (directive
+    (payee_declaration
+      (string))
+    (property
+      (key)
+      (value
+        (string)))))
+
+====================================
 Variable whitespace: tabs and multiple spaces for alignment
 ====================================
 

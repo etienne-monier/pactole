@@ -36,6 +36,7 @@ export default grammar({
         $.open,
         $.close,
         $.commodity,
+        $.payee_declaration,
         $.balance,
         $.transaction,
         $.include,
@@ -45,6 +46,13 @@ export default grammar({
     close: ($) => seq($.date, $._ws, "close", $._ws, $.account),
     commodity: ($) =>
       seq($.date, $._ws, "commodity", $._ws, $.commodity_name),
+    // Declares a payee as "known". Unlike `open`/`commodity`, this takes
+    // no date: a payee has no temporal life cycle (it is never "opened"
+    // or superseded), so only a presence check makes sense — a
+    // transaction's payee must match one of these declarations
+    // *somewhere* in the file, regardless of relative order (see
+    // `ValidationError::PayeeNotDeclared` on the Rust side).
+    payee_declaration: ($) => seq("payee", $._ws, $.string),
     include: ($) => seq("include", $._ws, $.path),
 
     balance: ($) =>

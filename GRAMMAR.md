@@ -33,9 +33,9 @@ directive   := header newline property* posting*
 ```
 
 Each directive starts with a header (`open`, `close`, `commodity`,
-`balance`, `transaction` or `include`), followed by a newline, then an
-optional block of metadata (`property`) and — for transactions only — a
-sequence of postings.
+`balance`, `transaction`, `payee` or `include`), followed by a newline,
+then an optional block of metadata (`property`) and — for transactions
+only — a sequence of postings.
 
 **Important: a directive's own metadata must come before its postings.**
 Once a posting has been seen, any further indented line is parsed as
@@ -49,9 +49,15 @@ never as metadata of the directive itself.
 | `open`        | `DATE open ACCOUNT`                                                |
 | `close`       | `DATE close ACCOUNT`                                               |
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                    |
+| `payee`       | `payee "name"`                                                      |
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`         |
 | `transaction` | `DATE[=EFFECTIVE_DATE] STATUS "payee" ["narration"] TAGS/LINKS [(reference)]` |
 | `include`     | `include "path"`                                                    |
+
+Note `payee` is the only directive with no leading date: unlike an
+account or a commodity, a payee has no temporal life cycle (it is never
+"opened" or superseded), so declaring it is a simple, order-independent
+fact about the journal — see [Payees](#payees) below.
 
 Examples:
 
@@ -59,9 +65,11 @@ Examples:
 2026-09-03 open Assets:Checking
 2026-12-31 close Assets:Checking
 2026-01-01 commodity EUR
+payee "Whole Foods"
 2026-09-03 balance Assets:Checking 1234.56 ~ 0.01 EUR
 include "ledger/2026.pactole"
 ```
+
 
 ### Transactions
 
@@ -178,6 +186,32 @@ its currency/commodity codes (e.g. `EUR`, `BTC.SAT-2`, `BRK'A`).
 2026-01-01 commodity BTC.SAT-2
 ```
 
+## Payees
+
+```
+payee := "payee" string
+```
+
+Declares a payee as "known", borrowed from Ledger-cli's `payee`
+directive. A transaction's payee must match one of these declarations
+*somewhere* in the journal — this catches typos and inconsistent
+naming (e.g. `"Whole Foods"` vs. `"Wholefoods"`) the same way `open`
+catches a reference to an unknown account.
+
+Unlike every other directive, `payee` carries **no date**: a payee has
+no temporal life cycle (it is never "opened", closed or superseded), so
+only its presence in the file matters, not its position relative to the
+transactions using it — it may even be declared *after* its first use.
+
+```pactole
+payee "Whole Foods"
+payee "Landlord"
+
+2026-09-03 * "Whole Foods" "Weekly groceries"
+  Expenses:Groceries 45.30 EUR
+  Assets:Checking -45.30 EUR
+```
+
 ## Numbers
 
 ```
@@ -257,12 +291,14 @@ files:
 
 For reference, a summary of the deliberate deviations from Beancount:
 
-- Only 6 directives are supported (`open`, `close`, `commodity`,
-  `balance`, `transaction`, `include`); `pad`, `price`, `note`, `event`,
-  `document`, `query`, `custom`, `option`, `plugin`, `pushtag`/`poptag` do
-  not exist.
+- Only 7 directives are supported (`open`, `close`, `commodity`,
+  `payee`, `balance`, `transaction`, `include`); `pad`, `price`, `note`,
+  `event`, `document`, `query`, `custom`, `option`, `plugin`,
+  `pushtag`/`poptag` do not exist.
 - `payee` is mandatory in a transaction; `narration` is optional (the
-  reverse of the Beancount convention).
+  reverse of the Beancount convention). A `payee` *declaration* (this
+  file's `payee "name"` directive, borrowed from Ledger-cli) does not
+  exist in Beancount at all.
 - Status flags limited to `*`, `!`, `?` (no custom flags, no `txn`
   keyword).
 - No cost/price annotations on postings (`{cost}`, `@`, `@@`).

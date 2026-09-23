@@ -7,7 +7,7 @@ mod validation;
 pub use crate::errors::{ModelError, ValidationError};
 pub use crate::models::{
     AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Journal, Metadata,
-    MetadataKey, Open, Posting, Transaction, TransactionStatus,
+    MetadataKey, Open, Payee, Posting, Transaction, TransactionStatus,
 };
 pub use crate::register::{register, RegisterEntry, RegisterFilter};
 pub use crate::traits::ReadableStorage;

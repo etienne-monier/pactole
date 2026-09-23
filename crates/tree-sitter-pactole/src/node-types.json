@@ -116,6 +116,10 @@
           "named": true
         },
         {
+          "type": "payee_declaration",
+          "named": true
+        },
+        {
           "type": "posting",
           "named": true
         },
@@ -201,6 +205,21 @@
   },
   {
     "type": "payee",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "payee_declaration",
     "named": true,
     "fields": {},
     "children": {
@@ -454,6 +473,10 @@
   },
   {
     "type": "open",
+    "named": false
+  },
+  {
+    "type": "payee",
     "named": false
   },
   {

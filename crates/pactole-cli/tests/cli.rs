@@ -61,6 +61,7 @@ fn check_reports_success_on_business_valid_file() {
         "2024-01-01 open Actifs:Compte\n\
          2024-01-01 open Depenses:Divers\n\
          2024-01-01 commodity EUR\n\
+         payee \"Test\"\n\
          2024-01-05 * \"Test\"\n\
          \u{20}\u{20}Actifs:Compte -100.00 EUR\n\
          \u{20}\u{20}Depenses:Divers 100.00 EUR\n",
@@ -80,6 +81,73 @@ fn check_reports_success_on_business_valid_file() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("OK"));
+}
+
+#[test]
+fn check_reports_undeclared_payee() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-check-payee-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2024-01-01 open Actifs:Compte\n\
+         2024-01-01 open Depenses:Divers\n\
+         2024-01-01 commodity EUR\n\
+         2024-01-05 * \"Test\"\n\
+         \u{20}\u{20}Actifs:Compte -100.00 EUR\n\
+         \u{20}\u{20}Depenses:Divers 100.00 EUR\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"));
+    assert!(stderr.contains("not declared"));
+}
+
+#[test]
+fn payee_declared_after_its_first_use_is_still_accepted() {
+    // A `payee` declaration carries no date, so it is not checked
+    // chronologically: declaring it anywhere in the file, even after the
+    // transaction using it, must be accepted.
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-check-payee-order-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2024-01-01 open Actifs:Compte\n\
+         2024-01-01 open Depenses:Divers\n\
+         2024-01-01 commodity EUR\n\
+         2024-01-05 * \"Test\"\n\
+         \u{20}\u{20}Actifs:Compte -100.00 EUR\n\
+         \u{20}\u{20}Depenses:Divers 100.00 EUR\n\
+         payee \"Test\"\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -191,6 +259,8 @@ fn write_register_fixture() -> std::path::PathBuf {
          2024-01-01 open Depenses:Alimentation\n\
          2024-01-01 open Depenses:Loisirs\n\
          2024-01-01 commodity EUR\n\
+         payee \"Carrefour\"\n\
+         payee \"Cinema\"\n\
          2024-01-05 * \"Carrefour\" \"Courses\"\n\
          \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
          \u{20}\u{20}Actifs:Compte -45.30 EUR\n\
