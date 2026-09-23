@@ -1,7 +1,11 @@
+use crate::models::{AccountName, CommodityName};
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use thiserror::Error;
 
-/// Errors raised when building or validating core model values.
+/// Errors raised when building core model values: purely grammatical /
+/// structural checks (e.g. the shape of a name), with no knowledge of the
+/// rest of the journal.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ModelError {
     #[error(
@@ -19,6 +23,20 @@ pub enum ModelError {
         "invalid metadata key `{0}`: expected only lowercase letters, `_` or `-`"
     )]
     InvalidMetadataKey(String),
+}
+
+/// Errors raised when validating a [`crate::Journal`] as a whole: checks
+/// that require knowing about other entries of the journal, as opposed to
+/// the purely grammatical checks reported as [`ModelError`].
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum ValidationError {
+    #[error("account `{account}` is not open on {date}")]
+    AccountNotOpen { account: AccountName, date: NaiveDate },
+    #[error("commodity `{commodity}` is not declared on {date}")]
+    CommodityNotDeclared {
+        commodity: CommodityName,
+        date: NaiveDate,
+    },
     #[error(
         "transaction has {0} postings without an amount, but at most one posting can be left \
          without an amount for auto-balancing"

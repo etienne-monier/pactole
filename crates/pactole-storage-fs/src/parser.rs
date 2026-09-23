@@ -205,7 +205,11 @@ impl<'src> AstBuilder<'src> {
         Ok(())
     }
 
-    fn build_open(&self, directive: Node<'_>, open: Node<'_>) -> Result<Open, PactoleFsStorageError> {
+    fn build_open(
+        &self,
+        directive: Node<'_>,
+        open: Node<'_>,
+    ) -> Result<Open, PactoleFsStorageError> {
         let date = self.parse_date(self.require_child(open, "date")?)?;
         let account = self.parse_account(self.require_child(open, "account")?)?;
 
@@ -220,12 +224,20 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
-    fn build_close(&self, directive: Node<'_>, close: Node<'_>) -> Result<Close, PactoleFsStorageError> {
+    fn build_close(
+        &self,
+        directive: Node<'_>,
+        close: Node<'_>,
+    ) -> Result<Close, PactoleFsStorageError> {
         let date = self.parse_date(self.require_child(close, "date")?)?;
         let account = self.parse_account(self.require_child(close, "account")?)?;
         let meta = self.build_metadata(directive)?;
 
-        Ok(Close { date, account, meta })
+        Ok(Close {
+            date,
+            account,
+            meta,
+        })
     }
 
     fn build_commodity(
@@ -248,7 +260,8 @@ impl<'src> AstBuilder<'src> {
         let date = self.parse_date(self.require_child(balance, "date")?)?;
         let account = self.parse_account(self.require_child(balance, "account")?)?;
         let number = self.parse_number(self.require_child(balance, "number")?)?;
-        let commodity = self.parse_commodity_name(self.require_child(balance, "commodity_name")?)?;
+        let commodity =
+            self.parse_commodity_name(self.require_child(balance, "commodity_name")?)?;
         let tolerance = self
             .find_child(balance, "tolerance")
             .map(|n| self.parse_number(n))
@@ -364,7 +377,7 @@ impl<'src> AstBuilder<'src> {
             }
         }
 
-        Ok(Transaction::new(
+        Ok(Transaction {
             date,
             effective_date,
             status,
@@ -375,7 +388,7 @@ impl<'src> AstBuilder<'src> {
             links,
             reference,
             meta,
-        )?)
+        })
     }
 
     fn build_posting(&self, posting: Node<'_>) -> Result<Posting, PactoleFsStorageError> {

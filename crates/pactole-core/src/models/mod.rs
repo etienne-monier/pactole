@@ -31,3 +31,17 @@ pub enum Entry {
     Transaction(Transaction),
     Balance(Balance),
 }
+
+impl Entry {
+    /// Returns the date this entry is recorded at, used to sort a journal
+    /// chronologically before validating it.
+    pub fn date(&self) -> chrono::NaiveDate {
+        match self {
+            Entry::Open(open) => open.date,
+            Entry::Close(close) => close.date,
+            Entry::Commodity(commodity) => commodity.date,
+            Entry::Transaction(transaction) => transaction.date,
+            Entry::Balance(balance) => balance.date,
+        }
+    }
+}
