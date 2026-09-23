@@ -56,6 +56,15 @@ Check that a file parses correctly and inspect the resulting entries
 pactole parse path/to/file.pactole
 ```
 
+Check that a file is fully valid: not only that it parses correctly,
+but also that it makes sense from a business point of view (accounts
+are opened before being used or closed, commodities are declared
+before being used, and every transaction balances):
+
+```sh
+pactole check path/to/file.pactole
+```
+
 Reformat a file into its canonical form, printed to stdout by default,
 or written back in place with `--write`:
 
@@ -69,6 +78,21 @@ printing the result to stdout:
 
 ```sh
 cat path/to/file.pactole | pactole fmt -
+```
+
+List the transactions of a file, one line per matching posting, with
+a running balance kept per commodity (like the `register` report of
+other plain-text accounting tools). Without any filter, every posting
+is listed; filters can be combined and must all be satisfied
+(`--account` also matches sub-accounts, e.g. `Depenses` matches
+`Depenses:Alimentation`):
+
+```sh
+pactole register path/to/file.pactole
+pactole register path/to/file.pactole --account Depenses:Alimentation
+pactole register path/to/file.pactole --from 2026-01-01 --to 2026-12-31
+pactole register path/to/file.pactole --payee Carrefour --status cleared
+pactole register path/to/file.pactole --tag vacances
 ```
 
 More commands (querying balances, reports, etc.) are coming.

@@ -1,8 +1,9 @@
-use crate::models::Entry;
+use crate::models::Journal;
 use std::error::Error;
 
 pub trait ReadableStorage {
     type Error: Error;
 
-    fn get_all(&self) -> Result<Vec<Entry>, Self::Error>;
+    /// Reads the full journal from the underlying storage.
+    fn journal(&self) -> Result<Journal, Self::Error>;
 }

@@ -10,6 +10,7 @@ name = "pactole"
 path = "src/main.rs"
 
 [dependencies]
+chrono = "0.4.45"
 clap = { version = "4.6.6", features = ["derive"] }
 pactole-core = { version = "0.1.0", path = "../pactole-core" }
 pactole-storage-fs = { version = "0.1.0", path = "../pactole-storage-fs" }

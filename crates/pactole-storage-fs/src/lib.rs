@@ -1,4 +1,4 @@
-use pactole_core::{Entry, Journal, ReadableStorage};
+use pactole_core::{Journal, ReadableStorage};
 use std::fs;
 use std::path::PathBuf;
 pub mod errors;
@@ -38,8 +38,9 @@ impl TryFrom<PathBuf> for PactoleFileStorage {
 impl ReadableStorage for PactoleFileStorage {
     type Error = PactoleFsStorageError;
 
-    fn get_all(&self) -> Result<Vec<Entry>, Self::Error> {
-        let journal = self.journal.as_ref().ok_or(PactoleFsStorageError::NotParsed)?;
-        Ok(journal.entries().to_vec())
+    fn journal(&self) -> Result<Journal, Self::Error> {
+        self.journal
+            .clone()
+            .ok_or(PactoleFsStorageError::NotParsed)
     }
 }
