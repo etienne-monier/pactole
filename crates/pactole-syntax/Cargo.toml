@@ -1,0 +1,8 @@
+[package]
+name = "pactole-syntax"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tree-sitter = "0.27.0"
+tree-sitter-pactole = { version = "0.1.0", path = "../tree-sitter-pactole" }

@@ -1,0 +1,40 @@
+====================================
+Payee declaration
+====================================
+
+payee "Carrefour"
+
+---
+
+(source_file
+  (directive
+    (payee_declaration
+      (string))))
+
+====================================
+Payee declaration with metadata
+====================================
+
+payee "Carrefour"
+  note: "hypermarché du quartier"
+
+---
+
+(source_file
+  (directive
+    (payee_declaration
+      (string))
+    (property
+      (key)
+      (value
+        (string)))))
+
+====================================
+Invalid: posting under a payee directive
+:error
+====================================
+
+payee "Carrefour"
+  Actifs:Compte-Joint 10.00 EUR
+
+---

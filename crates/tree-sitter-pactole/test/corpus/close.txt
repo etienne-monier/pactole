@@ -1,0 +1,23 @@
+====================================
+Close account statement
+====================================
+
+2026-12-31 close Actifs:Compte-Joint
+
+---
+
+(source_file
+  (directive
+    (close
+      (date)
+      (account))))
+
+====================================
+Invalid: posting under a close directive
+:error
+====================================
+
+2026-12-31 close Actifs:Compte-Joint
+  Actifs:Compte-Joint 10.00 EUR
+
+---

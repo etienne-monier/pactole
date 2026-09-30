@@ -35,7 +35,9 @@ directive   := header newline property* posting*
 Each directive starts with a header (`open`, `close`, `commodity`,
 `balance`, `transaction`, `payee` or `include`), followed by a newline,
 then an optional block of metadata (`property`) and — for transactions
-only — a sequence of postings.
+only — a sequence of postings. Postings may only appear under a
+`transaction` directive; the grammar rejects them under any other
+directive kind.
 
 **Important: a directive's own metadata must come before its postings.**
 Once a posting has been seen, any further indented line is parsed as
@@ -46,7 +48,7 @@ never as metadata of the directive itself.
 
 | Directive     | Syntax                                                           |
 |---------------|-------------------------------------------------------------------|
-| `open`        | `DATE open ACCOUNT`                                                |
+| `open`        | `DATE open ACCOUNT [COMMODITY_NAME[,COMMODITY_NAME...]]`           |
 | `close`       | `DATE close ACCOUNT`                                               |
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                    |
 | `payee`       | `payee "name"`                                                      |
@@ -63,12 +65,20 @@ Examples:
 
 ```pactole
 2026-09-03 open Assets:Checking
+2026-09-03 open Assets:Broker EUR,USD
 2026-12-31 close Assets:Checking
 2026-01-01 commodity EUR
 payee "Whole Foods"
 2026-09-03 balance Assets:Checking 1234.56 ~ 0.01 EUR
 include "ledger/2026.pactole"
 ```
+
+`open` accepts an optional Beancount-style, comma-separated list of
+commodities (no spaces around the commas), e.g. `EUR,USD` above. When
+this list is non-empty, it restricts the account: any posting on it
+(including one whose amount is auto-balanced) using a commodity outside
+this list is rejected during business validation. An empty list (the
+default) leaves the account unrestricted.
 
 
 ### Transactions
@@ -270,8 +280,34 @@ reference := "(" [^)\r\n]* ")"
 comment := ";" [^\r\n]*
 ```
 
-A comment starts with `;` and extends to the end of the line. It may
-appear anywhere (declared as `extras` in the grammar).
+A comment starts with `;` and extends to the end of the line. Unlike
+Beancount's tree-sitter grammar, comments are not silently allowed
+anywhere (via `extras`): they are only recognized at specific, documented
+positions in the grammar:
+
+- a standalone line, on its own, anywhere between two directives or
+  between two of a directive's `property`/`posting` lines;
+- right after a directive header, before its newline, e.g.
+  `2026-01-01 commodity EUR ; a note`;
+- right after a `property` line's value, before its newline;
+- right after a posting's `account [amount]`, before its newline.
+
+```pactole
+; a leading comment
+2026-01-01 commodity EUR ; a trailing comment
+
+2026-09-03 * "Whole Foods" "Weekly groceries"
+  Expenses:Groceries 45.30 EUR ; paid by card
+  ; a standalone note
+  Assets:Checking -45.30 EUR
+```
+
+A standalone comment line right after a posting is syntactically
+indistinguishable from that posting's own trailing metadata (both start
+with the same flexible leading whitespace): it is therefore parsed, and
+reformatted by `fmt`, as trailing content of the *preceding* posting,
+one indentation level deeper, rather than as a line of its own between
+postings.
 
 ## Whitespace and indentation
 

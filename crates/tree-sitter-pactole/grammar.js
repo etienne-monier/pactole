@@ -10,7 +10,11 @@
 export default grammar({
   name: "pactole",
 
-  extras: ($) => [$.comment],
+  // Only comments are handled explicitly at documented positions (see
+  // `_trailing_comment` and `_comment_line` below); no implicit
+  // whitespace-skipping is introduced by `extras`, since every required
+  // separator is already produced by the explicit `_ws` token below.
+  extras: () => [],
 
   // The grammar cannot locally tell, right after a posting's account line,
   // whether the following indented line starts this posting's own
@@ -18,42 +22,99 @@ export default grammar({
   // start with the same flexible `_ws` token. Let the GLR parser explore
   // both branches; they always resolve once the `key ":"` vs `account`
   // shape is seen.
-  conflicts: ($) => [[$.posting]],
+  conflicts: ($) => [
+    [$.posting],
+    // A standalone comment line right after a transaction's own metadata
+    // block can either still be part of that metadata block or already
+    // be the first line of the posting block below (both start with the
+    // same flexible `_comment_line`); let the GLR parser explore both,
+    // they always resolve once a `property` or `posting` is next seen.
+    [$._property_or_comment, $._posting_or_comment],
+  ],
 
   rules: {
-    source_file: ($) => repeat(choice($.directive, $._newline)),
+    source_file: ($) => repeat(choice($.directive, $.comment, $._newline)),
 
     // Directive-level metadata (`property`) must come before any posting:
     // this keeps the grammar unambiguous while allowing a flexible amount
     // of leading whitespace (see `_ws`), since a `key: value` line right
     // after a posting is otherwise indistinguishable from one belonging to
-    // the directive itself.
+    // the directive itself. Only `transaction` may be followed by
+    // postings: `open`/`close`/`commodity`/`payee`/`balance`/`include`
+    // never have postings of their own.
     directive: ($) =>
-      seq($._header, $._newline, repeat($.property), repeat($.posting)),
-
-    _header: ($) =>
       choice(
-        $.open,
-        $.close,
-        $.commodity,
-        $.payee_declaration,
-        $.balance,
-        $.transaction,
-        $.include,
+        seq($.open, $._newline, repeat($._property_or_comment)),
+        seq($.close, $._newline, repeat($._property_or_comment)),
+        seq($.commodity, $._newline, repeat($._property_or_comment)),
+        seq($.payee_declaration, $._newline, repeat($._property_or_comment)),
+        seq($.balance, $._newline, repeat($._property_or_comment)),
+        seq($.include, $._newline, repeat($._property_or_comment)),
+        seq(
+          $.transaction,
+          $._newline,
+          repeat($._property_or_comment),
+          repeat($._posting_or_comment),
+        ),
       ),
 
-    open: ($) => seq($.date, $._ws, "open", $._ws, $.account),
-    close: ($) => seq($.date, $._ws, "close", $._ws, $.account),
+    // A comment following the last meaningful token of a line, e.g.
+    // `2026-01-01 commodity EUR ; a note`. Only allowed right before the
+    // line's `_newline`, at the documented positions (directive/header
+    // end, posting end, property end): never silently anywhere, unlike
+    // `tree-sitter-beancount`'s catch-all `extras`. Fielded as `comment`
+    // so it can be told apart, on the Rust side, from a standalone
+    // `_comment_line` node that happens to be a sibling in the same
+    // repeated block (see `_property_or_comment`/`_posting_or_comment`).
+    _trailing_comment: ($) => seq($._ws, field("comment", $.comment)),
+
+    // A standalone comment line at posting/property indentation, e.g. a
+    // comment between two postings or between two properties. Kept as a
+    // plain `comment` node in the tree (no wrapper node), interleaved with
+    // `property`/`posting` in source order.
+    _comment_line: ($) => seq($._ws, $.comment, $._newline),
+
+    _property_or_comment: ($) => choice($.property, $._comment_line),
+    _posting_or_comment: ($) => choice($.posting, $._comment_line),
+
+    open: ($) =>
+      seq(
+        $.date,
+        $._ws,
+        "open",
+        $._ws,
+        $.account,
+        optional(seq($._ws, $.commodity_list)),
+        optional($._trailing_comment),
+      ),
+    // Beancount-style optional list of commodities an account is
+    // meant to be restricted to, e.g. `EUR` or `EUR,USD`: comma-separated,
+    // no spaces around the comma. This is currently only parsed and
+    // stored; it is not enforced (postings using other commodities are
+    // not rejected).
+    commodity_list: ($) =>
+      seq($.commodity_name, repeat(seq(",", $.commodity_name))),
+    close: ($) =>
+      seq($.date, $._ws, "close", $._ws, $.account, optional($._trailing_comment)),
     commodity: ($) =>
-      seq($.date, $._ws, "commodity", $._ws, $.commodity_name),
+      seq(
+        $.date,
+        $._ws,
+        "commodity",
+        $._ws,
+        $.commodity_name,
+        optional($._trailing_comment),
+      ),
     // Declares a payee as "known". Unlike `open`/`commodity`, this takes
     // no date: a payee has no temporal life cycle (it is never "opened"
     // or superseded), so only a presence check makes sense — a
     // transaction's payee must match one of these declarations
     // *somewhere* in the file, regardless of relative order (see
     // `ValidationError::PayeeNotDeclared` on the Rust side).
-    payee_declaration: ($) => seq("payee", $._ws, $.string),
-    include: ($) => seq("include", $._ws, $.path),
+    payee_declaration: ($) =>
+      seq("payee", $._ws, $.string, optional($._trailing_comment)),
+    include: ($) =>
+      seq("include", $._ws, $.path, optional($._trailing_comment)),
 
     balance: ($) =>
       seq(
@@ -67,6 +128,7 @@ export default grammar({
         optional(seq($._ws, "~", $._ws, $.tolerance)),
         $._ws,
         $.commodity_name,
+        optional($._trailing_comment),
       ),
 
     transaction: ($) =>
@@ -81,6 +143,7 @@ export default grammar({
         // Tags and links may be freely interleaved, in any order.
         repeat(seq($._ws, choice($.tag, $.link))),
         optional(seq($._ws, $.reference)),
+        optional($._trailing_comment),
       ),
 
     // Metadata line: distinguished from a posting by its trailing `:`
@@ -88,15 +151,25 @@ export default grammar({
     // an account never ends with `:` right before whitespace. Used both
     // for directive-level metadata and posting-level metadata (see
     // `directive` and `posting`).
-    property: ($) => seq($._ws, $.key, ":", $._ws, $.value, $._newline),
+    property: ($) =>
+      seq(
+        $._ws,
+        $.key,
+        ":",
+        $._ws,
+        $.value,
+        optional($._trailing_comment),
+        $._newline,
+      ),
 
     posting: ($) =>
       seq(
         $._ws,
         $.account,
         optional(seq($._ws, $.amount)),
+        optional($._trailing_comment),
         $._newline,
-        repeat($.property),
+        repeat($._property_or_comment),
       ),
 
     amount: ($) => seq($.number, $._ws, $.commodity_name),

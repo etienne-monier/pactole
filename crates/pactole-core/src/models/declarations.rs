@@ -9,6 +9,13 @@ use chrono::NaiveDate;
 pub struct Open {
     pub date: NaiveDate,
     pub account: AccountName,
+    /// Beancount-style optional list of commodities the account is
+    /// restricted to, e.g. `EUR` or `EUR,USD`. Empty when the `open`
+    /// directive doesn't list any commodity, meaning the account is
+    /// unrestricted. When non-empty, [`crate::validation::validate_journal`]
+    /// rejects any posting on this account (including auto-balanced ones)
+    /// using a commodity outside this list.
+    pub commodities: Vec<CommodityName>,
     pub description: Option<String>,
     pub meta: Metadata,
 }

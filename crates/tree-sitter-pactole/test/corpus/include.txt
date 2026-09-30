@@ -1,0 +1,23 @@
+====================================
+Include directive
+====================================
+
+include "comptes/2026.pactole"
+
+---
+
+(source_file
+  (directive
+    (include
+      (path
+        (string)))))
+
+====================================
+Invalid: posting under an include directive
+:error
+====================================
+
+include "comptes/2026.pactole"
+  Actifs:Compte-Joint 10.00 EUR
+
+---

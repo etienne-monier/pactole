@@ -1,0 +1,118 @@
+====================================
+Open account statement
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+  description: "Le compte joint"
+  opened_on: 2026-09-03
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account))
+    (property
+      (key)
+      (value
+        (string)))
+    (property
+      (key)
+      (value
+        (date)))))
+
+====================================
+Metadata values: string, date and number
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+  description: "Le compte joint"
+  opened_on: 2026-09-03
+  initial_balance: 1234.56
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account))
+    (property
+      (key)
+      (value
+        (string)))
+    (property
+      (key)
+      (value
+        (date)))
+    (property
+      (key)
+      (value
+        (number)))))
+
+====================================
+Open account with a single restricted commodity
+====================================
+
+2026-09-03 open Actifs:Compte-Joint EUR
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account)
+      (commodity_list
+        (commodity_name)))))
+
+====================================
+Open account with several restricted commodities
+====================================
+
+2026-09-03 open Actifs:Compte-Titres EUR,USD,BRK'A
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account)
+      (commodity_list
+        (commodity_name)
+        (commodity_name)
+        (commodity_name)))))
+
+====================================
+Open account with restricted commodities and metadata
+====================================
+
+2026-09-03 open Actifs:Compte-Titres EUR,USD
+  description: "Compte titres"
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account)
+      (commodity_list
+        (commodity_name)
+        (commodity_name)))
+    (property
+      (key)
+      (value
+        (string)))))
+
+====================================
+Invalid: posting under an open directive
+:error
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+  Actifs:Compte-Joint 10.00 EUR
+
+---

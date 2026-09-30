@@ -53,4 +53,25 @@ pub enum ValidationError {
         "transaction is not balanced: postings for commodity `{0}` sum to `{1}` instead of zero"
     )]
     TransactionNotBalanced(String, Decimal),
+    #[error(
+        "commodity `{commodity}` is not allowed on account `{account}` (posting on {date}): the \
+         account was opened with a restricted list of commodities that does not include it"
+    )]
+    CommodityNotAllowed {
+        account: AccountName,
+        commodity: CommodityName,
+        date: NaiveDate,
+    },
+    #[error(
+        "balance assertion failed on {date}: account `{account}` has a balance of `{actual}` \
+         {commodity}, expected `{expected}` {commodity} (tolerance ~ {tolerance})"
+    )]
+    BalanceAssertionFailed {
+        account: AccountName,
+        commodity: CommodityName,
+        date: NaiveDate,
+        expected: Decimal,
+        actual: Decimal,
+        tolerance: Decimal,
+    },
 }

@@ -1,5 +1,6 @@
 use crate::errors::PactoleFsStorageError;
-use tree_sitter::{Node, Parser};
+use pactole_syntax::parse_document;
+use tree_sitter::Node;
 
 /// Node kinds whose children all sit on a single output line and are
 /// joined by [`Printer::join_children`]: directive headers, `amount` and
@@ -14,6 +15,7 @@ const INLINE_KINDS: &[&str] = &[
     "transaction",
     "amount",
     "property",
+    "commodity_list",
 ];
 
 /// Reformat a `.pactole` source string into its canonical form.
@@ -31,7 +33,15 @@ const INLINE_KINDS: &[&str] = &[
 /// - any run of one or more blank lines between top-level directives (or
 ///   comments) collapses to exactly one; blank lines are never inserted
 ///   or preserved *inside* a directive, since the grammar doesn't allow
-///   them there.
+///   them there;
+/// - a trailing comment on a directive header, a `property` line or a
+///   posting's own header line stays glued to that same line; a
+///   standalone comment line between two `property`/`posting` items is
+///   kept on its own line, at the same indentation as its neighbours
+///   (except a standalone comment right after a posting, which the
+///   grammar attaches as trailing content of that *preceding* posting and
+///   is therefore printed one indent level deeper — see
+///   `_property_or_comment` in `grammar.js`).
 ///
 /// The textual content of leaves (dates, numbers, strings, accounts,
 /// comments, tags, links, references...) is never rewritten, so e.g. the
@@ -42,23 +52,16 @@ const INLINE_KINDS: &[&str] = &[
 /// file with syntax errors could silently corrupt it, so this refuses to
 /// guess and reports a parse error instead.
 pub fn format(source: &str) -> Result<String, PactoleFsStorageError> {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_pactole::LANGUAGE.into())
-        .map_err(|e| PactoleFsStorageError::ParseError(e.to_string()))?;
+    let doc = parse_document(source)
+        .into_result()
+        .map_err(|diagnostics| {
+            PactoleFsStorageError::ParseError(format!(
+                "source has syntax errors, refusing to format it: {}",
+                crate::describe_syntax_diagnostics(&diagnostics)
+            ))
+        })?;
 
-    let tree = parser
-        .parse(source, None)
-        .ok_or_else(|| PactoleFsStorageError::ParseError("failed to parse".to_string()))?;
-
-    let root = tree.root_node();
-    if root.has_error() {
-        return Err(PactoleFsStorageError::ParseError(
-            "source has syntax errors, refusing to format it".to_string(),
-        ));
-    }
-
-    Ok(Printer { source }.print_source_file(root))
+    Ok(Printer { source }.print_source_file(doc.root_node()))
 }
 
 struct Printer<'src> {
@@ -104,21 +107,22 @@ impl<'src> Printer<'src> {
 
         for child in node.children(&mut cursor) {
             let text = self.render(child);
-            let is_glue_token = !child.is_named() && (text == "=" || text == ":");
+            let is_glue_token = !child.is_named() && (text == "=" || text == ":" || text == ",");
 
             if !out.is_empty() && !prev_glue_after && !is_glue_token {
                 out.push(' ');
             }
             out.push_str(&text);
 
-            prev_glue_after = !child.is_named() && text == "=";
+            prev_glue_after = !child.is_named() && (text == "=" || text == ",");
         }
 
         out
     }
 
     /// Print a `directive` node: its header line, then any of its own
-    /// metadata (`property`) and postings, each indented one level.
+    /// metadata (`property`), postings and standalone comment lines,
+    /// each indented one level, in source order.
     fn print_directive(&self, node: Node<'_>, out: &mut String) {
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
@@ -129,8 +133,19 @@ impl<'src> Printer<'src> {
                     out.push('\n');
                 }
                 "posting" => self.print_posting(child, out),
+                // A standalone comment line between two `property`/
+                // `posting` items (never the header's own trailing
+                // comment, which is nested inside the header node itself
+                // and rendered as part of it below).
+                "comment" => {
+                    out.push_str("  ");
+                    out.push_str(self.text(child).trim_end());
+                    out.push('\n');
+                }
                 // Directive header: open/close/commodity/balance/
-                // transaction/include.
+                // transaction/include. Its own trailing comment, if any,
+                // is a fielded child of the header node and gets rendered
+                // inline by `join_children`.
                 _ => {
                     out.push_str(&self.join_children(child));
                     out.push('\n');
@@ -139,8 +154,9 @@ impl<'src> Printer<'src> {
         }
     }
 
-    /// Print a `posting` node: its `account amount` header line, then its
-    /// own metadata (`property`), one level deeper.
+    /// Print a `posting` node: its `account amount [; comment]` header
+    /// line, then its own metadata (`property`) and standalone comment
+    /// lines, one level deeper, in source order.
     fn print_posting(&self, node: Node<'_>, out: &mut String) {
         let mut cursor = node.walk();
         let mut header = String::new();
@@ -154,16 +170,35 @@ impl<'src> Printer<'src> {
             }
         }
 
+        // The posting's own trailing comment, if any, is a fielded child
+        // of the `posting` node itself (as opposed to a standalone
+        // comment line among its `property` children below).
+        let header_comment = node.child_by_field_name("comment");
+        if let Some(comment) = header_comment {
+            header.push(' ');
+            header.push_str(self.text(comment));
+        }
+
         out.push_str("  ");
         out.push_str(&header);
         out.push('\n');
 
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
-            if child.kind() == "property" {
-                out.push_str("    ");
-                out.push_str(&self.join_children(child));
-                out.push('\n');
+            match child.kind() {
+                "property" => {
+                    out.push_str("    ");
+                    out.push_str(&self.join_children(child));
+                    out.push('\n');
+                }
+                // Skip the header's own fielded trailing comment, already
+                // rendered above; only print standalone comment lines.
+                "comment" if Some(child) != header_comment => {
+                    out.push_str("    ");
+                    out.push_str(self.text(child).trim_end());
+                    out.push('\n');
+                }
+                _ => {}
             }
         }
     }
@@ -280,5 +315,94 @@ mod tests {
         let source = "not a valid pactole file at all\n";
 
         assert!(format(source).is_err());
+    }
+
+    #[test]
+    fn glues_commas_in_open_commodity_list() {
+        let source = "2026-09-03 open Assets:Broker EUR,USD,BRK'A\n";
+
+        assert_eq!(format(source).unwrap(), source);
+    }
+
+    #[test]
+    fn keeps_a_trailing_comment_on_a_directive_header() {
+        let source = "2026-01-01 commodity EUR ; a note\n";
+
+        assert_eq!(format(source).unwrap(), source);
+    }
+
+    #[test]
+    fn keeps_a_trailing_comment_on_a_property_line() {
+        let source = "2026-09-03 open Assets:Checking\n  \
+                       description: \"desc\" ; a note\n";
+
+        assert_eq!(format(source).unwrap(), source);
+    }
+
+    #[test]
+    fn keeps_a_standalone_comment_line_between_two_properties() {
+        let source = "2026-09-03 open Assets:Checking\n  \
+                       description: \"desc\"\n  \
+                       ; a note\n  \
+                       opened_on: 2026-09-03\n";
+
+        assert_eq!(format(source).unwrap(), source);
+    }
+
+    #[test]
+    fn keeps_a_trailing_comment_on_a_posting() {
+        let source = "2026-09-03 * \"Carrefour\" \"Courses\"\n  \
+                       Expenses:Groceries 45.30 EUR ; a note\n  \
+                       Assets:Checking -45.30 EUR\n";
+
+        assert_eq!(format(source).unwrap(), source);
+    }
+
+    #[test]
+    fn moves_a_standalone_comment_between_two_postings_under_the_preceding_one() {
+        // A standalone comment line right after a posting is
+        // indistinguishable, in the grammar, from that posting's own
+        // trailing metadata (both start with the same flexible leading
+        // whitespace), so it is parsed and printed as trailing content of
+        // the *preceding* posting, one indent level deeper, rather than
+        // at the postings' own indentation. This is a deliberate,
+        // documented trade-off (see `_property_or_comment` in
+        // `grammar.js`), not a bug.
+        let source = "2026-09-03 * \"Carrefour\" \"Courses\"\n  \
+                       Expenses:Groceries 45.30 EUR\n  \
+                       ; a note\n  \
+                       Assets:Checking -45.30 EUR\n";
+
+        assert_eq!(
+            format(source).unwrap(),
+            "2026-09-03 * \"Carrefour\" \"Courses\"\n  \
+             Expenses:Groceries 45.30 EUR\n    \
+             ; a note\n  \
+             Assets:Checking -45.30 EUR\n"
+        );
+    }
+
+    #[test]
+    fn keeps_a_trailing_comment_on_a_transaction_header() {
+        let source = "2026-09-03 * \"Carrefour\" \"Courses\" ; a note\n  \
+                       Expenses:Groceries 45.30 EUR\n  \
+                       Assets:Checking -45.30 EUR\n";
+
+        assert_eq!(format(source).unwrap(), source);
+    }
+
+    #[test]
+    fn comment_formatting_is_idempotent() {
+        let source = "; leading comment\n\
+                       2026-01-01 commodity EUR ; trailing comment\n\
+                       2026-09-03 open Assets:Checking\n  \
+                       description: \"desc\" ; note\n  \
+                       ; standalone\n  \
+                       opened_on: 2026-09-03\n";
+
+        let once = format(source).unwrap();
+        let twice = format(&once).unwrap();
+
+        assert_eq!(once, twice);
     }
 }

@@ -13,68 +13,224 @@
           },
           {
             "type": "SYMBOL",
+            "name": "comment"
+          },
+          {
+            "type": "SYMBOL",
             "name": "_newline"
           }
         ]
       }
     },
     "directive": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "open"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_property_or_comment"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "close"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_property_or_comment"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "commodity"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_property_or_comment"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "payee_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_property_or_comment"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "balance"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_property_or_comment"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "include"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_property_or_comment"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "transaction"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_property_or_comment"
+              }
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_posting_or_comment"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "_trailing_comment": {
       "type": "SEQ",
       "members": [
         {
           "type": "SYMBOL",
-          "name": "_header"
+          "name": "_ws"
         },
         {
-          "type": "SYMBOL",
-          "name": "_newline"
-        },
-        {
-          "type": "REPEAT",
+          "type": "FIELD",
+          "name": "comment",
           "content": {
             "type": "SYMBOL",
-            "name": "property"
-          }
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SYMBOL",
-            "name": "posting"
+            "name": "comment"
           }
         }
       ]
     },
-    "_header": {
+    "_comment_line": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_ws"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "comment"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_newline"
+        }
+      ]
+    },
+    "_property_or_comment": {
       "type": "CHOICE",
       "members": [
         {
           "type": "SYMBOL",
-          "name": "open"
+          "name": "property"
         },
         {
           "type": "SYMBOL",
-          "name": "close"
+          "name": "_comment_line"
+        }
+      ]
+    },
+    "_posting_or_comment": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "posting"
         },
         {
           "type": "SYMBOL",
-          "name": "commodity"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "payee_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "balance"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "transaction"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "include"
+          "name": "_comment_line"
         }
       ]
     },
@@ -100,6 +256,64 @@
         {
           "type": "SYMBOL",
           "name": "account"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_ws"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "commodity_list"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
+    "commodity_list": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "commodity_name"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ","
+              },
+              {
+                "type": "SYMBOL",
+                "name": "commodity_name"
+              }
+            ]
+          }
         }
       ]
     },
@@ -125,6 +339,18 @@
         {
           "type": "SYMBOL",
           "name": "account"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -150,6 +376,18 @@
         {
           "type": "SYMBOL",
           "name": "commodity_name"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -167,6 +405,18 @@
         {
           "type": "SYMBOL",
           "name": "string"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -184,6 +434,18 @@
         {
           "type": "SYMBOL",
           "name": "path"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -254,6 +516,18 @@
         {
           "type": "SYMBOL",
           "name": "commodity_name"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -375,6 +649,18 @@
               "type": "BLANK"
             }
           ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -400,6 +686,18 @@
         {
           "type": "SYMBOL",
           "name": "value"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "SYMBOL",
@@ -440,6 +738,18 @@
           ]
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_trailing_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "SYMBOL",
           "name": "_newline"
         },
@@ -447,7 +757,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "property"
+            "name": "_property_or_comment"
           }
         }
       ]
@@ -612,15 +922,14 @@
       "value": "\\r?\\n"
     }
   },
-  "extras": [
-    {
-      "type": "SYMBOL",
-      "name": "comment"
-    }
-  ],
+  "extras": [],
   "conflicts": [
     [
       "posting"
+    ],
+    [
+      "_property_or_comment",
+      "_posting_or_comment"
     ]
   ],
   "precedences": [],

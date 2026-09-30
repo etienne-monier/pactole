@@ -180,6 +180,71 @@ fn check_reports_error_on_missing_file() {
 }
 
 #[test]
+fn check_reports_balance_assertion_mismatch() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-check-balance-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2024-01-01 open Actifs:Compte\n\
+         2024-01-01 open Depenses:Divers\n\
+         2024-01-01 commodity EUR\n\
+         payee \"Test\"\n\
+         2024-01-05 * \"Test\"\n\
+         \u{20}\u{20}Actifs:Compte -100.00 EUR\n\
+         \u{20}\u{20}Depenses:Divers 100.00 EUR\n\
+         2024-01-10 balance Actifs:Compte -50.00 EUR\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"));
+    assert!(stderr.contains("balance assertion failed"));
+}
+
+#[test]
+fn check_reports_commodity_not_allowed_on_restricted_account() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-check-restricted-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2024-01-01 open Actifs:Compte USD\n\
+         2024-01-01 open Depenses:Divers\n\
+         2024-01-01 commodity EUR\n\
+         payee \"Test\"\n\
+         2024-01-05 * \"Test\"\n\
+         \u{20}\u{20}Actifs:Compte -100.00 EUR\n\
+         \u{20}\u{20}Depenses:Divers 100.00 EUR\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"));
+    assert!(stderr.contains("not allowed"));
+}
+
+#[test]
 fn fmt_prints_canonical_form_to_stdout() {
     let output = pactole_cmd()
         .args(["fmt", SAMPLE_FILE])

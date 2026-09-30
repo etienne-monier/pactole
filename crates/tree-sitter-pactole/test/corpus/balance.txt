@@ -1,0 +1,79 @@
+====================================
+Balance assertion
+====================================
+
+2026-09-03 balance Actifs:Compte-Joint 1234.56 EUR
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (commodity_name))))
+
+====================================
+Balance assertion with tolerance
+====================================
+
+2026-09-03 balance Actifs:Compte-Joint 1234.56 ~ 0.01 EUR
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (tolerance)
+      (commodity_name))))
+
+====================================
+Balance assertion with negative number and properties
+====================================
+
+2026-09-03 balance Passifs:CarteCredit -458.20 EUR
+  source: "relevé bancaire"
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (commodity_name))
+    (property
+      (key)
+      (value
+        (string)))))
+
+====================================
+Thousands separators in amounts
+====================================
+
+2026-09-03 balance Actifs:Compte-Joint 1,234,567.89 EUR
+
+---
+
+(source_file
+  (directive
+    (balance
+      (date)
+      (account)
+      (number)
+      (commodity_name))))
+
+====================================
+Invalid: posting under a balance directive
+:error
+====================================
+
+2026-09-03 balance Actifs:Compte-Joint 1234.56 EUR
+  Actifs:Compte-Joint 10.00 EUR
+
+---

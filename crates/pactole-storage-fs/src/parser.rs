@@ -4,11 +4,12 @@ use pactole_core::{
     AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Journal, Metadata,
     MetadataKey, Open, Payee, Posting, Transaction, TransactionStatus,
 };
+use pactole_syntax::parse_document;
 use rust_decimal::Decimal;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use tree_sitter::{Node, Parser};
+use tree_sitter::Node;
 
 /// Parse the source string and return the Journal object.
 ///
@@ -28,32 +29,44 @@ fn parse_entries(
     source: &str,
     base_dir: Option<&Path>,
 ) -> Result<Vec<Entry>, PactoleFsStorageError> {
-    let mut parser = Parser::new();
+    let doc = parse_document(source)
+        .into_result()
+        .map_err(|diagnostics| {
+            PactoleFsStorageError::ParseError(format!(
+                "source has syntax errors: {}",
+                crate::describe_syntax_diagnostics(&diagnostics)
+            ))
+        })?;
 
-    parser
-        .set_language(&tree_sitter_pactole::LANGUAGE.into())
-        .map_err(|e| PactoleFsStorageError::ParseError(e.to_string()))?;
-
-    let tree = parser
-        .parse(source, None)
-        .ok_or_else(|| PactoleFsStorageError::ParseError("failed to parse".to_string()))?;
-
-    let root = tree.root_node();
     let builder = AstBuilder::new(source);
 
-    builder.build_document(root, base_dir)
+    builder.build_document(doc.root_node(), base_dir)
+}
+
+/// Outcome of lowering a single top-level `directive` node without resolving
+/// `include` directives (which are surfaced as
+/// [`DirectiveOutcome::Include`] with their raw, unresolved path).
+///
+/// This is used by `analysis.rs` for positioned, directive-by-directive
+/// analysis; `parser.rs` itself recursively resolves includes via
+/// [`AstBuilder::build_directive`] instead.
+pub(crate) enum DirectiveOutcome {
+    /// A directive that was successfully lowered into a domain entry.
+    Entry(Entry),
+    /// An `include` directive, with its raw (unresolved) path.
+    Include(String),
 }
 
 /// The AST builder
 ///
 /// Holds a ref to the source.
-struct AstBuilder<'src> {
+pub(crate) struct AstBuilder<'src> {
     source: &'src str,
 }
 
 impl<'src> AstBuilder<'src> {
     /// Create a new AstBuilder from source reference.
-    fn new(source: &str) -> AstBuilder<'_> {
+    pub(crate) fn new(source: &str) -> AstBuilder<'_> {
         AstBuilder { source }
     }
 
@@ -190,22 +203,60 @@ impl<'src> AstBuilder<'src> {
             .named_child(0)
             .ok_or_else(|| self.error("directive has no header"))?;
 
-        match header.kind() {
-            "open" => entries.push(Entry::Open(self.build_open(node, header)?)),
-            "close" => entries.push(Entry::Close(self.build_close(node, header)?)),
-            "commodity" => entries.push(Entry::Commodity(self.build_commodity(node, header)?)),
-            "payee_declaration" => {
-                entries.push(Entry::Payee(self.build_payee_declaration(node, header)?))
+        // `include` is the only directive kind whose lowering differs between
+        // the strict, recursive parser (here) and the positioned,
+        // non-recursive analysis in `analysis.rs`: it alone reads and parses
+        // another file, so it is handled before delegating to the outcome
+        // shared by both call sites.
+        if header.kind() == "include" {
+            entries.extend(self.build_include(header, base_dir)?);
+            return Ok(());
+        }
+
+        match self.build_directive_outcome(node)? {
+            DirectiveOutcome::Entry(entry) => entries.push(entry),
+            DirectiveOutcome::Include(_) => {
+                unreachable!("include directives are handled above")
             }
-            "transaction" => {
-                entries.push(Entry::Transaction(self.build_transaction(node, header)?))
-            }
-            "balance" => entries.push(Entry::Balance(self.build_balance(node, header)?)),
-            "include" => entries.extend(self.build_include(header, base_dir)?),
-            other => return Err(self.error(format!("unexpected directive header `{other}`"))),
         }
 
         Ok(())
+    }
+
+    /// Lower a single top-level `directive` node into a [`DirectiveOutcome`],
+    /// without resolving `include` directives: their raw, unresolved path is
+    /// returned instead of the entries of the included file.
+    ///
+    /// Shared by [`AstBuilder::build_directive`] (which additionally resolves
+    /// includes) and `analysis.rs`'s positioned, directive-by-directive
+    /// analysis (which reports includes without reading them).
+    pub(crate) fn build_directive_outcome(
+        &self,
+        node: Node<'_>,
+    ) -> Result<DirectiveOutcome, PactoleFsStorageError> {
+        let header = node
+            .named_child(0)
+            .ok_or_else(|| self.error("directive has no header"))?;
+
+        Ok(match header.kind() {
+            "open" => DirectiveOutcome::Entry(Entry::Open(self.build_open(node, header)?)),
+            "close" => DirectiveOutcome::Entry(Entry::Close(self.build_close(node, header)?)),
+            "commodity" => {
+                DirectiveOutcome::Entry(Entry::Commodity(self.build_commodity(node, header)?))
+            }
+            "payee_declaration" => {
+                DirectiveOutcome::Entry(Entry::Payee(self.build_payee_declaration(node, header)?))
+            }
+            "transaction" => {
+                DirectiveOutcome::Entry(Entry::Transaction(self.build_transaction(node, header)?))
+            }
+            "balance" => DirectiveOutcome::Entry(Entry::Balance(self.build_balance(node, header)?)),
+            "include" => {
+                let path_node = self.require_child(header, "path")?;
+                DirectiveOutcome::Include(self.parse_quoted_text(path_node)?)
+            }
+            other => return Err(self.error(format!("unexpected directive header `{other}`"))),
+        })
     }
 
     fn build_open(
@@ -215,6 +266,11 @@ impl<'src> AstBuilder<'src> {
     ) -> Result<Open, PactoleFsStorageError> {
         let date = self.parse_date(self.require_child(open, "date")?)?;
         let account = self.parse_account(self.require_child(open, "account")?)?;
+        let commodities = self
+            .find_child(open, "commodity_list")
+            .map(|n| self.build_commodity_list(n))
+            .transpose()?
+            .unwrap_or_default();
 
         let mut meta = self.build_metadata(directive)?;
         let description = meta.remove("description");
@@ -222,9 +278,22 @@ impl<'src> AstBuilder<'src> {
         Ok(Open {
             date,
             account,
+            commodities,
             description,
             meta,
         })
+    }
+
+    /// Collect the `commodity_name` children of a `commodity_list` node
+    /// into an ordered list of commodities.
+    fn build_commodity_list(
+        &self,
+        node: Node<'_>,
+    ) -> Result<Vec<CommodityName>, PactoleFsStorageError> {
+        let mut cursor = node.walk();
+        node.named_children(&mut cursor)
+            .map(|c| self.parse_commodity_name(c))
+            .collect()
     }
 
     fn build_close(
@@ -430,5 +499,114 @@ impl<'src> AstBuilder<'src> {
             amount,
             meta,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+    use pactole_core::{CommodityName, Entry};
+
+    #[test]
+    fn parses_open_with_a_single_restricted_commodity() {
+        let source = "2026-09-03 open Assets:Checking EUR\n";
+        let journal = parse(source, None).unwrap();
+
+        match &journal.entries[0] {
+            Entry::Open(open) => {
+                assert_eq!(open.commodities, vec![CommodityName::new("EUR").unwrap()]);
+            }
+            other => panic!("expected an Open entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_open_with_several_restricted_commodities() {
+        let source = "2026-09-03 open Assets:Broker EUR,USD\n";
+        let journal = parse(source, None).unwrap();
+
+        match &journal.entries[0] {
+            Entry::Open(open) => {
+                assert_eq!(
+                    open.commodities,
+                    vec![
+                        CommodityName::new("EUR").unwrap(),
+                        CommodityName::new("USD").unwrap(),
+                    ]
+                );
+            }
+            other => panic!("expected an Open entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_open_without_restricted_commodities() {
+        let source = "2026-09-03 open Assets:Checking\n";
+        let journal = parse(source, None).unwrap();
+
+        match &journal.entries[0] {
+            Entry::Open(open) => assert!(open.commodities.is_empty()),
+            other => panic!("expected an Open entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reports_the_position_of_the_first_syntax_error() {
+        let source = "2026-09-03 open\n";
+
+        let error = parse(source, None).unwrap_err();
+
+        let message = error.to_string();
+        assert!(
+            message.contains("1:"),
+            "expected the error to mention the line of the first diagnostic, got: {message}"
+        );
+    }
+
+    #[test]
+    fn rejects_a_posting_under_a_non_transaction_directive() {
+        let source = "2026-09-03 open Assets:Checking\n  Assets:Checking 10.00 EUR\n";
+
+        assert!(parse(source, None).is_err());
+    }
+
+    #[test]
+    fn rejects_a_posting_under_a_commodity_directive() {
+        let source = "2026-01-01 commodity EUR\n  Assets:Checking 10.00 EUR\n";
+
+        assert!(parse(source, None).is_err());
+    }
+
+    #[test]
+    fn ignores_comments_at_every_supported_position() {
+        let source = "; a leading comment\n\
+                       2026-01-01 commodity EUR ; trailing on header\n\
+                       2026-09-03 open Assets:Checking\n  \
+                       description: \"desc\" ; trailing on property\n  \
+                       ; standalone between properties\n  \
+                       opened_on: 2026-09-03\n\
+                       2026-09-03 * \"Carrefour\" \"Courses\" ; trailing on transaction\n  \
+                       Expenses:Groceries 45.30 EUR ; trailing on posting\n  \
+                       ; standalone between postings\n  \
+                       Assets:Checking -45.30 EUR\n";
+
+        let journal = parse(source, None).unwrap();
+
+        assert_eq!(journal.entries.len(), 3);
+
+        match &journal.entries[1] {
+            Entry::Open(open) => {
+                assert_eq!(open.description.as_deref(), Some("desc"));
+                assert_eq!(open.meta.get("opened_on"), Some(&"2026-09-03".to_string()));
+            }
+            other => panic!("expected an Open entry, got {other:?}"),
+        }
+
+        match &journal.entries[2] {
+            Entry::Transaction(transaction) => {
+                assert_eq!(transaction.postings.len(), 2);
+            }
+            other => panic!("expected a Transaction entry, got {other:?}"),
+        }
     }
 }

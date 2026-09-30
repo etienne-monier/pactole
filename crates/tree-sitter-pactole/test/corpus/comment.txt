@@ -1,0 +1,225 @@
+====================================
+Standalone top-level comment before a directive
+====================================
+
+; a note about the following directive
+2026-01-01 commodity EUR
+
+---
+
+(source_file
+  (comment)
+  (directive
+    (commodity
+      (date)
+      (commodity_name))))
+
+====================================
+Trailing comment on a directive header
+====================================
+
+2026-01-01 commodity EUR ; a note
+
+---
+
+(source_file
+  (directive
+    (commodity
+      (date)
+      (commodity_name)
+      comment: (comment))))
+
+====================================
+Trailing comment on an open directive with a restricted commodity list
+====================================
+
+2026-09-03 open Actifs:Compte-Titres EUR,USD ; restricted commodities
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account)
+      (commodity_list
+        (commodity_name)
+        (commodity_name))
+      comment: (comment))))
+
+====================================
+Trailing comment on a property line
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+  description: "Le compte joint" ; some comment
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account))
+    (property
+      (key)
+      (value
+        (string))
+      comment: (comment))))
+
+====================================
+Standalone comment line between two properties
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+  description: "Le compte joint"
+  ; a note about the next property
+  opened_on: 2026-09-03
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account))
+    (property
+      (key)
+      (value
+        (string)))
+    (comment)
+    (property
+      (key)
+      (value
+        (date)))))
+
+====================================
+Trailing comment on a posting
+====================================
+
+2026-09-03 * "Carrefour" "Courses"
+  Depenses:Alimentation 45.30 EUR ; some comment
+  Actifs:Compte-Joint -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      comment: (comment))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Standalone comment line between two postings
+====================================
+
+2026-09-03 * "Carrefour" "Courses"
+  Depenses:Alimentation 45.30 EUR
+  ; a note about the next posting
+  Actifs:Compte-Joint -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      (comment))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Standalone comment line inside a posting's own metadata block
+====================================
+
+2026-09-03 * "Carrefour" "Courses"
+  Depenses:Alimentation 45.30 EUR
+    ; a note about the next metadata
+    montant_ttc: 45.30
+  Actifs:Compte-Joint -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      (comment)
+      (property
+        (key)
+        (value
+          (number))))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Trailing comment on a transaction header
+====================================
+
+2026-09-03 * "Carrefour" "Courses" ; note
+  Depenses:Alimentation 45.30 EUR
+  Actifs:Compte-Joint -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string))
+      comment: (comment))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))

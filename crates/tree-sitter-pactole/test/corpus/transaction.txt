@@ -1,0 +1,120 @@
+====================================
+Full transaction with effective date, payee, narration, tags, links, reference and metadata
+====================================
+
+2026-09-03=2026-09-05 * "Carrefour" "Courses de la semaine" #alimentation ^remboursement (CB-00123)
+  note: "ticket scanné"
+  Depenses:Alimentation 45.30 EUR
+    montant_ttc: 45.30
+  Actifs:Compte-Joint -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      effective_date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string))
+      (tag)
+      (link)
+      (reference))
+    (property
+      (key)
+      (value
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      (property
+        (key)
+        (value
+          (number))))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Minimal transaction with payee only and elided last posting amount
+====================================
+
+2026-09-03 ! "Bailleur"
+  Depenses:Logement 750.00 EUR
+  Actifs:Compte-Joint
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account))))
+
+====================================
+Transaction with uncleared status, payee and narration
+====================================
+
+2026-09-03 ? "Loyer" "Acompte mensuel"
+  Depenses:Divers 10.00 EUR
+  Actifs:Compte-Joint -10.00 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Interleaved tags and links
+====================================
+
+2026-09-03 * "Carrefour" "Courses" #alimentation ^remboursement #urgent ^suivi
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string))
+      (tag)
+      (link)
+      (tag)
+      (link))))

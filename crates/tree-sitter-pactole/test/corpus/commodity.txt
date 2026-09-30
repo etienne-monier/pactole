@@ -1,0 +1,37 @@
+====================================
+Commodity statement
+====================================
+
+2026-01-01 commodity EUR
+
+---
+
+(source_file
+  (directive
+    (commodity
+      (date)
+      (commodity_name))))
+
+====================================
+Commodity name with apostrophe (Beancount-like currency code)
+====================================
+
+2026-01-01 commodity BRK'A
+
+---
+
+(source_file
+  (directive
+    (commodity
+      (date)
+      (commodity_name))))
+
+====================================
+Invalid: posting under a commodity directive
+:error
+====================================
+
+2026-01-01 commodity EUR
+  Actifs:Compte-Joint 10.00 EUR
+
+---

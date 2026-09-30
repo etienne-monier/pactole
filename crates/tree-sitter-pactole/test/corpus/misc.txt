@@ -1,0 +1,63 @@
+====================================
+Blank lines and comments between directives
+====================================
+
+2026-09-03 open Actifs:Compte-Joint
+
+2026-01-01 commodity EUR
+
+; a trailing comment
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account)))
+  (directive
+    (commodity
+      (date)
+      (commodity_name)))
+  (comment))
+
+====================================
+Variable whitespace: tabs and multiple spaces for alignment
+====================================
+
+2026-09-03	open	Actifs:Compte-Joint
+	description:   "Le compte joint"
+
+2026-09-03  *  "Carrefour"   "Courses de la semaine"
+  Depenses:Alimentation    45.30 EUR
+  Actifs:Compte-Joint     -45.30 EUR
+
+---
+
+(source_file
+  (directive
+    (open
+      (date)
+      (account))
+    (property
+      (key)
+      (value
+        (string))))
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
