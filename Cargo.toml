@@ -8,6 +8,7 @@ members = [
   "crates/pactole-syntax",
   "crates/tree-sitter-pactole",
 ]
-default-members = ["crates/pactole-cli"]
+default-members = ["crates/pactole-cli", "crates/pactole-lsp/"]
+exclude = ["editors/zed"]
 
 [workspace.dependencies]

@@ -47,3 +47,6 @@ zig-out/
 *.tgz
 *.zip
 *.jar
+
+
+editors/zed/grammars

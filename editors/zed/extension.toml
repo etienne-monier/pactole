@@ -1,0 +1,16 @@
+id = "pactole"
+name = "Pactole"
+version = "0.1.0"
+schema_version = 1
+authors = ["Etienne Monier"]
+description = "Pactole language support for Zed"
+repository = "https://github.com/etienne-monier/pactole"
+
+[grammars.pactole]
+repository = "file:///home/etienne/Codes/pactole/"
+path = "crates/tree-sitter-pactole"
+rev = "develop"
+
+[language_servers.pactole-lsp]
+name = "Pactole Language Server"
+languages = ["Pactole"]

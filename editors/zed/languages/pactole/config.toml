@@ -1,0 +1,9 @@
+name = "Pactole"
+grammar = "pactole"
+
+path_suffixes = ["pactole"]
+
+line_comments = [";"]
+
+tab_size = 2
+hard_tabs = false
