@@ -18,4 +18,5 @@ pub mod config;
 pub mod conversion;
 pub mod diagnostics;
 pub mod documents;
+pub mod hover;
 pub mod server;

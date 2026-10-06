@@ -99,6 +99,27 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
                     }
                     continue;
                 }
+                if req.method == lsp_types::request::HoverRequest::METHOD {
+                    let params: lsp_types::HoverParams = serde_json::from_value(req.params)?;
+                    match crate::hover::handle_hover(&config, &documents, params) {
+                        Ok(result) => {
+                            let resp = lsp_server::Response::new_ok(
+                                req.id,
+                                serde_json::to_value(result)?,
+                            );
+                            connection.sender.send(Message::Response(resp))?;
+                        }
+                        Err(err) => {
+                            let response = lsp_server::Response::new_err(
+                                req.id,
+                                lsp_server::ErrorCode::InternalError as i32,
+                                err.to_string(),
+                            );
+                            connection.sender.send(Message::Response(response))?;
+                        }
+                    }
+                    continue;
+                }
                 // Other requests are out of scope; reply with a clear "method not found"
                 // rather than silently dropping it.
                 let response = lsp_server::Response::new_err(
