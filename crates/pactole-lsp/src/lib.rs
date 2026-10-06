@@ -13,6 +13,7 @@
 //!
 //! Completion, hover, and formatting are intentionally not implemented yet.
 
+pub mod completion;
 pub mod config;
 pub mod conversion;
 pub mod diagnostics;

@@ -13,6 +13,7 @@ env_logger = "0.11.8"
 log = "0.4.28"
 lsp-server = "0.7.9"
 lsp-types = "0.93.2"
+pactole-core = { version = "0.1.0", path = "../pactole-core" }
 pactole-storage-fs = { version = "0.1.0", path = "../pactole-storage-fs" }
 pactole-syntax = { version = "0.1.0", path = "../pactole-syntax" }
 serde = { version = "1.0.228", features = ["derive"] }

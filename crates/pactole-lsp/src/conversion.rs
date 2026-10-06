@@ -70,6 +70,24 @@ pub fn span_to_range(source: &str, span: &Span) -> lsp_types::Range {
     }
 }
 
+/// Converts an LSP [`lsp_types::Position`] (UTF-16 line/character) into a byte
+/// offset within `source`.
+pub fn position_to_offset(source: &str, pos: &lsp_types::Position) -> usize {
+    let line = pos.line as usize;
+    let line_start = line_start_byte_offset(source, line);
+    let line_text = &source[line_start..];
+    let mut utf16_count: u32 = 0;
+    let mut byte_pos: usize = 0;
+    for ch in line_text.chars() {
+        if utf16_count >= pos.character {
+            break;
+        }
+        utf16_count += ch.len_utf16() as u32;
+        byte_pos += ch.len_utf8();
+    }
+    line_start + byte_pos
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +162,19 @@ mod tests {
         assert_eq!(line_start_byte_offset(source, 0), 0);
         assert_eq!(line_start_byte_offset(source, 1), 2);
         assert_eq!(line_start_byte_offset(source, 2), 5);
+    }
+
+    #[test]
+    fn position_to_offset_maps_ascii_correctly() {
+        let source = "2026-09-03 open Assets:Checking\n";
+        let pos = lsp_types::Position::new(0, 11); // after "2026-09-03 "
+        assert_eq!(position_to_offset(source, &pos), 11);
+    }
+
+    #[test]
+    fn position_to_offset_handles_utf16_for_multibyte() {
+        let source = "payee \"café\"\n";
+        let pos = lsp_types::Position::new(0, 11); // after café (UTF-16 char offset)
+        assert_eq!(position_to_offset(source, &pos), 7 + 5); // "payee \"" (7) + "café" (5 bytes) = 12
     }
 }

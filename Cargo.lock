@@ -642,6 +642,7 @@ dependencies = [
  "log",
  "lsp-server",
  "lsp-types",
+ "pactole-core",
  "pactole-storage-fs",
  "pactole-syntax",
  "serde",

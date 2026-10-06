@@ -10,9 +10,10 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification,
     PublishDiagnostics,
 };
+use lsp_types::request::Request;
 use lsp_types::{
-    Diagnostic, InitializeParams, PublishDiagnosticsParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    CompletionOptions, CompletionParams, Diagnostic, InitializeParams, PublishDiagnosticsParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
 use pactole_storage_fs::analyze_file_with_loader;
@@ -27,6 +28,20 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
 
     let server_capabilities = serde_json::to_value(ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+        completion_provider: Some(CompletionOptions {
+            resolve_provider: Some(false),
+            trigger_characters: Some(vec![
+                " ".to_string(),
+                "\"".to_string(),
+                ":".to_string(),
+                "#".to_string(),
+                "^".to_string(),
+                "\t".to_string(),
+            ]),
+            all_commit_characters: None,
+            work_done_progress_options: Default::default(),
+            ..Default::default()
+        }),
         ..Default::default()
     })?;
     let initialize_params = connection.initialize(server_capabilities)?;
@@ -63,9 +78,29 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
                 if connection.handle_shutdown(&req)? {
                     break;
                 }
-                // No requests are handled yet (completion/hover/formatting
-                // are out of scope for this first version); reply with a
-                // clear "method not found" rather than silently dropping it.
+                if req.method == lsp_types::request::Completion::METHOD {
+                    let params: CompletionParams = serde_json::from_value(req.params)?;
+                    match crate::completion::handle_completion(&config, &documents, params) {
+                        Ok(result) => {
+                            let resp = lsp_server::Response::new_ok(
+                                req.id,
+                                serde_json::to_value(result)?,
+                            );
+                            connection.sender.send(Message::Response(resp))?;
+                        }
+                        Err(err) => {
+                            let response = lsp_server::Response::new_err(
+                                req.id,
+                                lsp_server::ErrorCode::InternalError as i32,
+                                err.to_string(),
+                            );
+                            connection.sender.send(Message::Response(response))?;
+                        }
+                    }
+                    continue;
+                }
+                // Other requests are out of scope; reply with a clear "method not found"
+                // rather than silently dropping it.
                 let response = lsp_server::Response::new_err(
                     req.id,
                     lsp_server::ErrorCode::MethodNotFound as i32,
