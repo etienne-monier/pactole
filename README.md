@@ -1,8 +1,8 @@
 ![Pactole logo](logo.png)
 
 Pactole is a plain-text ledger tool written in Rust: you record your
-transactions as human-readable, git-friendly `.pactole` files (à la
-[Beancount](https://beancount.github.io/docs/) or Ledger-cli), and
+transactions as human-readable, git-friendly `.pactole` files (in the
+style of [Beancount](https://beancount.github.io/docs/) or Ledger-cli), and
 Pactole parses, checks and formats them for you.
 
 Its name comes from the **Pactole**, the ancient name of a small river

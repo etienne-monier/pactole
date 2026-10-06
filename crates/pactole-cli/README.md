@@ -1,73 +1,71 @@
 # pactole-cli
 
-Interface en ligne de commande de Pactole : binaire `pactole`.
+Command-line interface of Pactole: the `pactole` binary.
 
-## Rôle
+## Role
 
-Construite avec `clap` (derive), cette crate expose les fonctionnalités
-de `pactole-core`/`pactole-storage-fs` via le flux **strict** (voir
-[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3.1) : tout ou rien —
-un fichier est soit entièrement parsé/validé avec succès, soit rejeté
-avec la première erreur rencontrée (y compris dans un fichier inclus).
+Built with `clap` (derive), this crate exposes the features of
+`pactole-core`/`pactole-storage-fs` through the **strict** flow (see
+[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3.1): all or nothing —
+a file is either fully parsed/validated successfully or rejected with
+the first error encountered (including in an included file).
 
-Notez que le paquet Cargo s'appelle `pactole-cli`, mais le binaire produit
-s'appelle `pactole` (voir le `[[bin]]` de `Cargo.toml`), pour que
-`cargo install --path crates/pactole-cli` installe directement une
-commande `pactole`.
+Note that the Cargo package is named `pactole-cli`, but the produced
+binary is named `pactole` (see the `[[bin]]` of `Cargo.toml`), so that
+`cargo install --path crates/pactole-cli` directly installs a `pactole`
+command.
 
-## Commandes principales
+## Main commands
 
-- **`pactole parse <file>`** : parse le fichier et affiche (`Debug`) les
-  entrées du journal résultant. Surtout utile pour déboguer la
-  grammaire/le parseur.
-- **`pactole fmt <file> [--write]`** : reformate un fichier `.pactole`
-  dans sa forme canonique, imprimée sur stdout par défaut, ou écrite sur
-  place avec `--write`. Accepte `-` comme nom de fichier pour lire depuis
-  stdin (toujours imprimé sur stdout dans ce cas).
-- **`pactole check <file>`** : parsing syntaxique **puis** validation
-  métier complète (`pactole_core::validate_journal`) — comptes ouverts
-  avant usage/fermeture, commodités déclarées avant usage, payee de
-  chaque transaction déclaré, équilibrage de chaque transaction.
-- **`pactole register <file> [filtres]`** : liste les transactions, une
-  ligne par posting correspondante, avec un solde courant par commodité.
-  Sans filtre, toutes les postings sont listées ; les filtres se
-  combinent (`--account` matche aussi les sous-comptes, `--from`/`--to`,
-  `--payee`, `--narration` insensibles à la casse, `--tag`, `--status`).
+- **`pactole parse <file>`**: parses the file and prints (`Debug`) the
+  resulting journal entries. Mainly useful for debugging the
+  grammar/parser.
+- **`pactole fmt <file> [--write]`**: reformats a `.pactole` file into
+  its canonical form, printed to stdout by default, or written in place
+  with `--write`. Accepts `-` as the file name to read from stdin (always
+  printed to stdout in that case).
+- **`pactole check <file>`**: syntax parsing **then** full business
+  validation (`pactole_core::validate_journal`) — accounts opened before
+  use/close, commodities declared before use, each transaction's payee
+  declared, each transaction balanced.
+- **`pactole register <file> [filters]`**: lists transactions, one line
+  per matching posting, with a running balance per commodity. Without
+  filters, all postings are listed; filters are combined (`--account`
+  also matches sub-accounts, `--from`/`--to`, `--payee`/`--narration` are
+  case-insensitive, `--tag`, `--status`).
 
-Voir [`../../README.md`](../../README.md) pour des exemples d'usage
-complets et l'installation (`cargo install --path crates/pactole-cli`).
+See [`../../README.md`](../../README.md) for complete usage examples and
+installation (`cargo install --path crates/pactole-cli`).
 
-## Dépendances / frontières
+## Dependencies / boundaries
 
 - `pactole-core` (validation, register), `pactole-storage-fs`
-  (`PactoleFileStorage`, `format`) — uniquement leur API stricte,
-  historique.
-- `clap` (parsing d'arguments), `chrono` (dates de filtre `--from`/`--to`).
-- Ne consomme jamais directement `pactole-syntax` ni le flux
-  tolérant/positionné (`analysis.rs`/`loader.rs` de
-  `pactole-storage-fs`) : ce flux est réservé à `pactole-lsp`.
+  (`PactoleFileStorage`, `format`) — only their historical, strict API.
+- `clap` (argument parsing), `chrono` (`--from`/`--to` filter dates).
+- Never consumes `pactole-syntax` nor the tolerant/positioned flow
+  (`analysis.rs`/`loader.rs` of `pactole-storage-fs`) directly: that flow
+  is reserved for `pactole-lsp`.
 
 ## Tests / validation
 
 ```sh
-# Tests d'intégration bout-en-bout de la CLI
+# End-to-end CLI integration tests
 cargo test -p pactole-cli --test cli
 
-# Tous les tests de la crate
+# All tests of the crate
 cargo test -p pactole-cli
 cargo clippy -p pactole-cli --all-targets
 ```
 
-Les tests d'intégration se trouvent dans
-`crates/pactole-cli/tests/cli.rs` : ajouter tout nouveau comportement
-observable de la CLI (nouvelle commande, nouveau filtre, nouveau code de
-sortie) là plutôt que dans `main.rs`.
+Integration tests live in `crates/pactole-cli/tests/cli.rs`: add any new
+observable CLI behavior (new command, new filter, new exit code) there
+rather than in `main.rs`.
 
-## Voir aussi
+## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3.1 et §6 — flux
-  strict et détail des commandes.
-- [`../../GRAMMAR.md`](../../GRAMMAR.md) — spécification du langage
-  `.pactole` manipulé par ces commandes.
-- [`../../README.md`](../../README.md) — guide d'installation et
-  d'utilisation destiné aux utilisateurs finaux.
+- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3.1 and §6 — strict
+  flow and command details.
+- [`../../GRAMMAR.md`](../../GRAMMAR.md) — the `.pactole` language
+  specification handled by these commands.
+- [`../../README.md`](../../README.md) — installation and usage guide
+  for end users.

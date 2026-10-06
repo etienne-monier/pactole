@@ -1,81 +1,78 @@
 # pactole-storage-fs
 
-Stockage `.pactole` basé fichiers : parseur strict, formateur canonique,
-et analyse tolérante multi-fichiers pour l'outillage.
+File-based `.pactole` storage: strict parser, canonical formatter, and
+tolerant multi-file analysis for tooling.
 
-## Rôle
+## Role
 
-`pactole-storage-fs` est le seul point de jonction entre le monde
-syntaxique (tree-sitter / `pactole-syntax`) et le monde domaine
-(`pactole-core`). Elle expose deux flux distincts (voir
-[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3 pour le détail) :
+`pactole-storage-fs` is the only junction between the syntactic world
+(tree-sitter / `pactole-syntax`) and the domain world (`pactole-core`).
+It exposes two distinct flows (see
+[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3 for details):
 
-- un **flux strict**, historique et inchangé, tout-ou-rien : lecture
-  fichier → parsing → `pactole_core::Journal` unique et aplati (fichiers
-  inclus fusionnés), utilisé par `pactole-cli` ;
-- un **flux tolérant/positionné**, additif, qui ne fait jamais échouer
-  l'analyse entière et préserve la provenance par fichier, utilisé par
-  `pactole-lsp`.
+- a **strict flow**, historical and unchanged, all-or-nothing: file read
+  → parsing → a single flattened `pactole_core::Journal` (included files
+  merged in), used by `pactole-cli`;
+- a **tolerant/positioned flow**, additive, which never fails the whole
+  analysis and preserves per-file provenance, used by `pactole-lsp`.
 
-## API principale
+## Main API
 
-Réexportée depuis `src/lib.rs` :
+Re-exported from `src/lib.rs`:
 
-- **Flux strict** :
-  - `PactoleFileStorage` : implémente `pactole_core::ReadableStorage`
-    pour un fichier local. `TryFrom<PathBuf>` lit le fichier ;
-    `parse()` le convertit en `Journal` (résolvant récursivement les
-    `include`) ; `journal()` renvoie le `Journal` obtenu.
+- **Strict flow**:
+  - `PactoleFileStorage`: implements `pactole_core::ReadableStorage` for
+    a local file. `TryFrom<PathBuf>` reads the file; `parse()` converts
+    it into a `Journal` (recursively resolving `include`s); `journal()`
+    returns the resulting `Journal`.
   - `format(source: &str) -> Result<String, PactoleFsStorageError>`
-    (`printer.rs`) : reformate du texte `.pactole` dans sa mise en page
-    canonique.
-  - `PactoleFsStorageError` (`errors.rs`) : erreurs structurées
+    (`printer.rs`): reformats `.pactole` text into its canonical layout.
+  - `PactoleFsStorageError` (`errors.rs`): structured errors
     (`thiserror`).
-- **Flux tolérant/positionné** (`analysis.rs`) :
-  - `analyze_file(source: &str) -> ParsedFile` : analyse un seul fichier
-    sans résoudre ses `include` ; chaque directive est abaissée
-    indépendamment, produisant soit un `ParsedEntry { span, entry }` soit
-    un `LoweringDiagnostic { span, message }` sans jamais abandonner tout
-    le fichier ; `ParsedInclude { span, path }` détecte les `include`
-    (chemin brut, non résolu, ni lu ni parsé ici) ;
-    `ParsedFile::syntax_diagnostics()` expose les `SyntaxDiagnostic`s
-    sous-jacents de `pactole-syntax`.
+- **Tolerant/positioned flow** (`analysis.rs`):
+  - `analyze_file(source: &str) -> ParsedFile`: analyzes a single file
+    without resolving its `include`s; each directive is lowered
+    independently, producing either a `ParsedEntry { span, entry }` or a
+    `LoweringDiagnostic { span, message }` without ever abandoning the
+    whole file; `ParsedInclude { span, path }` detects `include`s (raw,
+    unresolved path, neither read nor parsed here);
+    `ParsedFile::syntax_diagnostics()` exposes the underlying
+    `pactole-syntax` `SyntaxDiagnostic`s.
   - `analyze_file_with_loader(entry_path, loader: &dyn SourceLoader) -> Result<AnalyzedProject, ...>`
-    : suit récursivement les `include` via un `SourceLoader`, produisant
-    un `AnalyzedProject` (chaque fichier gardant son propre
-    `AnalyzedFile { path, file }`) et une liste d'`IncludeIssue` pour les
-    problèmes d'inclusion (chemin non résolvable, cycle, cible non
-    chargeable) — jamais un échec global, sauf si `entry_path` lui-même ne
-    peut être chargé.
-- **Chargement de source** (`loader.rs`) :
-  - `SourceLoader` : trait minimal `fn load(&self, path: &Path) -> Result<String, SourceLoadError>`.
-  - `FsSourceLoader` : lit de vrais fichiers du système de fichiers.
-  - `InMemorySourceLoader` : sert du contenu depuis une table en mémoire
-    (utile pour les tests et préfigure un futur chargeur adossé à des
-    buffers d'éditeur).
-  - `SourceLoadError` : erreur de chargement.
+    — follows `include`s recursively through a `SourceLoader`, producing
+    an `AnalyzedProject` (each file keeping its own
+    `AnalyzedFile { path, file }`) and a list of `IncludeIssue`s for
+    inclusion problems (unresolvable path, cycle, unloadable target) —
+    never a global failure, unless `entry_path` itself cannot be loaded.
+- **Source loading** (`loader.rs`):
+  - `SourceLoader`: minimal trait `fn load(&self, path: &Path) -> Result<String, SourceLoadError>`.
+  - `FsSourceLoader`: reads real files from the filesystem.
+  - `InMemorySourceLoader`: serves content from an in-memory table
+    (useful for tests and a preview of a future loader backed by editor
+    buffers).
+  - `SourceLoadError`: loading error.
 
-## Dépendances / frontières
+## Dependencies / boundaries
 
-- `pactole-core` (modèles de domaine), `pactole-syntax` (parsing
-  tolérant, spans, diagnostics), `tree-sitter` (nœuds CST bruts pour la
-  conversion AST → modèle et le formatage), `chrono`, `rust_decimal`,
-  `thiserror`. `toml` figure dans `Cargo.toml` comme dépendance déclarée
-  mais n'est actuellement utilisée par aucun module de cette crate ; elle
-  est réservée à un futur support de valeurs de métadonnées structurées.
-- `parser.rs` et `printer.rs` passent tous deux par
-  `pactole_syntax::parse_document`/`ParsedDocument::into_result` pour
-  l'initialisation du parseur et la détection `ERROR`/`MISSING`, afin de
-  ne pas dupliquer cette plomberie ; ils gardent ensuite chacun leur
-  propre logique de parcours de nœuds tree-sitter (conversion vers modèle
-  de domaine, respectivement formatage canonique).
-- L'API stricte historique (`PactoleFileStorage`, `parser.rs`,
-  `printer.rs`) reste inchangée par l'introduction de `pactole-syntax` et
-  de `analysis.rs`/`loader.rs` : ces derniers sont strictement additifs.
-- Aucun type `Span`/tree-sitter ne fuite dans `pactole-core` :
-  `ParsedEntry`/`ParsedInclude`/`LoweringDiagnostic` vivent ici et ne font
-  qu'envelopper `pactole_syntax::Span` autour de types `pactole-core`
-  existants.
+- `pactole-core` (domain models), `pactole-syntax` (tolerant parsing,
+  spans, diagnostics), `tree-sitter` (raw CST nodes for AST → model
+  conversion and formatting), `chrono`, `rust_decimal`, `thiserror`.
+  `toml` appears in `Cargo.toml` as a declared dependency but is
+  currently used by no module of this crate; it is reserved for future
+  structured metadata value support.
+- `parser.rs` and `printer.rs` both go through
+  `pactole_syntax::parse_document`/`ParsedDocument::into_result` for
+  parser initialization and `ERROR`/`MISSING` detection, so this
+  plumbing is not duplicated; they each keep their own tree-sitter node
+  traversal logic (domain model conversion and canonical formatting
+  respectively).
+- The historical strict API (`PactoleFileStorage`, `parser.rs`,
+  `printer.rs`) remains unchanged by the introduction of
+  `pactole-syntax` and `analysis.rs`/`loader.rs`: the latter are
+  strictly additive.
+- No `Span`/tree-sitter type leaks into `pactole-core`:
+  `ParsedEntry`/`ParsedInclude`/`LoweringDiagnostic` live here and only
+  wrap a `pactole_syntax::Span` around existing `pactole-core` types.
 
 ## Tests / validation
 
@@ -84,13 +81,13 @@ cargo test -p pactole-storage-fs
 cargo clippy -p pactole-storage-fs --all-targets
 ```
 
-Ajouter les tests unitaires de parsing/formatage dans cette crate (voir
-`parser.rs`, `printer.rs`, `analysis.rs`, `loader.rs`).
+Add parsing/formatting unit tests in this crate (see `parser.rs`,
+`printer.rs`, `analysis.rs`, `loader.rs`).
 
-## Voir aussi
+## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — flux strict vs
-  tolérant, résolution multi-fichiers, roadmap (notamment les diagnostics
-  métier positionnés, encore absents de cette crate).
-- [`../../GRAMMAR.md`](../../GRAMMAR.md) — spécification du langage
-  `.pactole` que `parser.rs`/`printer.rs`/`analysis.rs` interprètent.
+- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — strict vs tolerant
+  flow, multi-file resolution, roadmap (notably the positioned business
+  diagnostics, still missing from this crate).
+- [`../../GRAMMAR.md`](../../GRAMMAR.md) — the `.pactole` language
+  specification that `parser.rs`/`printer.rs`/`analysis.rs` interpret.

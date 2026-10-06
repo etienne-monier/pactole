@@ -1,47 +1,46 @@
 # tree-sitter-pactole
 
-Grammaire [tree-sitter](https://tree-sitter.github.io/tree-sitter/) pour
-le langage `.pactole`, avec son parseur C généré et ses bindings Rust.
+[tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for
+the `.pactole` language, with its generated C parser and Rust bindings.
 
-## Rôle
+## Role
 
-Cette crate définit la **syntaxe** du langage `.pactole` (voir
-[`../../GRAMMAR.md`](../../GRAMMAR.md) pour la spécification complète) et
-fournit un parseur exploitable depuis Rust. Elle ne connaît rien au
-domaine métier Pactole (comptes, transactions, validation...) : c'est une
-brique purement syntaxique, réutilisable par n'importe quel outil basé sur
-tree-sitter (éditeurs de texte, autres langages hôtes, etc.).
+This crate defines the **syntax** of the `.pactole` language (see
+[`../../GRAMMAR.md`](../../GRAMMAR.md) for the full specification) and
+provides a parser usable from Rust. It knows nothing about the Pactole
+business domain (accounts, transactions, validation, ...): it is a purely
+syntactic building block, reusable by any tree-sitter-based tool (text
+editors, other host languages, etc.).
 
-## Contenu
+## Contents
 
-- `grammar.js` : définition de la grammaire (source de vérité).
-- `src/parser.c`, `src/grammar.json`, `src/node-types.json` : parseur C et
-  métadonnées générés à partir de `grammar.js` par `tree-sitter generate`.
-- `bindings/rust/lib.rs` : binding Rust exposant la grammaire compilée
-  (fonction `language()` retournant un `tree_sitter_language::LanguageFn`,
-  utilisée par `pactole-syntax`).
-- `bindings/rust/build.rs` : compile `src/parser.c` en C via la crate
-  `cc` lors du build.
-- `queries/highlights.scm` : requêtes de coloration syntaxique pour les
-  éditeurs (voir [`../../HELIX.md`](../../HELIX.md) pour l'intégration
-  dans Helix).
-- `test/` : corpus de tests tree-sitter (`tree-sitter test`).
-- `tree-sitter.json` : métadonnées du langage pour l'écosystème
-  tree-sitter (`scope: source.pactole`, extension `.pactole`).
+- `grammar.js`: grammar definition (source of truth).
+- `src/parser.c`, `src/grammar.json`, `src/node-types.json`: C parser and
+  metadata generated from `grammar.js` by `tree-sitter generate`.
+- `bindings/rust/lib.rs`: Rust binding exposing the compiled grammar
+  (`language()` returning a `tree_sitter_language::LanguageFn`, used by
+  `pactole-syntax`).
+- `bindings/rust/build.rs`: compiles `src/parser.c` as C via the `cc`
+  crate at build time.
+- `queries/highlights.scm`: syntax highlighting queries for editors (see
+  [`../../HELIX.md`](../../HELIX.md) for integration into Helix).
+- `test/`: tree-sitter test corpus (`tree-sitter test`).
+- `tree-sitter.json`: language metadata for the tree-sitter ecosystem
+  (`scope: source.pactole`, extension `.pactole`).
 
-## Dépendances / frontières
+## Dependencies / boundaries
 
-- Dépendance de build : `cc` (compilation du parseur C).
-- Dépendance runtime : `tree-sitter-language`.
-- Dépendance de dev : `tree-sitter` (pour les tests du corpus).
-- Ne dépend d'aucune autre crate du workspace. C'est la crate la plus en
-  amont de l'architecture : `pactole-syntax` en dépend, mais l'inverse
-  n'est jamais vrai.
+- Build dependency: `cc` (compiling the C parser).
+- Runtime dependency: `tree-sitter-language`.
+- Dev dependency: `tree-sitter` (for the corpus tests).
+- Depends on no other workspace crate. This is the most upstream crate
+  of the architecture: `pactole-syntax` depends on it, but never the
+  other way around.
 
-## Modifier la grammaire
+## Modifying the grammar
 
-Si `grammar.js` est modifié, il faut régénérer le parseur puis propager
-les changements aux consommateurs :
+If `grammar.js` is modified, regenerate the parser and propagate the
+changes to consumers:
 
 ```sh
 cd crates/tree-sitter-pactole
@@ -49,29 +48,29 @@ npx tree-sitter generate
 npx tree-sitter test
 ```
 
-Puis mettre à jour, si nécessaire :
+Then update, as needed:
 
-- `queries/highlights.scm` (nouveaux tokens à colorer),
-- `crates/pactole-storage-fs/src/parser.rs` et `printer.rs` (nouveaux
-  nœuds AST à convertir/formater),
-- [`../../GRAMMAR.md`](../../GRAMMAR.md) (spécification).
+- `queries/highlights.scm` (new tokens to highlight),
+- `crates/pactole-storage-fs/src/parser.rs` and `printer.rs` (new AST
+  nodes to convert/format),
+- [`../../GRAMMAR.md`](../../GRAMMAR.md) (specification).
 
 ## Tests / validation
 
 ```sh
-# Corpus de tests tree-sitter (syntaxe pure)
+# tree-sitter test corpus (pure syntax)
 cd crates/tree-sitter-pactole
 npx tree-sitter test
 
-# Compilation et tests Rust du binding
+# Rust binding compilation and tests
 cargo test -p tree-sitter-pactole
 ```
 
-## Voir aussi
+## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — architecture globale
-  du dépôt et frontières entre crates.
-- [`../../GRAMMAR.md`](../../GRAMMAR.md) — spécification du langage
-  `.pactole`.
-- [`../../HELIX.md`](../../HELIX.md) — intégration de la coloration
-  syntaxique dans Helix.
+- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — overall repository
+  architecture and boundaries between crates.
+- [`../../GRAMMAR.md`](../../GRAMMAR.md) — the `.pactole` language
+  specification.
+- [`../../HELIX.md`](../../HELIX.md) — syntax highlighting integration
+  into Helix.

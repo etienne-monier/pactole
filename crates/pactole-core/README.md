@@ -1,49 +1,47 @@
 # pactole-core
 
-Domaine métier pur de Pactole : modèles, invariants de validation et
-calculs financiers.
+Pure business domain of Pactole: models, validation invariants, and
+financial calculations.
 
-## Rôle
+## Role
 
-`pactole-core` contient uniquement de la logique de domaine : **aucune
-E/S, aucune dépendance à tree-sitter**. Elle ne doit jamais dépendre de
-`pactole-storage-fs`, `pactole-syntax`, `tree-sitter`, ni d'aucune
-opération de système de fichiers. Toute conversion depuis un fichier
-`.pactole` (syntaxe concrète → modèles) est de la responsabilité de
-`pactole-storage-fs`.
+`pactole-core` contains only domain logic: **no I/O, no tree-sitter
+dependency**. It must never depend on `pactole-storage-fs`,
+`pactole-syntax`, `tree-sitter`, or any filesystem operation. Any
+conversion from a `.pactole` file (concrete syntax → models) is the
+responsibility of `pactole-storage-fs`.
 
-## API principale
+## Main API
 
-Réexportée depuis `src/lib.rs` :
+Re-exported from `src/lib.rs`:
 
-- **Modèles** (`models/`) : `Journal`, `Entry`, `Transaction`, `Posting`,
+- **Models** (`models/`): `Journal`, `Entry`, `Transaction`, `Posting`,
   `Amount`, `Balance`, `Open`, `Close`, `Commodity`, `Payee`,
-  `TransactionStatus`, `Metadata`, ainsi que des newtypes validées
+  `TransactionStatus`, `Metadata`, as well as validated newtypes
   (`AccountName`, `CommodityName`, `MetadataKey`).
 - **`validate_journal(journal: Journal) -> Result<Journal, ValidationError>`**
-  (`validation.rs`) : consomme le `Journal` en entrée et vérifie les
-  invariants métier — ordre chronologique des entrées, cycle de vie des
-  comptes (ouverts avant usage/fermeture, non utilisés après fermeture),
-  commodités déclarées avant usage, payees déclarés avant usage dans une
-  transaction, équilibrage de chaque transaction par commodité. En cas de
-  succès, renvoie le `Journal` (trié chronologiquement et avec les
-  transactions auto-équilibrées) ; en cas d'échec, renvoie une
-  `ValidationError`.
+  (`validation.rs`): consumes the input `Journal` and checks the business
+  invariants — chronological ordering of entries, account lifecycle
+  (opened before use/close, not used after close), commodities declared
+  before use, payees declared before use in a transaction, and balancing
+  of each transaction per commodity. On success, it returns the `Journal`
+  (sorted chronologically and with self-balanced transactions); on
+  failure, it returns a `ValidationError`.
 - **`register(journal: &Journal, filter: &RegisterFilter) -> Vec<RegisterEntry>`**
-  (`register.rs`) : calcule un rapport "register" (solde courant par
-  commodité), filtrable par compte (avec sous-comptes), plage de dates,
-  payee, narration, tag, statut.
-- **`ReadableStorage`** (`traits.rs`) : trait d'abstraction de stockage,
-  implémenté par `pactole-storage-fs::PactoleFileStorage` (et destiné à
-  l'être par une future crate de stockage base de données).
-- **`ModelError`, `ValidationError`** (`errors.rs`) : erreurs structurées
+  (`register.rs`): computes a "register" report (running balance per
+  commodity), filterable by account (including sub-accounts), date range,
+  payee, narration, tag, status.
+- **`ReadableStorage`** (`traits.rs`): storage abstraction trait,
+  implemented by `pactole-storage-fs::PactoleFileStorage` (and intended
+  to be implemented by a future database storage crate).
+- **`ModelError`, `ValidationError`** (`errors.rs`): structured errors
   via `thiserror`.
 
-## Dépendances / frontières
+## Dependencies / boundaries
 
-- `chrono` (dates), `rust_decimal` (arithmétique financière — jamais de
-  `f32`/`f64` pour des montants), `thiserror` (erreurs structurées).
-- Ne dépend d'aucune autre crate du workspace.
+- `chrono` (dates), `rust_decimal` (financial arithmetic — never `f32`/`f64`
+  for amounts), `thiserror` (structured errors).
+- Depends on no other workspace crate.
 
 ## Tests / validation
 
@@ -52,13 +50,13 @@ cargo test -p pactole-core
 cargo clippy -p pactole-core --all-targets
 ```
 
-Les tests unitaires de logique de domaine et de validation vivent dans
-cette crate (voir les modules `validation.rs`, `register.rs`, `models/`).
+Unit tests for domain and validation logic live in this crate (see the
+`validation.rs`, `register.rs`, and `models/` modules).
 
-## Voir aussi
+## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — rôle de
-  `pactole-core` dans l'architecture globale et frontières avec les
-  autres crates.
-- [`../../GRAMMAR.md`](../../GRAMMAR.md) — spécification du langage dont
-  ces modèles et invariants sont l'expression en Rust.
+- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — the role of
+  `pactole-core` in the overall architecture and its boundaries with the
+  other crates.
+- [`../../GRAMMAR.md`](../../GRAMMAR.md) — the language specification of
+  which these models and invariants are the Rust expression.

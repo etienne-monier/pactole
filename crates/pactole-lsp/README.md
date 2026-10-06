@@ -1,116 +1,110 @@
 # pactole-lsp
 
-Serveur [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
-minimal en stdio pour les fichiers `.pactole`.
+Minimal stdio [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
+server for `.pactole` files.
 
-## Rôle
+## Role
 
-Binaire `pactole-lsp`, construit sur `lsp-server` + `lsp-types`. Gère le
-cycle de vie LSP (`initialize`/`shutdown`/`exit`) et la synchronisation de
-documents `textDocument/didOpen`/`didChange`/`didClose` en
-synchronisation **complète** (`TextDocumentSyncKind::FULL`) : chaque
-`didChange` transporte le texte entier du document, donc aucune
-conversion position LSP → offset octet n'est nécessaire pour appliquer un
-édit. Choix délibéré de simplicité/robustesse par rapport à une
-synchronisation incrémentale, acceptable pour des fichiers `.pactole`
-typiquement petits et édités à la main.
+Binary `pactole-lsp`, built on `lsp-server` + `lsp-types`. Handles the
+LSP lifecycle (`initialize`/`shutdown`/`exit`) and document sync for
+`textDocument/didOpen`/`didChange`/`didClose` using **full** sync
+(`TextDocumentSyncKind::FULL`): each `didChange` carries the entire
+document text, so no LSP position → byte offset conversion is needed to
+apply an edit. A deliberate simplicity/robustness choice over incremental
+sync, acceptable for typically small, hand-edited `.pactole` files.
 
-Ne consomme `pactole-storage-fs`/`pactole-syntax` que via leur API
-publique existante (`analyze_file`, `analyze_file_with_loader`,
+It only consumes `pactole-storage-fs`/`pactole-syntax` through their
+existing public API (`analyze_file`, `analyze_file_with_loader`,
 `FsSourceLoader`, `SourceLoader`, `SourceLoadError`, `ParsedFile`,
-`AnalyzedProject`, `IncludeIssue`, `SyntaxDiagnostic`, `Span`/`Point`) :
-n'ajoute ni ne modifie rien dans ces crates.
+`AnalyzedProject`, `IncludeIssue`, `SyntaxDiagnostic`, `Span`/`Point`):
+it neither adds nor modifies anything in these crates.
 
-## Fonctionnalités actuelles
+## Current features
 
-Diagnostics (`textDocument/publishDiagnostics`) uniquement, via :
+Diagnostics only (`textDocument/publishDiagnostics`), via:
 
-- `documents.rs` : `Documents` (table en mémoire URI ouverte → texte
-  courant) et `DocumentsSourceLoader`, un
-  `pactole_storage_fs::SourceLoader` qui sert le buffer d'un document
-  ouvert (potentiellement non sauvegardé) quand il en existe un pour un
-  chemin donné, avec repli sur `FsSourceLoader` sinon.
-- `conversion.rs` : `span_to_range`/`point_to_position`, convertissant les
-  `Span`/`Point` en octets de `pactole-syntax` vers les `Range`/`Position`
-  en UTF-16 de LSP, en rebalayant la ligne source concernée.
-- `diagnostics.rs` : `diagnostics_for_file` (diagnostics syntaxe +
-  abaissement pour un `ParsedFile`) et `project_diagnostics` (diagnostics
-  par fichier, plus les `IncludeIssue` rattachées au fichier contenant
-  l'`include` fautif, pour un `AnalyzedProject`).
-- `config.rs` : `Config`, résolue une seule fois à partir des
-  `initializationOptions` reçues à l'`initialize`. Une seule clé
-  optionnelle supportée : `journal_file` (chemin du fichier `.pactole`
-  racine, résolu contre la racine du workspace, ou contre le répertoire
-  de travail courant du serveur si aucune racine n'est connue). **Ne lit
-  pas `~/.config/pactole`** : limitation explicite et documentée de cette
-  première version.
-- `server.rs` : la `Connection` stdio, la boucle principale, et les
-  handlers de notifications. Quand `journal_file` est configuré et se
-  charge, les diagnostics sont calculés pour tout fichier atteignable via
-  `include` (via `analyze_file_with_loader`) et publiés par fichier ;
-  sinon le document courant seul est analysé de façon autonome via
-  `analyze_file` (ses `include` ne sont alors pas suivis). Les URI qui
-  sortent de l'ensemble analysé (par exemple un `include` supprimé)
-  reçoivent une liste de diagnostics vide pour ne jamais rester périmées.
+- `documents.rs`: `Documents` (in-memory table of open URI → current
+  text) and `DocumentsSourceLoader`, a
+  `pactole_storage_fs::SourceLoader` that serves the buffer of an open
+  (potentially unsaved) document when one exists for a given path, with
+  a fallback to `FsSourceLoader` otherwise.
+- `conversion.rs`: `span_to_range`/`point_to_position`, converting
+  `pactole-syntax`'s byte-based `Span`/`Point` into LSP's UTF-16
+  `Range`/`Position`, by re-scanning the relevant source line.
+- `diagnostics.rs`: `diagnostics_for_file` (syntax + lowering
+  diagnostics for a `ParsedFile`) and `project_diagnostics` (per-file
+  diagnostics, plus `IncludeIssue`s attached to the file containing the
+  offending `include`, for an `AnalyzedProject`).
+- `config.rs`: `Config`, resolved once from the `initializationOptions`
+  received at `initialize`. Only one optional key is supported:
+  `journal_file` (path of the root `.pactole` file, resolved against the
+  workspace root, or against the server's current working directory if
+  no root is known). **Does not read `~/.config/pactole`**: an explicit,
+  documented limitation of this first version.
+- `server.rs`: the stdio `Connection`, the main loop, and the
+  notification handlers. When `journal_file` is configured and loads,
+  diagnostics are computed for every file reachable via `include` (via
+  `analyze_file_with_loader`) and published per file; otherwise the
+  current document alone is analyzed standalone via `analyze_file` (its
+  `include`s are then not followed). URIs that leave the analyzed set
+  (e.g. a removed `include`) receive an empty diagnostics list so they
+  never go stale.
 
-## Explicitement hors périmètre (première version)
+## Explicitly out of scope (first version)
 
-Complétion, hover, navigation, formatage via LSP (utiliser `pactole fmt`),
-synchronisation incrémentale, lecture de `~/.config/pactole`. Toute
-requête non gérée reçoit une erreur `MethodNotFound` plutôt que d'être
-silencieusement ignorée. Voir la roadmap dans
-[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §10 pour l'état
-d'avancement prévu de ces points.
+Completion, hover, navigation, formatting via LSP (use `pactole fmt`),
+incremental sync, reading `~/.config/pactole`. Any unhandled request
+receives a `MethodNotFound` error rather than being silently ignored.
+See the roadmap in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §10
+for the planned status of these items.
 
-## Configuration côté client
+## Client-side configuration
 
-Passer `journal_file` dans `initializationOptions` de la requête LSP
-`initialize`, par exemple :
+Pass `journal_file` in the `initializationOptions` of the LSP
+`initialize` request, for example:
 
 ```json
 { "journal_file": "main.pactole" }
 ```
 
-## Dépendances / frontières
+## Dependencies / boundaries
 
-- `lsp-server`, `lsp-types` (protocole LSP), `serde`/`serde_json`
-  (désérialisation JSON), `pactole-storage-fs`, `pactole-syntax`.
-- `log` + `env_logger` pour les traces de debug (voir ci-dessous).
-- Pas de dépendance à `thiserror` : aucun type d'erreur propre, seule la
-  propagation via `Box<dyn Error + Sync + Send>` dans `server.rs`.
+- `lsp-server`, `lsp-types` (LSP protocol), `serde`/`serde_json` (JSON
+  deserialization), `pactole-storage-fs`, `pactole-syntax`.
+- `log` + `env_logger` for debug traces (see below).
+- No `thiserror` dependency: no error types of its own, only error
+  propagation via `Box<dyn Error + Sync + Send>` in `server.rs`.
 
-## Traces de debug
+## Debug traces
 
-Le serveur journalise via [`log`](https://docs.rs/log) +
-[`env_logger`](https://docs.rs/env_logger), **toujours sur `stderr`** (jamais
-sur `stdout`, qui sert au protocole LSP lui-même) : une écriture parasite sur
-`stdout` corromprait le flux de messages. Sans `RUST_LOG`, aucune trace n'est
-émise.
+The server logs via [`log`](https://docs.rs/log) +
+[`env_logger`](https://docs.rs/env_logger), **always on `stderr`** (never
+on `stdout`, which serves the LSP protocol itself): a stray write on
+`stdout` would corrupt the message stream. Without `RUST_LOG`, no trace
+is emitted.
 
-Activer les traces en définissant `RUST_LOG` avant de lancer `pactole-lsp`,
-par exemple :
+Enable traces by setting `RUST_LOG` before launching `pactole-lsp`, for
+example:
 
 ```sh
 RUST_LOG=pactole_lsp=debug pactole-lsp
 ```
 
-Niveaux utilisés :
+Levels used:
 
-- `info` : cycle de vie du serveur (initialisation avec la racine du
-  workspace et le `journal_file` résolu, arrêt).
-- `debug` : notifications `didOpen`/`didChange`/`didClose` (URI et taille du
-  texte, jamais son contenu), résultat de chaque analyse (nombre de fichiers
-  et de diagnostics publiés en mode multi-fichiers, nombre de diagnostics en
-  mode autonome).
-- `warn` : repli de l'analyse multi-fichiers vers l'analyse autonome du
-  document courant (`journal_file` configuré mais illisible), et effacement
-  de tous les diagnostics publiés faute d'analyse disponible.
-- `trace` : origine de chaque fichier chargé pendant la résolution des
-  `include` (tampon ouvert en mémoire ou système de fichiers), via
-  `DocumentsSourceLoader`.
+- `info`: server lifecycle (initialization with the workspace root and
+  the resolved `journal_file`, shutdown).
+- `debug`: `didOpen`/`didChange`/`didClose` notifications (URI and text
+  size, never its content), the result of each analysis (number of files
+  and diagnostics published in multi-file mode, number of diagnostics in
+  standalone mode).
+- `warn`: fallback from multi-file analysis to standalone analysis of
+  the current document (`journal_file` configured but unreadable), and
+  clearing of all published diagnostics when no analysis is available.
+- `trace`: origin of each file loaded during `include` resolution (open
+  in-memory buffer or filesystem), via `DocumentsSourceLoader`.
 
-Le contenu des documents n'est jamais journalisé, seules des métadonnées
-(URI, longueurs, chemins) le sont.
+Document content is never logged, only metadata (URI, lengths, paths).
 
 ## Tests / validation
 
@@ -119,13 +113,13 @@ cargo test -p pactole-lsp
 cargo clippy -p pactole-lsp --all-targets
 ```
 
-Les tests unitaires couvrent notamment `config.rs` (résolution de
-`journal_file`) et `server.rs` (calcul des URI à effacer entre deux
-publications de diagnostics).
+Unit tests cover notably `config.rs` (`journal_file` resolution) and
+`server.rs` (computing the URIs to clear between two diagnostics
+publications).
 
-## Voir aussi
+## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §5 — description
-  complète du LSP actuel, ses limites, et la roadmap (config globale,
-  diagnostics métier positionnés, complétion/hover/navigation, formatage
-  LSP, synchronisation incrémentale).
+- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §5 — full
+  description of the current LSP, its limits, and the roadmap (global
+  config, positioned business diagnostics, completion/hover/navigation,
+  LSP formatting, incremental sync).
