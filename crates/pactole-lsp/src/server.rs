@@ -37,9 +37,15 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
         initialize_params.initialization_options.as_ref(),
         workspace_root.as_deref(),
     );
+    log::info!(
+        "initialized: workspace_root={:?} journal_file={:?}",
+        workspace_root,
+        config.journal_file
+    );
 
     main_loop(connection, config)?;
     io_threads.join()?;
+    log::info!("shutting down");
     Ok(())
 }
 
@@ -91,6 +97,13 @@ fn handle_notification(
         DidOpenTextDocument::METHOD => {
             let params: lsp_types::DidOpenTextDocumentParams = serde_json::from_value(note.params)?;
             let uri = params.text_document.uri;
+            // Document contents are never logged: only identifying
+            // information (URI) and sizes, to avoid leaking journal data.
+            log::debug!(
+                "didOpen: uri={} len={}",
+                uri,
+                params.text_document.text.len()
+            );
             documents.open(uri.clone(), params.text_document.text);
             publish_for(connection, config, documents, published, &uri)?;
         }
@@ -101,6 +114,7 @@ fn handle_notification(
             // Full-document sync: the last (and only) content change carries
             // the whole new text (see `documents.rs`'s module docs).
             if let Some(change) = params.content_changes.into_iter().next_back() {
+                log::debug!("didChange: uri={} len={}", uri, change.text.len());
                 documents.change(uri.clone(), change.text);
                 publish_for(connection, config, documents, published, &uri)?;
             }
@@ -108,6 +122,7 @@ fn handle_notification(
         DidCloseTextDocument::METHOD => {
             let params: lsp_types::DidCloseTextDocumentParams =
                 serde_json::from_value(note.params)?;
+            log::debug!("didClose: uri={}", params.text_document.uri);
             documents.close(&params.text_document.uri);
             // Clear diagnostics for the now-closed document.
             publish_diagnostics(connection, &params.text_document.uri, Vec::new())?;
@@ -147,12 +162,21 @@ fn publish_for(
         match analyze_file_with_loader(journal_file, &loader) {
             Ok(project) => {
                 let mut newly_published = HashSet::new();
-                for (path, diags) in project_diagnostics(&project) {
+                let per_file = project_diagnostics(&project);
+                let file_count = per_file.len();
+                let diagnostic_count: usize = per_file.values().map(Vec::len).sum();
+                for (path, diags) in per_file {
                     if let Some(file_uri) = path_to_url(&path) {
                         newly_published.insert(file_uri.clone());
                         publish_diagnostics(connection, &file_uri, diags)?;
                     }
                 }
+                log::debug!(
+                    "project analysis succeeded: journal_file={:?} files={} diagnostics={}",
+                    journal_file,
+                    file_count,
+                    diagnostic_count
+                );
                 clear_stale(connection, published, &newly_published)?;
                 *published = newly_published;
                 return Ok(());
@@ -162,6 +186,11 @@ fn publish_for(
                 // document: an unreadable configured journal file should
                 // not prevent diagnostics on the document the user is
                 // actually editing.
+                log::warn!(
+                    "project analysis failed, falling back to standalone analysis of {}: journal_file={:?}",
+                    uri,
+                    journal_file
+                );
             }
         }
     }
@@ -169,6 +198,11 @@ fn publish_for(
     if let Some(source) = documents.get(uri) {
         let file = pactole_storage_fs::analyze_file(source);
         let diags = diagnostics_for_file(&file);
+        log::debug!(
+            "standalone analysis: uri={} diagnostics={}",
+            uri,
+            diags.len()
+        );
         let mut newly_published = HashSet::new();
         newly_published.insert(uri.clone());
         publish_diagnostics(connection, uri, diags)?;
@@ -180,6 +214,7 @@ fn publish_for(
         // document that has since been closed). Nothing is published this
         // time, so every URI previously published must be cleared instead
         // of being left stuck with stale diagnostics forever.
+        log::warn!("no analysis available for {uri}, clearing all published diagnostics");
         clear_stale(connection, published, &HashSet::new())?;
         published.clear();
     }

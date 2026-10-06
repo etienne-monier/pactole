@@ -9,6 +9,8 @@ name = "pactole-lsp"
 path = "src/main.rs"
 
 [dependencies]
+env_logger = "0.11.8"
+log = "0.4.28"
 lsp-server = "0.7.9"
 lsp-types = "0.93.2"
 pactole-storage-fs = { version = "0.1.0", path = "../pactole-storage-fs" }

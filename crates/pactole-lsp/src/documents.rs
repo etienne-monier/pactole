@@ -93,8 +93,10 @@ impl<'a> DocumentsSourceLoader<'a> {
 impl SourceLoader for DocumentsSourceLoader<'_> {
     fn load(&self, path: &Path) -> Result<String, SourceLoadError> {
         if let Some(text) = self.documents.get_by_path(path) {
+            log::trace!("loaded {} from an open buffer", path.display());
             return Ok(text.to_string());
         }
+        log::trace!("loaded {} from the filesystem", path.display());
         self.fs.load(path)
     }
 }

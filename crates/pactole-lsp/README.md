@@ -75,8 +75,42 @@ Passer `journal_file` dans `initializationOptions` de la requête LSP
 
 - `lsp-server`, `lsp-types` (protocole LSP), `serde`/`serde_json`
   (désérialisation JSON), `pactole-storage-fs`, `pactole-syntax`.
+- `log` + `env_logger` pour les traces de debug (voir ci-dessous).
 - Pas de dépendance à `thiserror` : aucun type d'erreur propre, seule la
   propagation via `Box<dyn Error + Sync + Send>` dans `server.rs`.
+
+## Traces de debug
+
+Le serveur journalise via [`log`](https://docs.rs/log) +
+[`env_logger`](https://docs.rs/env_logger), **toujours sur `stderr`** (jamais
+sur `stdout`, qui sert au protocole LSP lui-même) : une écriture parasite sur
+`stdout` corromprait le flux de messages. Sans `RUST_LOG`, aucune trace n'est
+émise.
+
+Activer les traces en définissant `RUST_LOG` avant de lancer `pactole-lsp`,
+par exemple :
+
+```sh
+RUST_LOG=pactole_lsp=debug pactole-lsp
+```
+
+Niveaux utilisés :
+
+- `info` : cycle de vie du serveur (initialisation avec la racine du
+  workspace et le `journal_file` résolu, arrêt).
+- `debug` : notifications `didOpen`/`didChange`/`didClose` (URI et taille du
+  texte, jamais son contenu), résultat de chaque analyse (nombre de fichiers
+  et de diagnostics publiés en mode multi-fichiers, nombre de diagnostics en
+  mode autonome).
+- `warn` : repli de l'analyse multi-fichiers vers l'analyse autonome du
+  document courant (`journal_file` configuré mais illisible), et effacement
+  de tous les diagnostics publiés faute d'analyse disponible.
+- `trace` : origine de chaque fichier chargé pendant la résolution des
+  `include` (tampon ouvert en mémoire ou système de fichiers), via
+  `DocumentsSourceLoader`.
+
+Le contenu des documents n'est jamais journalisé, seules des métadonnées
+(URI, longueurs, chemins) le sont.
 
 ## Tests / validation
 
