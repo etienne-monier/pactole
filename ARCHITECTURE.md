@@ -297,6 +297,12 @@ le formatage), synchronisation incrémentale, et toute lecture de
 `~/.config/pactole`. Les requêtes non gérées reçoivent une erreur
 `MethodNotFound` plutôt que d'être silencieusement ignorées.
 
+Journalisation (`log`/`env_logger`) : silencieuse par défaut, activable à la
+demande via `RUST_LOG` (ex. `RUST_LOG=pactole_lsp=debug`) ; écrite
+uniquement sur stderr, jamais sur stdout (réservé au transport du
+protocole LSP) ; ne contient jamais le contenu des documents ouverts, pour
+rester sans risque à activer sur des journaux potentiellement sensibles.
+
 ## 6. `pactole-cli`
 
 Binaire `pactole` (`clap` derive), sous-commandes actuelles :

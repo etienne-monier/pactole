@@ -99,8 +99,11 @@ impl<'src> AstBuilder<'src> {
 
     fn parse_date(&self, node: Node<'_>) -> Result<NaiveDate, PactoleFsStorageError> {
         let text = self.text(node);
-        NaiveDate::parse_from_str(text, "%Y-%m-%d")
-            .map_err(|e| self.error(format!("invalid date `{text}`: {e}")))
+        NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|e| {
+            self.error(format!(
+                "invalid date `{text}`: {e} (expected a valid calendar date in YYYY-MM-DD format)"
+            ))
+        })
     }
 
     fn parse_number(&self, node: Node<'_>) -> Result<Decimal, PactoleFsStorageError> {
@@ -109,7 +112,7 @@ impl<'src> AstBuilder<'src> {
         // e.g. `1,234,567.89`; strip them before parsing the decimal.
         let normalized = text.replace(',', "");
         Decimal::from_str(&normalized)
-            .map_err(|e| self.error(format!("invalid number `{text}`: {e}")))
+            .map_err(|e| self.error(format!("invalid number `{text}`: {e} (expected an optionally signed decimal number, e.g. `1,234.56`)")))
     }
 
     fn parse_account(&self, node: Node<'_>) -> Result<AccountName, PactoleFsStorageError> {

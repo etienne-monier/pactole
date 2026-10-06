@@ -24,8 +24,11 @@ pub struct SyntaxDiagnostic {
     pub kind: DiagnosticKind,
     /// The span in the source text this diagnostic refers to.
     pub span: Span,
-    /// A human-readable description of the diagnostic, derived from the
-    /// tree-sitter node (e.g. its S-expression or missing node type).
+    /// A human-readable description of the diagnostic (e.g. "missing an
+    /// account name in an `open` directive", or "unexpected syntax after a
+    /// date: `foo bar`"), derived from the tree-sitter node's kind and its
+    /// surrounding context (parent node kind) rather than a raw
+    /// tree-sitter S-expression.
     pub message: String,
 }
 
