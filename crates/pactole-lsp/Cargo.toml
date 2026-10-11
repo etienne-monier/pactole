@@ -1,7 +1,15 @@
 [package]
 name = "pactole-lsp"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Language Server Protocol server for Pactole ledgers."
+keywords = ["pactole", "lsp", "editor"]
+categories = ["development-tools"]
 
 # Build the `pactole-lsp` binary.
 [[bin]]

@@ -28,27 +28,13 @@ struct SymbolIndex {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum CompletionContext {
     DirectiveKeyword,
-    IncludePath {
-        prefix: String,
-    },
-    Payee {
-        prefix: String,
-    },
-    Account {
-        prefix: String,
-    },
-    PostingAccount {
-        prefix: String,
-    },
-    Commodity {
-        prefix: String,
-    },
-    Tag {
-        prefix: String,
-    },
-    Link {
-        prefix: String,
-    },
+    IncludePath { prefix: String },
+    Payee { prefix: String },
+    Account { prefix: String },
+    PostingAccount { prefix: String },
+    Commodity { prefix: String },
+    Tag { prefix: String },
+    Link { prefix: String },
     Unknown,
 }
 
@@ -106,19 +92,6 @@ fn build_index_from_project(project: &AnalyzedProject) -> SymbolIndex {
         merged.links.extend(idx.links);
     }
     merged
-}
-
-fn text_before_cursor(line_text: &str, char_utf16: u32) -> String {
-    let mut utf16_count: u32 = 0;
-    let mut result = String::new();
-    for ch in line_text.chars() {
-        if utf16_count >= char_utf16 {
-            break;
-        }
-        result.push(ch);
-        utf16_count += ch.len_utf16() as u32;
-    }
-    result
 }
 
 fn is_indented(line_text: &str) -> bool {
@@ -191,8 +164,7 @@ fn context_at(text: &str, offset: usize) -> CompletionContext {
     // Look backwards for number pattern followed by space
     if let Some(space_idx) = line_text.rfind(' ') {
         let after_space = &line_text[space_idx + 1..];
-        if after_space.chars().any(|c| c.is_ascii_digit() || c == '.')
-            && !after_space.contains(':')
+        if after_space.chars().any(|c| c.is_ascii_digit() || c == '.') && !after_space.contains(':')
         {
             let prefix = after_space.to_string();
             // If it's just a number fragment, still maybe commodity? But better check - look ahead? No, rest is after offset
@@ -236,17 +208,25 @@ fn context_at(text: &str, offset: usize) -> CompletionContext {
                 let prefix = words[words.len() - 1].to_string();
                 return CompletionContext::Account { prefix };
             }
-            return CompletionContext::Account { prefix: String::new() };
+            CompletionContext::Account {
+                prefix: String::new(),
+            }
         }
         "commodity" => {
             if words.len() >= 2 {
                 let prefix = words[words.len() - 1].to_string();
                 return CompletionContext::Commodity { prefix };
             }
-            return CompletionContext::Commodity { prefix: String::new() };
+            CompletionContext::Commodity {
+                prefix: String::new(),
+            }
         }
-        "payee" => CompletionContext::Payee { prefix: String::new() },
-        "include" => CompletionContext::IncludePath { prefix: String::new() },
+        "payee" => CompletionContext::Payee {
+            prefix: String::new(),
+        },
+        "include" => CompletionContext::IncludePath {
+            prefix: String::new(),
+        },
         _ => {
             if !is_indented(line_text) && !trimmed.contains(' ') {
                 return CompletionContext::DirectiveKeyword;
@@ -419,4 +399,3 @@ pub fn handle_completion(
         items,
     })
 }
-

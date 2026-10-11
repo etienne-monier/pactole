@@ -1,7 +1,15 @@
 [package]
 name = "pactole-core"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Core domain models, validation and reports for Pactole, a plain-text double-entry accounting ledger."
+keywords = ["accounting", "ledger", "plaintext", "finance"]
+categories = ["finance"]
 
 [dependencies]
 chrono = "0.4.45"

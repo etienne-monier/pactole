@@ -1,0 +1,40 @@
+# Git hooks, run by `prek` (https://github.com/j178/prek), a drop-in
+# replacement for `pre-commit`.
+#
+# Install the hooks once per clone with:
+#
+#     prek install
+#
+# Run them manually over the whole workspace with:
+#
+#     prek run --all-files
+#
+# `prek` (or `pre-commit`) is the only external requirement; Cargo, rustfmt and
+# clippy must already be available on the `PATH`.
+
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Format the Rust workspace.
+        language: system
+        entry: cargo fmt --all
+        files: \.rs$
+        pass_filenames: false
+
+      - id: cargo-clippy-fix
+        name: cargo clippy --fix
+        description: Lint the Rust workspace and apply automatic fixes.
+        language: system
+        entry: cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
+        files: \.(rs|toml)$
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Fail on any remaining lint in the Rust workspace.
+        language: system
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        files: \.(rs|toml)$
+        pass_filenames: false

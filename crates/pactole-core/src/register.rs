@@ -1,4 +1,6 @@
-use crate::models::{AccountName, Amount, CommodityName, Entry, Journal, Transaction, TransactionStatus};
+use crate::models::{
+    AccountName, Amount, CommodityName, Entry, Journal, Transaction, TransactionStatus,
+};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 

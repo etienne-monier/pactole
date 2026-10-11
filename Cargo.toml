@@ -11,4 +11,12 @@ members = [
 default-members = ["crates/pactole-cli", "crates/pactole-lsp/"]
 exclude = ["editors/zed"]
 
+[workspace.package]
+authors = ["Etienne Monier"]
+license = "MIT"
+repository = "https://github.com/etienne-monier/pactole"
+homepage = "https://github.com/etienne-monier/pactole"
+rust-version = "1.85"
+edition = "2024"
+
 [workspace.dependencies]

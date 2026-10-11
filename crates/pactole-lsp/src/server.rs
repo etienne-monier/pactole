@@ -40,7 +40,6 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
             ]),
             all_commit_characters: None,
             work_done_progress_options: Default::default(),
-            ..Default::default()
         }),
         ..Default::default()
     })?;
@@ -105,7 +104,7 @@ fn handle_request(
     // -----------------------------
     if request.method == lsp_types::request::Completion::METHOD {
         let params: CompletionParams = serde_json::from_value(request.params)?;
-        match crate::completion::handle_completion(&config, &documents, params) {
+        match crate::completion::handle_completion(config, documents, params) {
             Ok(result) => {
                 let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
                 connection.sender.send(Message::Response(resp))?;
@@ -126,7 +125,7 @@ fn handle_request(
     // -----------------------------
     if request.method == lsp_types::request::HoverRequest::METHOD {
         let params: lsp_types::HoverParams = serde_json::from_value(request.params)?;
-        match crate::hover::handle_hover(&config, &documents, params) {
+        match crate::hover::handle_hover(config, documents, params) {
             Ok(result) => {
                 let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
                 connection.sender.send(Message::Response(resp))?;

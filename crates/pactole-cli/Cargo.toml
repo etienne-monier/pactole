@@ -1,7 +1,15 @@
 [package]
 name = "pactole-cli"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Command-line interface for Pactole, a plain-text double-entry accounting ledger."
+keywords = ["accounting", "ledger", "cli", "finance"]
+categories = ["command-line-utilities", "finance"]
 
 # Build the `pactole` binary (instead of the default `pactole-cli`), so that
 # `cargo install --path crates/pactole-cli` gives you a `pactole` command.

@@ -1,14 +1,16 @@
 [package]
 name = "tree-sitter-pactole"
-description = "A parser for pactole file"
+description = "Tree-sitter grammar and Rust bindings for the Pactole ledger language."
 version = "0.1.0"
-authors = ["Etienne Monier"]
-license = "MIT"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
 readme = "README.md"
 keywords = ["incremental", "parsing", "tree-sitter", "pactole"]
 categories = ["parser-implementations", "parsing", "text-editors"]
-repository = "https://github.com/tree-sitter/tree-sitter-pactole"
-edition = "2021"
+edition.workspace = true
 autoexamples = false
 
 build = "bindings/rust/build.rs"

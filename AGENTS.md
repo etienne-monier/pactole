@@ -273,6 +273,23 @@ cargo clippy --workspace --all-targets
 cargo fmt --check
 ```
 
+### Git Hooks & CI
+
+A `prek` (pre-commit-compatible) configuration lives in
+`.pre-commit-config.yaml`. Install the hook once per clone:
+
+```sh
+prek install
+```
+
+The pre-commit hook runs `cargo fmt --all`, applies the automatic clippy fixes
+and then fails on any remaining lint. The same checks, plus `cargo test`,
+`cargo doc --workspace --no-deps`, `cargo-deny` (dependency licenses and
+RustSec advisories) and the tree-sitter grammar checks, run in GitHub Actions
+on every push to `develop` and every pull request
+(`.github/workflows/ci.yml`). Publishing the crates to crates.io is triggered
+by pushing a `v*` tag (`.github/workflows/release.yml`).
+
 ### Documentation
 
 ```sh

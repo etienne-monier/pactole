@@ -31,7 +31,8 @@ fn find_word_at(text: &str, offset: usize) -> String {
         let byte = start - 1;
         if byte < text.len() {
             let ch = text[byte..start].chars().next().unwrap_or('\n');
-            if ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == ':' || ch == '#' || ch == '^' {
+            if ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == ':' || ch == '#' || ch == '^'
+            {
                 start = byte;
                 continue;
             }
@@ -58,15 +59,13 @@ fn build_hover_for_word_combined(
     if word.is_empty() {
         return None;
     }
-    if word.starts_with('#') {
-        let tag = &word[1..];
+    if let Some(tag) = word.strip_prefix('#') {
         return Some(SymbolInfo {
             kind: "Tag",
             detail: format!("Tag `#{}`", tag),
         });
     }
-    if word.starts_with('^') {
-        let link = &word[1..];
+    if let Some(link) = word.strip_prefix('^') {
         return Some(SymbolInfo {
             kind: "Link",
             detail: format!("Link `^{}`", link),
@@ -99,13 +98,11 @@ fn build_hover_for_word_combined(
                     });
                 }
             }
-            Entry::Close(c) => {
-                if c.account.to_string() == word {
-                    return Some(SymbolInfo {
-                        kind: "Account",
-                        detail: format!("Account `{}`\n- closed on {}", word, c.date),
-                    });
-                }
+            Entry::Close(c) if c.account.to_string() == word => {
+                return Some(SymbolInfo {
+                    kind: "Account",
+                    detail: format!("Account `{}`\n- closed on {}", word, c.date),
+                });
             }
             _ => {}
         }
@@ -139,13 +136,11 @@ fn build_hover_for_word_combined(
                             });
                         }
                     }
-                    Entry::Close(c) => {
-                        if c.account.to_string() == word {
-                            return Some(SymbolInfo {
-                                kind: "Account",
-                                detail: format!("Account `{}`\n- closed on {}", word, c.date),
-                            });
-                        }
+                    Entry::Close(c) if c.account.to_string() == word => {
+                        return Some(SymbolInfo {
+                            kind: "Account",
+                            detail: format!("Account `{}`\n- closed on {}", word, c.date),
+                        });
                     }
                     _ => {}
                 }
@@ -194,7 +189,10 @@ pub fn handle_hover(
             kind: MarkupKind::Markdown,
             value: format!("**{}**\n\n{}", info.kind, info.detail),
         });
-        return Ok(Some(Hover { contents, range: None }));
+        return Ok(Some(Hover {
+            contents,
+            range: None,
+        }));
     }
 
     Ok(None)

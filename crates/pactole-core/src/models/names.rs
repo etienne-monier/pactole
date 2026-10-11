@@ -152,9 +152,9 @@ fn is_valid_commodity_name(value: &str) -> bool {
     if !(last.is_ascii_uppercase() || last.is_ascii_digit()) {
         return false;
     }
-    chars[1..len - 1]
-        .iter()
-        .all(|&c| c.is_ascii_uppercase() || c.is_ascii_digit() || matches!(c, '\'' | '.' | '_' | '-'))
+    chars[1..len - 1].iter().all(|&c| {
+        c.is_ascii_uppercase() || c.is_ascii_digit() || matches!(c, '\'' | '.' | '_' | '-')
+    })
 }
 
 #[cfg(test)]
@@ -194,7 +194,7 @@ mod tests {
         assert!(CommodityName::new("1EUR").is_err());
         assert!(CommodityName::new("EU R").is_err());
         assert!(CommodityName::new("EUR-").is_err()); // must end with letter/digit
-        assert!(CommodityName::new(&format!("A{}", "B".repeat(24))).is_err()); // too long (> 24 chars)
+        assert!(CommodityName::new(format!("A{}", "B".repeat(24))).is_err()); // too long (> 24 chars)
     }
 
     #[test]

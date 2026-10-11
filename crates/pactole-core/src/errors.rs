@@ -19,9 +19,7 @@ pub enum ModelError {
          `'`, `.`, `_` or `-` in between"
     )]
     InvalidCommodityName(String),
-    #[error(
-        "invalid metadata key `{0}`: expected only lowercase letters, `_` or `-`"
-    )]
+    #[error("invalid metadata key `{0}`: expected only lowercase letters, `_` or `-`")]
     InvalidMetadataKey(String),
 }
 
@@ -31,7 +29,10 @@ pub enum ModelError {
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
     #[error("account `{account}` is not open on {date}")]
-    AccountNotOpen { account: AccountName, date: NaiveDate },
+    AccountNotOpen {
+        account: AccountName,
+        date: NaiveDate,
+    },
     #[error("commodity `{commodity}` is not declared on {date}")]
     CommodityNotDeclared {
         commodity: CommodityName,

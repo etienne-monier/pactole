@@ -38,7 +38,7 @@ pub struct PactoleFileStorage {
 }
 
 impl PactoleFileStorage {
-    pub fn parse(self: &mut Self) -> Result<(), errors::PactoleFsStorageError> {
+    pub fn parse(&mut self) -> Result<(), errors::PactoleFsStorageError> {
         let base_dir = self.filepath.as_deref().and_then(std::path::Path::parent);
         self.journal = Some(parser::parse(&self.content, base_dir)?);
         Ok(())

@@ -1,7 +1,15 @@
 [package]
 name = "pactole-storage-fs"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Filesystem storage, parsing and canonical formatting for Pactole ledgers."
+keywords = ["accounting", "ledger", "parser", "filesystem"]
+categories = ["parser-implementations", "finance"]
 
 [dependencies]
 chrono = "0.4.45"

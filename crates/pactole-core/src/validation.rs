@@ -208,9 +208,7 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
         .collect();
 
     if missing.len() > 1 {
-        return Err(ValidationError::TooManyPostingsWithoutAmount(
-            missing.len(),
-        ));
+        return Err(ValidationError::TooManyPostingsWithoutAmount(missing.len()));
     }
 
     let mut sums: BTreeMap<&str, (CommodityName, Decimal)> = BTreeMap::new();
@@ -582,7 +580,10 @@ mod tests {
                 commodity(date(2024, 1, 1), "EUR"),
                 Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    vec![posting("Actifs:Compte", None), posting("Depenses:Divers", None)],
+                    vec![
+                        posting("Actifs:Compte", None),
+                        posting("Depenses:Divers", None),
+                    ],
                 )),
             ],
         };
