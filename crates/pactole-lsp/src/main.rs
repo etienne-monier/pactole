@@ -8,7 +8,7 @@ fn main() -> std::process::ExitCode {
     // on the (already stderr) default. Verbosity is controlled by `RUST_LOG`
     // (e.g. `RUST_LOG=pactole_lsp=debug`); with no `RUST_LOG` set, logging
     // stays silent.
-    env_logger::Builder::from_default_env()
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("pactole_lsp=info"))
         .target(env_logger::Target::Stderr)
         .init();
 

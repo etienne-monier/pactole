@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 
-use lsp_server::{Connection, Message};
+use lsp_server::{Connection, Message, Request as LspRequest};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification,
     PublishDiagnostics,
@@ -75,59 +75,11 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
+                // Break if message is shutdown
                 if connection.handle_shutdown(&req)? {
                     break;
                 }
-                if req.method == lsp_types::request::Completion::METHOD {
-                    let params: CompletionParams = serde_json::from_value(req.params)?;
-                    match crate::completion::handle_completion(&config, &documents, params) {
-                        Ok(result) => {
-                            let resp = lsp_server::Response::new_ok(
-                                req.id,
-                                serde_json::to_value(result)?,
-                            );
-                            connection.sender.send(Message::Response(resp))?;
-                        }
-                        Err(err) => {
-                            let response = lsp_server::Response::new_err(
-                                req.id,
-                                lsp_server::ErrorCode::InternalError as i32,
-                                err.to_string(),
-                            );
-                            connection.sender.send(Message::Response(response))?;
-                        }
-                    }
-                    continue;
-                }
-                if req.method == lsp_types::request::HoverRequest::METHOD {
-                    let params: lsp_types::HoverParams = serde_json::from_value(req.params)?;
-                    match crate::hover::handle_hover(&config, &documents, params) {
-                        Ok(result) => {
-                            let resp = lsp_server::Response::new_ok(
-                                req.id,
-                                serde_json::to_value(result)?,
-                            );
-                            connection.sender.send(Message::Response(resp))?;
-                        }
-                        Err(err) => {
-                            let response = lsp_server::Response::new_err(
-                                req.id,
-                                lsp_server::ErrorCode::InternalError as i32,
-                                err.to_string(),
-                            );
-                            connection.sender.send(Message::Response(response))?;
-                        }
-                    }
-                    continue;
-                }
-                // Other requests are out of scope; reply with a clear "method not found"
-                // rather than silently dropping it.
-                let response = lsp_server::Response::new_err(
-                    req.id,
-                    lsp_server::ErrorCode::MethodNotFound as i32,
-                    format!("method not implemented: {}", req.method),
-                );
-                connection.sender.send(Message::Response(response))?;
+                handle_request(req, &connection, &config, &mut documents)?;
             }
             Message::Notification(note) => {
                 handle_notification(&connection, &config, &mut documents, &mut published, note)?;
@@ -142,6 +94,68 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+fn handle_request(
+    request: LspRequest,
+    connection: &Connection,
+    config: &Config,
+    documents: &mut Documents,
+) -> Result<(), Box<dyn Error + Sync + Send>> {
+    // -----------------------------
+    // Completion request
+    // -----------------------------
+    if request.method == lsp_types::request::Completion::METHOD {
+        let params: CompletionParams = serde_json::from_value(request.params)?;
+        match crate::completion::handle_completion(&config, &documents, params) {
+            Ok(result) => {
+                let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
+                connection.sender.send(Message::Response(resp))?;
+            }
+            Err(err) => {
+                let response = lsp_server::Response::new_err(
+                    request.id,
+                    lsp_server::ErrorCode::InternalError as i32,
+                    err.to_string(),
+                );
+                connection.sender.send(Message::Response(response))?;
+            }
+        }
+        return Ok(());
+    }
+    // -----------------------------
+    // Hover request
+    // -----------------------------
+    if request.method == lsp_types::request::HoverRequest::METHOD {
+        let params: lsp_types::HoverParams = serde_json::from_value(request.params)?;
+        match crate::hover::handle_hover(&config, &documents, params) {
+            Ok(result) => {
+                let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
+                connection.sender.send(Message::Response(resp))?;
+            }
+            Err(err) => {
+                let response = lsp_server::Response::new_err(
+                    request.id,
+                    lsp_server::ErrorCode::InternalError as i32,
+                    err.to_string(),
+                );
+                connection.sender.send(Message::Response(response))?;
+            }
+        }
+        return Ok(());
+    }
+    // -----------------------------
+    // Other requests are out of scope; reply with a clear "method not found"
+    // rather than silently dropping it.
+    // -----------------------------
+    let response = lsp_server::Response::new_err(
+        request.id,
+        lsp_server::ErrorCode::MethodNotFound as i32,
+        format!("method not implemented: {}", request.method),
+    );
+    connection.sender.send(Message::Response(response))?;
+
+    Ok(())
+}
+
 fn handle_notification(
     connection: &Connection,
     config: &Config,
@@ -150,6 +164,9 @@ fn handle_notification(
     note: lsp_server::Notification,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     match note.method.as_str() {
+        // -----------------------------
+        // A new document opend
+        // -----------------------------
         DidOpenTextDocument::METHOD => {
             let params: lsp_types::DidOpenTextDocumentParams = serde_json::from_value(note.params)?;
             let uri = params.text_document.uri;
@@ -163,6 +180,9 @@ fn handle_notification(
             documents.open(uri.clone(), params.text_document.text);
             publish_for(connection, config, documents, published, &uri)?;
         }
+        // -----------------------------
+        // A document changed
+        // -----------------------------
         DidChangeTextDocument::METHOD => {
             let params: lsp_types::DidChangeTextDocumentParams =
                 serde_json::from_value(note.params)?;
@@ -175,6 +195,9 @@ fn handle_notification(
                 publish_for(connection, config, documents, published, &uri)?;
             }
         }
+        // -----------------------------
+        // A document was closed
+        // -----------------------------
         DidCloseTextDocument::METHOD => {
             let params: lsp_types::DidCloseTextDocumentParams =
                 serde_json::from_value(note.params)?;
@@ -210,10 +233,8 @@ fn publish_for(
     uri: &Url,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     if let Some(journal_file) = &config.journal_file {
-        // Open, possibly-unsaved buffers must take precedence over what is
-        // on disk: an included file being edited (but not yet saved) should
-        // have its in-editor content analyzed, not its last-saved-to-disk
-        // content.
+        // A base journal file is configured.
+        // This is loaded as a project.
         let loader = DocumentsSourceLoader::new(documents);
         match analyze_file_with_loader(journal_file, &loader) {
             Ok(project) => {
@@ -251,6 +272,7 @@ fn publish_for(
         }
     }
 
+    // Load the document as a standalone file
     if let Some(source) = documents.get(uri) {
         let file = pactole_storage_fs::analyze_file(source);
         let diags = diagnostics_for_file(&file);

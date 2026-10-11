@@ -3,6 +3,12 @@
   "default_agent": "plan",
   "model": "opencode/big-pickle",
   "agents": {
+    "plan": {
+      "model": "opencode/big-pickle"
+    },
+    "build": {
+      "model": "opencode/big-pickle"
+    },
     "explorer": {
       "model": "opencode/mimo-v2.6-flash-free"
     },
