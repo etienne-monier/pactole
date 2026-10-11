@@ -1,4 +1,7 @@
-![Pactole logo](logo.png)
+<div align="center">
+  <img src="logo.png" alt="Pactole logo" width="180">
+  <h1>Pactole</h1>
+</div>
 
 Pactole is a plain-text ledger tool written in Rust: you record your
 transactions as human-readable, git-friendly `.pactole` files (in the
