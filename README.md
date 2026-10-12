@@ -17,24 +17,33 @@ helps you keep track of yours.
 
 ## Installation
 
-The `pactole` CLI can be installed system-wide with `cargo install`,
-which builds a release binary and copies it to Cargo's bin directory
-(`~/.cargo/bin` by default, make sure it is on your `PATH`):
+The published `pactole-cli` crate can be installed system-wide with
+`cargo install`, which builds a release binary and copies it to Cargo's bin
+directory (`~/.cargo/bin` by default, make sure it is on your `PATH`):
 
 ```sh
-cargo install --path crates/pactole-cli
+cargo install pactole-cli
 ```
 
 This installs a `pactole` binary. Once installed, you can run it from
 anywhere.
 
-To upgrade after pulling new changes, just re-run the same
-`cargo install` command (add `--force` if Cargo complains that the
-binary already exists). To uninstall:
+To upgrade to the latest published version, run `cargo install pactole-cli
+--force`. To install the development version from a clone, use
+`cargo install --path crates/pactole-cli` instead. To uninstall:
 
 ```sh
 cargo uninstall pactole-cli
 ```
+
+For editor diagnostics, install the published language server separately:
+
+```sh
+cargo install pactole-lsp
+```
+
+See the [language server guide](https://etienne-monier.github.io/pactole/how-to/use-the-lsp/)
+for editor configuration and current limitations.
 
 ## Usage
 

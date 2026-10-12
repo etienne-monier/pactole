@@ -1,6 +1,6 @@
 ---
 title: Install Pactole
-description: Install the pactole command-line tool from source and keep it up to date.
+description: Install the Pactole command-line tool from crates.io or from source.
 sidebar:
   order: 1
 ---
@@ -16,12 +16,12 @@ one, install it with [rustup](https://rustup.rs/):
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-## Install from source
+## Install from crates.io
 
-From a clone of the repository, run:
+Install the published crate with Cargo:
 
 ```sh
-cargo install --path crates/pactole-cli
+cargo install pactole-cli
 ```
 
 Cargo builds an optimized release binary and copies it to its bin directory
@@ -32,10 +32,27 @@ verify the installation:
 pactole --version
 ```
 
+## Install from source
+
+To install the development version from a clone of the repository, run:
+
+```sh
+git clone https://github.com/etienne-monier/pactole.git
+cd pactole
+cargo install --path crates/pactole-cli
+```
+
 ## Update
 
-After pulling new changes, re-run the same `cargo install` command. If Cargo
-complains that the binary already exists, force the reinstall:
+To update the published version, run:
+
+```sh
+cargo install pactole-cli --force
+```
+
+For a source installation, pull the latest changes and re-run the command from
+the previous section. If Cargo complains that the binary already exists, force
+the reinstall:
 
 ```sh
 cargo install --path crates/pactole-cli --force
@@ -51,4 +68,5 @@ cargo uninstall pactole-cli
 
 - [Getting started](/tutorials/getting-started/) — write your first ledger once
   Pactole is installed.
+- [Use the language server](/how-to/use-the-lsp/) — configure editor diagnostics.
 - [Command-line reference](/reference/cli/) — every command and option.

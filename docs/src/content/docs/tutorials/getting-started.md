@@ -14,10 +14,10 @@ No prior accounting knowledge is assumed.
 ## 1. Install Pactole
 
 Pactole is distributed as a Rust crate. If you have a Rust toolchain, install
-the `pactole` binary with `cargo`:
+the published `pactole` binary with `cargo`:
 
 ```sh
-cargo install --path crates/pactole-cli
+cargo install pactole-cli
 ```
 
 This builds a release binary and copies it to Cargo's bin directory
