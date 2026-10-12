@@ -38,6 +38,17 @@ cargo uninstall pactole-cli
 
 ## Usage
 
+Initialize a starter ledger and the default OFX import configuration:
+
+```sh
+pactole init ledger.pactole
+```
+
+The command creates `ledger.pactole` and, if missing,
+`~/.config/pactole/import-ofx.toml`. Existing files are never overwritten. Use
+options such as `--account`, `--currency` and `--counter-account` to customize
+the generated declarations.
+
 A Pactole ledger is a plain `.pactole` text file made of directives
 (`open`, `commodity`, `payee`, `balance`, `transaction`...). See
 [`GRAMMAR.md`](GRAMMAR.md) for the full syntax, for example:

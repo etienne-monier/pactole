@@ -647,3 +647,107 @@ fn import_ofx_write_requires_into() {
 
     assert!(!output.status.success());
 }
+
+#[test]
+fn init_creates_a_valid_ledger_and_import_configuration() {
+    let dir = std::env::temp_dir();
+    let suffix = format!(
+        "{}-{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("main")
+    );
+    let ledger = dir.join(format!("pactole-init-{suffix}.pactole"));
+    let config = dir.join(format!("pactole-init-{suffix}.toml"));
+    std::fs::remove_file(&ledger).ok();
+    std::fs::remove_file(&config).ok();
+
+    let output = pactole_cmd()
+        .args([
+            "init",
+            ledger.to_str().unwrap(),
+            "--config",
+            config.to_str().unwrap(),
+            "--account",
+            "Assets:Bank",
+            "--currency",
+            "USD",
+            "--counter-account",
+            "Expenses:Review",
+            "--date",
+            "2026-01-01",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("created ledger:"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("created configuration:"));
+
+    let ledger_source = std::fs::read_to_string(&ledger).unwrap();
+    assert!(ledger_source.contains("2026-01-01 commodity USD"));
+    assert!(ledger_source.contains("2026-01-01 open Assets:Bank"));
+    assert!(ledger_source.contains("2026-01-01 open Expenses:Review"));
+
+    let check = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(
+        check.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&check.stdout), "OK\n");
+
+    let config_source = std::fs::read_to_string(&config).unwrap();
+    assert!(config_source.contains("bank_account = \"Assets:Bank\""));
+    assert!(config_source.contains("currency = \"USD\""));
+    assert!(config_source.contains("default_counter_account = \"Expenses:Review\""));
+
+    std::fs::remove_file(&ledger).ok();
+    std::fs::remove_file(&config).ok();
+}
+
+#[test]
+fn init_does_not_overwrite_existing_files() {
+    let dir = std::env::temp_dir();
+    let suffix = format!(
+        "{}-{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("main")
+    );
+    let ledger = dir.join(format!("pactole-init-existing-{suffix}.pactole"));
+    let config = dir.join(format!("pactole-init-existing-{suffix}.toml"));
+    std::fs::write(&ledger, "; user ledger\n").unwrap();
+    std::fs::write(&config, "# user configuration\n").unwrap();
+
+    let output = pactole_cmd()
+        .args([
+            "init",
+            ledger.to_str().unwrap(),
+            "--config",
+            config.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("ledger already exists:"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("configuration already exists:"));
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap(), "; user ledger\n");
+    assert_eq!(
+        std::fs::read_to_string(&config).unwrap(),
+        "# user configuration\n"
+    );
+
+    std::fs::remove_file(&ledger).ok();
+    std::fs::remove_file(&config).ok();
+}

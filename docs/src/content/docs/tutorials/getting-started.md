@@ -33,16 +33,29 @@ If you do not have Rust installed, follow the official instructions at
 [rustup.rs](https://rustup.rs/) first.
 :::
 
-## 2. Write your first ledger
+## 2. Initialize your ledger
 
-A Pactole ledger is a plain text file, conventionally with a `.pactole`
-extension. Create one called `ledger.pactole` and paste the following content
-into it:
+Create a starter ledger and the default OFX import configuration:
+
+```sh
+pactole init ledger.pactole
+```
+
+The command creates `ledger.pactole` and, if it is missing,
+`~/.config/pactole/import-ofx.toml`. It never overwrites an existing file. The
+starter ledger contains declarations for `Assets:Checking`,
+`Expenses:ToReview` and `EUR`, but no fictitious transaction.
+
+## 3. Write your first transaction
+
+A Pactole ledger is a plain text file. Add an expense account, a known payee and
+a transaction to the generated `ledger.pactole` so that it contains:
 
 ```pactole
 2026-01-01 commodity EUR
 
 2026-01-01 open Assets:Checking
+2026-01-01 open Expenses:ToReview
 2026-01-01 open Expenses:Groceries
 
 payee "Whole Foods"
@@ -65,7 +78,7 @@ Let's read this file top to bottom:
   Its two **postings** (indented lines) move 45.30 EUR out of `Assets:Checking`
   and into `Expenses:Groceries`. Postings always sum to zero.
 
-## 3. Check the ledger
+## 4. Check the ledger
 
 Ask Pactole to validate the file, both grammatically and from a business point
 of view:
@@ -85,7 +98,7 @@ unbalanced transaction — it prints an `error:` message on stderr instead and
 exits with a non-zero status. Try it: change `45.30` to `46.30` in one posting
 only and run `check` again.
 
-## 4. Format the ledger
+## 5. Format the ledger
 
 Pactole can rewrite a file into a single canonical layout, which is handy to
 keep diffs clean when several people edit the same journal. Print the
@@ -101,7 +114,7 @@ Or update the file in place:
 pactole fmt --write ledger.pactole
 ```
 
-## 5. Query your transactions
+## 6. Query your transactions
 
 Finally, list your transactions with a running balance using the `register`
 report:

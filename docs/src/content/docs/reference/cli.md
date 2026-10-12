@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-The `pactole` binary exposes four subcommands. Run `pactole --help` or
+The `pactole` binary exposes six subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
@@ -62,6 +62,41 @@ Parses the file like `parse`, then validates the resulting journal (see the
 ```sh
 pactole check ledger.pactole
 ```
+
+## `pactole init`
+
+```text
+pactole init [LEDGER] [OPTIONS]
+```
+
+Initializes a starter ledger and, when it does not already exist, the OFX import
+configuration. The default ledger path is `ledger.pactole`. Existing files are
+never overwritten.
+
+| Option | Description |
+|---|---|
+| `[LEDGER]` | Ledger path; defaults to `ledger.pactole` |
+| `--config <PATH>` | OFX configuration path; defaults to the user configuration directory |
+| `--account <ACCOUNT>` | Bank account; defaults to `Assets:Checking` |
+| `--currency <COMMODITY>` | Initial commodity; defaults to `EUR` |
+| `--counter-account <ACCOUNT>` | Default import counter-account; defaults to `Expenses:ToReview` |
+| `--date <DATE>` | Date for declarations; defaults to today |
+| `--stdout` | Print the generated ledger instead of creating its file |
+| `--no-config` | Do not initialize the OFX configuration |
+| `--no-ledger` | Do not initialize the ledger |
+
+For example:
+
+```sh
+pactole init
+pactole init finances.pactole --account Assets:Bank --currency USD
+pactole init --config ./import-ofx.toml --counter-account Expenses:Review
+```
+
+The generated ledger contains the initial commodity and account declarations,
+but no fictitious transaction. It is immediately suitable for `pactole check`.
+The generated OFX configuration contains commented examples for categorization
+rules.
 
 ## `pactole register`
 

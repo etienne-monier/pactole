@@ -1,0 +1,38 @@
+use std::fs;
+use std::io::Read;
+use std::process::ExitCode;
+
+pub(crate) fn run(file: String, write: bool) -> ExitCode {
+    let source = if file == "-" {
+        let mut buf = String::new();
+        if let Err(err) = std::io::stdin().read_to_string(&mut buf) {
+            return failure(err);
+        }
+        buf
+    } else {
+        match fs::read_to_string(&file) {
+            Ok(source) => source,
+            Err(err) => return failure(err),
+        }
+    };
+
+    let formatted = match pactole_storage_fs::format(&source) {
+        Ok(formatted) => formatted,
+        Err(err) => return failure(err),
+    };
+
+    if write && file != "-" {
+        if let Err(err) = fs::write(&file, formatted) {
+            return failure(err);
+        }
+    } else {
+        print!("{formatted}");
+    }
+
+    ExitCode::SUCCESS
+}
+
+fn failure(error: impl std::fmt::Display) -> ExitCode {
+    eprintln!("error: {error}");
+    ExitCode::FAILURE
+}
