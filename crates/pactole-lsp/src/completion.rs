@@ -260,14 +260,12 @@ fn completions_for_context(
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_file() {
-                            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                                if ext == "pactole" {
-                                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                                        if name.starts_with(prefix) {
-                                            seen.insert(path.clone());
-                                        }
-                                    }
-                                }
+                            if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                                && ext == "pactole"
+                                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                                && name.starts_with(prefix)
+                            {
+                                seen.insert(path.clone());
                             }
                         } else if path.is_dir() {
                             // skip

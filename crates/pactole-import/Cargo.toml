@@ -1,0 +1,23 @@
+[package]
+name = "pactole-import"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Import external formats (OFX, ...) into Pactole domain models."
+keywords = ["accounting", "ledger", "import", "ofx"]
+categories = ["finance", "parser-implementations"]
+
+[dependencies]
+chrono = "0.4.45"
+ofx-rs = "0.2.0"
+pactole-core = { version = "0.1.0", path = "../pactole-core" }
+rust_decimal = "1.43.0"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0.20"
+
+[dev-dependencies]
+toml = "1.1.5"

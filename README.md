@@ -101,4 +101,48 @@ pactole register path/to/file.pactole --payee Carrefour --status cleared
 pactole register path/to/file.pactole --tag vacances
 ```
 
+## Importing a bank statement (OFX)
+
+`pactole import-ofx` turns an OFX/QFX statement (OFX 1.x SGML or OFX 2.x
+XML, as exported by most banks) into canonical `.pactole` transactions,
+with the bank account and the categorization rules resolved from a
+configuration file:
+
+```sh
+pactole import-ofx statement.ofx
+```
+
+By default the configuration is read from
+`~/.config/pactole/import-ofx.toml` (or `$XDG_CONFIG_HOME/pactole/import-ofx.toml`
+when `XDG_CONFIG_HOME` is set); override it with `--config`:
+
+```toml
+bank_account = "Actifs:Banque"
+currency = "EUR"
+default_counter_account = "Depenses:A-Classer"
+
+[[rules]]
+payee_contains = "carrefour"
+counter_account = "Depenses:Alimentation"
+payee = "Carrefour"
+
+[[rules]]
+memo_contains = "salaire"
+direction = "credit"
+counter_account = "Revenus:Salaire"
+```
+
+Each transaction records its OFX `FITID` as `fitid` metadata, which makes
+re-imports idempotent. Pass `--into` an existing `.pactole` file to skip
+transactions whose `FITID` is already there, and add `--write` to append
+the new transactions to that file instead of printing them:
+
+```sh
+pactole import-ofx statement.ofx --into ledger.pactole --write
+```
+
+Generated transactions are a fragment (no `open`/`commodity`/`payee`
+declarations), so `pactole check` on them alone is expected to fail until
+they are merged into a full journal.
+
 More commands (querying balances, reports, etc.) are coming.

@@ -95,9 +95,48 @@ pactole register ledger.pactole --tag food
 `--account` also matches sub-accounts: `--account Expenses` matches
 `Expenses:Groceries`.
 
+## `pactole import-ofx`
+
+```text
+pactole import-ofx <FILE> [--config <PATH>] [--into <PATH>] [--write]
+```
+
+Imports an OFX or QFX bank statement into canonical `.pactole` transaction
+directives. Both OFX 1.x SGML and OFX 2.x XML are supported.
+
+| Option | Description |
+|---|---|
+| `<FILE>` | OFX or QFX statement to import |
+| `--config <PATH>` | TOML configuration containing the bank account and categorization rules |
+| `--into <PATH>` | Existing `.pactole` file whose `fitid` metadata is used for deduplication |
+| `--write` | Append new transactions to `--into` instead of printing them; requires `--into` |
+
+Without `--config`, Pactole reads:
+
+```text
+~/.config/pactole/import-ofx.toml
+```
+
+When `XDG_CONFIG_HOME` is set, it reads
+`$XDG_CONFIG_HOME/pactole/import-ofx.toml` instead.
+
+Without `--into`, generated transactions are printed to stdout. With `--into`,
+source transactions whose OFX `FITID` is already stored as `fitid` metadata in
+the target file are skipped. The command reports the imported and skipped counts
+on stderr.
+
+The generated output is a journal fragment: it contains transactions, but does
+not declare accounts, commodities or payees. Add it to a complete journal before
+running `pactole check`.
+
+See [Import an OFX bank statement](/how-to/import-ofx-bank-statement/) for the
+configuration format and categorization examples.
+
 ## Related
 
 - [Getting started](/tutorials/getting-started/) — a guided tour of these
   commands.
 - [Query with the register report](/how-to/query-with-register/) — worked
   filtering examples.
+- [Import an OFX bank statement](/how-to/import-ofx-bank-statement/) — configure
+  and run bank statement imports.

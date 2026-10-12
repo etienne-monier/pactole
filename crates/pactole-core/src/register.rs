@@ -111,35 +111,35 @@ pub fn register(journal: &Journal, filter: &RegisterFilter) -> Vec<RegisterEntry
 }
 
 fn transaction_matches(transaction: &Transaction, filter: &RegisterFilter) -> bool {
-    if let Some(from) = filter.from {
-        if transaction.date < from {
-            return false;
-        }
+    if let Some(from) = filter.from
+        && transaction.date < from
+    {
+        return false;
     }
-    if let Some(to) = filter.to {
-        if transaction.date > to {
-            return false;
-        }
+    if let Some(to) = filter.to
+        && transaction.date > to
+    {
+        return false;
     }
-    if let Some(status) = &filter.status {
-        if &transaction.status != status {
-            return false;
-        }
+    if let Some(status) = &filter.status
+        && &transaction.status != status
+    {
+        return false;
     }
-    if let Some(payee) = &filter.payee {
-        if !contains_case_insensitive(transaction.payee.as_deref(), payee) {
-            return false;
-        }
+    if let Some(payee) = &filter.payee
+        && !contains_case_insensitive(transaction.payee.as_deref(), payee)
+    {
+        return false;
     }
-    if let Some(narration) = &filter.narration {
-        if !contains_case_insensitive(transaction.narration.as_deref(), narration) {
-            return false;
-        }
+    if let Some(narration) = &filter.narration
+        && !contains_case_insensitive(transaction.narration.as_deref(), narration)
+    {
+        return false;
     }
-    if let Some(tag) = &filter.tag {
-        if !transaction.tags.iter().any(|t| t == tag) {
-            return false;
-        }
+    if let Some(tag) = &filter.tag
+        && !transaction.tags.iter().any(|t| t == tag)
+    {
+        return false;
     }
 
     true

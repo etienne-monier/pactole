@@ -416,3 +416,234 @@ fn register_reports_error_on_missing_file() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("error:"));
 }
+
+/// A minimal OFX 2.x (XML) bank statement with two transactions.
+const IMPORT_OFX_FIXTURE: &str = "<?OFX OFXHEADER=\"200\" VERSION=\"220\" SECURITY=\"NONE\" OLDFILEUID=\"NONE\" NEWFILEUID=\"NONE\"?>\n\
+<OFX>\n\
+<SIGNONMSGSRSV1>\n\
+<SONRS>\n\
+<STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>\n\
+<DTSERVER>20260903120000</DTSERVER>\n\
+<LANGUAGE>ENG</LANGUAGE>\n\
+</SONRS>\n\
+</SIGNONMSGSRSV1>\n\
+<BANKMSGSRSV1>\n\
+<STMTTRNRS>\n\
+<TRNUID>1</TRNUID>\n\
+<STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>\n\
+<STMTRS>\n\
+<CURDEF>EUR</CURDEF>\n\
+<BANKACCTFROM><BANKID>123456789</BANKID><ACCTID>00012345678</ACCTID><ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM>\n\
+<BANKTRANLIST>\n\
+<DTSTART>20260901</DTSTART>\n\
+<DTEND>20260930</DTEND>\n\
+<STMTTRN>\n\
+<TRNTYPE>DEBIT</TRNTYPE>\n\
+<DTPOSTED>20260903</DTPOSTED>\n\
+<TRNAMT>-45.30</TRNAMT>\n\
+<FITID>2026090300001</FITID>\n\
+<NAME>CARREFOUR</NAME>\n\
+<MEMO>Courses</MEMO>\n\
+</STMTTRN>\n\
+<STMTTRN>\n\
+<TRNTYPE>CREDIT</TRNTYPE>\n\
+<DTPOSTED>20260905</DTPOSTED>\n\
+<TRNAMT>2000.00</TRNAMT>\n\
+<FITID>2026090500002</FITID>\n\
+<NAME>ACME CORP</NAME>\n\
+<MEMO>Salary</MEMO>\n\
+</STMTTRN>\n\
+</BANKTRANLIST>\n\
+</STMTRS>\n\
+</STMTTRNRS>\n\
+</BANKMSGSRSV1>\n\
+</OFX>\n";
+
+const IMPORT_RULES_FIXTURE: &str = "bank_account = \"Actifs:Banque\"\n\
+currency = \"EUR\"\n\
+default_counter_account = \"Depenses:A-Classer\"\n\
+\n\
+[[rules]]\n\
+payee_contains = \"carrefour\"\n\
+counter_account = \"Depenses:Alimentation\"\n\
+payee = \"Carrefour\"\n";
+
+/// Write a uniquely named temporary file and return its path.
+fn write_import_temp(name: &str, content: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-import-{}-{}-{name}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("main")
+    ));
+    std::fs::write(&path, content).unwrap();
+    path
+}
+
+#[test]
+fn import_ofx_prints_transactions_to_stdout() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            rules.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&rules).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // The matched rule overrides the payee and picks the counter account.
+    assert!(stdout.contains("2026-09-03 * \"Carrefour\" \"Courses\""));
+    assert!(stdout.contains("Depenses:Alimentation 45.30 EUR"));
+    // The second transaction falls back to the default counter account.
+    assert!(stdout.contains("2026-09-05 * \"ACME CORP\" \"Salary\""));
+    assert!(stdout.contains("Depenses:A-Classer -2000.00 EUR"));
+    // The imported account carries the signed source amount...
+    assert!(stdout.contains("Actifs:Banque -45.30 EUR"));
+    assert!(stdout.contains("Actifs:Banque 2000.00 EUR"));
+    // ... and each transaction keeps its FITID for idempotent re-imports.
+    assert!(stdout.contains("fitid: 2026090300001"));
+    assert!(stdout.contains("fitid: 2026090500002"));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("imported 2 transaction(s), skipped 0"));
+}
+
+#[test]
+fn import_ofx_skips_transactions_already_in_the_target_file() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);
+    let into = write_import_temp(
+        "journal.pactole",
+        "2026-09-03 * \"Carrefour\" \"Courses\"\n\
+         \u{20}\u{20}fitid: 2026090300001\n\
+         \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
+         \u{20}\u{20}Actifs:Banque -45.30 EUR\n",
+    );
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            rules.to_str().unwrap(),
+            "--into",
+            into.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&rules).ok();
+    std::fs::remove_file(&into).ok();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The already-present transaction is gone; the other one remains.
+    assert!(!stdout.contains("2026-09-03 *"));
+    assert!(stdout.contains("2026-09-05 *"));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("imported 1 transaction(s), skipped 1"));
+}
+
+#[test]
+fn import_ofx_write_appends_to_the_target_file() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);
+    let into = write_import_temp(
+        "journal.pactole",
+        "2026-09-03 * \"Carrefour\" \"Courses\"\n\
+         \u{20}\u{20}fitid: 2026090300001\n\
+         \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
+         \u{20}\u{20}Actifs:Banque -45.30 EUR\n",
+    );
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            rules.to_str().unwrap(),
+            "--into",
+            into.to_str().unwrap(),
+            "--write",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    let written = std::fs::read_to_string(&into).unwrap();
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&rules).ok();
+    std::fs::remove_file(&into).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Nothing new on stdout when writing...
+    assert!(String::from_utf8_lossy(&output.stdout).is_empty());
+    // ... and the file keeps its original transaction plus the new one.
+    assert!(written.contains("fitid: 2026090300001"));
+    assert!(written.contains("fitid: 2026090500002"));
+    assert!(written.contains("2026-09-05 * \"ACME CORP\" \"Salary\""));
+}
+
+#[test]
+fn import_ofx_reports_missing_configuration() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let missing = std::env::temp_dir().join(format!(
+        "pactole-import-missing-{}-{}.toml",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("main")
+    ));
+    std::fs::remove_file(&missing).ok();
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            missing.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error: cannot read configuration"));
+}
+
+#[test]
+fn import_ofx_write_requires_into() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+
+    let output = pactole_cmd()
+        .args(["import-ofx", ofx.to_str().unwrap(), "--write"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+
+    assert!(!output.status.success());
+}

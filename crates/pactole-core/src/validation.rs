@@ -139,13 +139,13 @@ fn validate_transaction(
     declared_commodities: &HashSet<CommodityName>,
     declared_payees: &HashSet<String>,
 ) -> Result<(), ValidationError> {
-    if let Some(payee) = &transaction.payee {
-        if !declared_payees.contains(payee) {
-            return Err(ValidationError::PayeeNotDeclared {
-                payee: payee.clone(),
-                date: transaction.date,
-            });
-        }
+    if let Some(payee) = &transaction.payee
+        && !declared_payees.contains(payee)
+    {
+        return Err(ValidationError::PayeeNotDeclared {
+            payee: payee.clone(),
+            date: transaction.date,
+        });
     }
 
     for posting in &transaction.postings {
@@ -155,13 +155,13 @@ fn validate_transaction(
                 date: transaction.date,
             });
         }
-        if let Some(amount) = &posting.amount {
-            if !declared_commodities.contains(&amount.commodity) {
-                return Err(ValidationError::CommodityNotDeclared {
-                    commodity: amount.commodity.clone(),
-                    date: transaction.date,
-                });
-            }
+        if let Some(amount) = &posting.amount
+            && !declared_commodities.contains(&amount.commodity)
+        {
+            return Err(ValidationError::CommodityNotDeclared {
+                commodity: amount.commodity.clone(),
+                date: transaction.date,
+            });
         }
     }
 
@@ -176,14 +176,14 @@ fn validate_transaction(
         if allowed.is_empty() {
             continue;
         }
-        if let Some(amount) = &posting.amount {
-            if !allowed.contains(&amount.commodity) {
-                return Err(ValidationError::CommodityNotAllowed {
-                    account: posting.account.clone(),
-                    commodity: amount.commodity.clone(),
-                    date: transaction.date,
-                });
-            }
+        if let Some(amount) = &posting.amount
+            && !allowed.contains(&amount.commodity)
+        {
+            return Err(ValidationError::CommodityNotAllowed {
+                account: posting.account.clone(),
+                commodity: amount.commodity.clone(),
+                date: transaction.date,
+            });
         }
     }
 

@@ -36,4 +36,6 @@ All commands are run from this directory:
 
 Much of the reference material is distilled from the repository's top-level
 `README.md` and `GRAMMAR.md`, which remain the primary sources for the
-command-line usage and the grammar respectively.
+command-line usage and the grammar respectively. The
+[OFX import guide](src/content/docs/how-to/import-ofx-bank-statement.md) also
+documents the `pactole-import` crate and its `import-ofx` command.

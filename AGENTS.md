@@ -18,7 +18,7 @@ Users record financial transactions in human-readable, git-friendly `.pactole` f
 
 ## 2. Workspace & Architecture
 
-Pactole is structured as a Cargo workspace, currently with six crates. A future
+Pactole is structured as a Cargo workspace, currently with seven crates. A future
 database-backed storage crate is anticipated but not yet created; see "Planned Crates" below.
 
 ```text
@@ -28,6 +28,7 @@ pactole/
 │   ├── pactole-core/          # Pure domain models, validation, and reports
 │   ├── pactole-syntax/        # Tolerant CST analysis, spans, and syntax diagnostics
 │   ├── pactole-storage-fs/    # Tree-sitter-based parser, includes, and canonical formatter
+│   ├── pactole-import/        # Import external formats (OFX) into domain models
 │   ├── pactole-lsp/           # Minimal stdio Language Server Protocol server
 │   └── pactole-cli/           # Command-line binary (`pactole`) and CLI tests
 ├── GRAMMAR.md                 # Specification of the .pactole syntax
@@ -75,7 +76,10 @@ pactole/
 4. **`pactole-storage-fs`**:
    - Implements `ReadableStorage` for local files (`PactoleFileStorage`).
    - `parser.rs`: Converts tree-sitter CST nodes into `pactole-core` domain models and handles recursive resolution of `include` directives.
-   - `printer.rs`: Formats AST/source code into canonical `.pactole` layout.
+   - `printer.rs`: Formats AST/source code into canonical `.pactole` layout. Also exposes
+     `format_transactions(&[Transaction]) -> String`, which serializes a list of domain
+     transactions into canonical `.pactole` text (used by `pactole import-ofx`; the inverse of
+     parsing for that subset of directives).
    - `errors.rs`: `PactoleFsStorageError`.
    - **Reuses `pactole-syntax`**: parser initialization and syntax-error detection go through
      `pactole_syntax::parse_document`/`ParsedDocument::into_result`, so tree-sitter parser setup
@@ -145,6 +149,14 @@ pactole/
      - `pactole fmt <file> [--write]`: Format `.pactole` file canonically (supports `-` for stdin).
      - `pactole check <file>`: Syntax parsing + business validation.
      - `pactole register <file> [filters]`: Register report with running balances.
+     - `pactole import-ofx <file> [--config <path>] [--into <path>] [--write]`: Import an OFX/QFX
+       statement (SGML 1.x or XML 2.x) into canonical `.pactole` transactions, via
+       `pactole_import::import_ofx` + `pactole_storage_fs::format_transactions`. Configuration
+       (bank account, default counter account, optional fallback currency, `[[rules]]`) is read
+       from `~/.config/pactole/import-ofx.toml` by default (overridable with `--config`). Without
+       `--into`, transactions are printed to stdout; with `--into <file>`, FITIDs already present
+       in that file are skipped (idempotence), and with `--write` the generated transactions are
+       appended to it.
    - Integration tests in `crates/pactole-cli/tests/cli.rs`.
 
 5. **`pactole-lsp`**:
@@ -203,6 +215,35 @@ pactole/
    - Has no dependency on `thiserror`: it has no error enums of its own, only propagating errors
      via `Box<dyn Error + Sync + Send>` in `server.rs`.
 
+7. **`pactole-import`**:
+   - **Edge adapter, zero I/O, depends only on `pactole-core`** (plus `chrono`, `rust_decimal`,
+     `serde`): translates a foreign input format into pure domain models. It knows nothing about
+     tree-sitter, `pactole-storage-fs`, the `.pactole` text format, or the configuration file
+     format, so it is reusable by any front-end (the `pactole` CLI today, a future
+     `pactole-storage-db`, the LSP tomorrow).
+   - **Key modules**:
+     - `record.rs`: `ImportRecord`, a format-neutral intermediate representation (date, signed
+       amount, currency, payee, memo, transaction type, check number, reference, FITID).
+     - `ofx.rs`: OFX parser (1.x SGML and 2.x XML, via the `ofx-rs` crate) producing
+       `ImportRecord`s.
+     - `config.rs`: `ImportConfig`, `Rule`, `Direction` — serde types describing the bank
+       account, the default counter account, the optional fallback currency and the
+       categorization rules. These types fix no file format; the caller chooses TOML.
+     - `rules.rs`: shared rule engine lowering an `ImportRecord` into a balanced
+       `pactole_core::Transaction` (first matching rule wins, otherwise the default counter
+       account; a rule may also override the payee).
+     - `error.rs`: `ImportError`.
+   - **Public API**: `import_ofx(source, &config, &HashSet<String>) -> Result<ImportOutcome,
+     ImportError>`, plus `ImportConfig`, `Rule`, `Direction`, `ImportRecord`, `ImportOutcome`,
+     `ImportWarning`, `ImportError`. `import_ofx` skips any source transaction whose FITID is
+     already in `known_fitids` (reported in `ImportOutcome::skipped`), and stores each produced
+     transaction's FITID as `fitid` metadata so a later run can rebuild `known_fitids`.
+   - **Deliberate two-step pipeline** (format parser → `ImportRecord`, then shared rule engine →
+     `Transaction`) so future importers (CSV, QIF, ...) reuse the rule engine instead of
+     duplicating it. Only OFX is implemented for now.
+   - **Serialization stays out of this crate**: turning the produced `Transaction`s into
+     `.pactole` text is `pactole_storage_fs::format_transactions`, called by the CLI.
+
 ### Planned Crates (not yet created)
 
 - **A future database-backed storage crate** (e.g. `pactole-storage-db`): expected to implement
@@ -260,6 +301,7 @@ cargo test -p pactole-cli --test cli
 cargo test -p pactole-core
 cargo test -p pactole-syntax
 cargo test -p pactole-storage-fs
+cargo test -p pactole-import
 cargo test -p pactole-lsp
 ```
 
@@ -319,7 +361,7 @@ If modifying `crates/tree-sitter-pactole/grammar.js`:
 
 ## 5. Coding Guidelines & Best Practices
 
-- **Strict Architecture Boundaries**: Never import storage or parser code into `pactole-core`. `pactole-syntax` must never depend on `pactole-core` or perform I/O; it stays purely syntactic (CST, spans, diagnostics). `pactole-storage-fs`'s existing strict API and the canonical formatter remain unchanged and stay in `pactole-storage-fs`. `pactole-lsp` only consumes `pactole-storage-fs`/`pactole-syntax` through their existing public API and does not read `~/.config/pactole`.
+- **Strict Architecture Boundaries**: Never import storage or parser code into `pactole-core`. `pactole-syntax` must never depend on `pactole-core` or perform I/O; it stays purely syntactic (CST, spans, diagnostics). `pactole-storage-fs`'s existing strict API and the canonical formatter remain unchanged and stay in `pactole-storage-fs`. `pactole-import` depends only on `pactole-core`, performs no I/O, and knows nothing of tree-sitter, `pactole-storage-fs`, the `.pactole` text format, or the config file format. `pactole-lsp` only consumes `pactole-storage-fs`/`pactole-syntax` through their existing public API and does not read `~/.config/pactole`.
 - **Financial Precision**: Never use `f32` or `f64` for money amounts. Always use `rust_decimal::Decimal`.
 - **Error Handling**:
   - Prefer structured errors via `thiserror` enums (`ModelError`, `ValidationError`, `PactoleFsStorageError`).
@@ -327,5 +369,7 @@ If modifying `crates/tree-sitter-pactole/grammar.js`:
 - **Testing**:
   - For domain logic / validation, add unit tests in `pactole-core`.
   - For parsing / formatting, add unit tests in `pactole-storage-fs`.
+  - For external-format import (OFX, ...), add integration tests in `pactole-import`
+    (`crates/pactole-import/tests/`), with fixtures under `tests/fixtures/`.
   - For end-to-end command behavior, add integration tests in `crates/pactole-cli/tests/cli.rs`.
 - **Minimal Diffs**: Keep changes focused and avoid reformatting unrelated code.

@@ -1,4 +1,5 @@
 use crate::errors::PactoleFsStorageError;
+use pactole_core::{Transaction, TransactionStatus};
 use pactole_syntax::parse_document;
 use tree_sitter::Node;
 
@@ -62,6 +63,189 @@ pub fn format(source: &str) -> Result<String, PactoleFsStorageError> {
         })?;
 
     Ok(Printer { source }.print_source_file(doc.root_node()))
+}
+
+/// Render a list of [`Transaction`]s into canonical `.pactole` source text.
+///
+/// This is the inverse of parsing for the subset of directives produced by
+/// importing an external statement (see `pactole-import`): each transaction is
+/// printed as a header line, then its metadata, then its postings, with the
+/// layout `pactole fmt` would produce. Transactions are separated by a single
+/// blank line and the result ends with a newline.
+///
+/// This is a best-effort, output-only serializer: since the grammar's strings
+/// cannot contain `"` or a newline, any such character inside a payee,
+/// narration or string metadata value is replaced by a space. Metadata values
+/// that look like a date or a number are printed unquoted, everything else is
+/// quoted as a string.
+pub fn format_transactions(transactions: &[Transaction]) -> String {
+    let mut out = String::new();
+
+    for (index, transaction) in transactions.iter().enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        print_transaction(transaction, &mut out);
+    }
+
+    out
+}
+
+/// Print one transaction, ending with a trailing newline.
+fn print_transaction(transaction: &Transaction, out: &mut String) {
+    out.push_str(&transaction.date.format("%Y-%m-%d").to_string());
+    if let Some(effective_date) = transaction.effective_date {
+        out.push('=');
+        out.push_str(&effective_date.format("%Y-%m-%d").to_string());
+    }
+
+    out.push(' ');
+    out.push(match transaction.status {
+        TransactionStatus::Cleared => '*',
+        TransactionStatus::Pending => '!',
+        TransactionStatus::Uncleared => '?',
+    });
+
+    out.push(' ');
+    out.push_str(&quote_string(transaction.payee.as_deref().unwrap_or("")));
+    if let Some(narration) = &transaction.narration {
+        out.push(' ');
+        out.push_str(&quote_string(narration));
+    }
+
+    for tag in &transaction.tags {
+        out.push_str(" #");
+        out.push_str(tag);
+    }
+    for link in &transaction.links {
+        out.push_str(" ^");
+        out.push_str(link);
+    }
+    if let Some(reference) = &transaction.reference {
+        out.push_str(" (");
+        out.push_str(reference);
+        out.push(')');
+    }
+    out.push('\n');
+
+    // Directive-level metadata must come before the postings.
+    for (key, value) in &transaction.meta {
+        out.push_str("  ");
+        out.push_str(key.as_str());
+        out.push_str(": ");
+        out.push_str(&render_metadata_value(value));
+        out.push('\n');
+    }
+
+    for posting in &transaction.postings {
+        out.push_str("  ");
+        out.push_str(posting.account.as_str());
+        if let Some(amount) = &posting.amount {
+            out.push(' ');
+            out.push_str(&amount.number.to_string());
+            out.push(' ');
+            out.push_str(amount.commodity.as_str());
+        }
+        out.push('\n');
+
+        for (key, value) in &posting.meta {
+            out.push_str("    ");
+            out.push_str(key.as_str());
+            out.push_str(": ");
+            out.push_str(&render_metadata_value(value));
+            out.push('\n');
+        }
+    }
+}
+
+/// Quote a raw string value for the grammar, which does not support escapes:
+/// any `"` or line break is replaced by a space so the output stays parseable.
+fn quote_string(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for character in value.chars() {
+        out.push(match character {
+            '"' | '\n' | '\r' => ' ',
+            other => other,
+        });
+    }
+    out.push('"');
+    out
+}
+
+/// Render a metadata value, leaving dates and numbers unquoted and quoting
+/// everything else as a string.
+fn render_metadata_value(value: &str) -> String {
+    if is_grammar_date(value) || is_grammar_number(value) {
+        value.to_string()
+    } else {
+        quote_string(value)
+    }
+}
+
+/// Whether `value` matches the grammar's `date` rule exactly
+/// (`YYYY-MM-DD`), so it can be emitted unquoted.
+fn is_grammar_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+
+    bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+}
+
+/// Whether `value` matches the grammar's `number` rule exactly
+/// (`-?\d+(,\d{3})*(\.\d+)?`), so it can be emitted unquoted.
+///
+/// This deliberately does *not* go through `Decimal::from_str`: that parser
+/// accepts scientific notation (e.g. an alphanumeric FITID such as
+/// `20260903e0001`), which would then be emitted unquoted and reparsed as a
+/// different value. Matching the grammar's own syntax guarantees the emitted
+/// text reparses to the exact same string.
+fn is_grammar_number(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+
+    if bytes.first() == Some(&b'-') {
+        index = 1;
+    }
+
+    let integer_start = index;
+    while index < bytes.len() && bytes[index].is_ascii_digit() {
+        index += 1;
+    }
+    if index == integer_start {
+        return false;
+    }
+
+    // Optional thousands separators, each followed by exactly three digits.
+    while index < bytes.len() && bytes[index] == b',' {
+        if index + 3 >= bytes.len()
+            || !bytes[index + 1].is_ascii_digit()
+            || !bytes[index + 2].is_ascii_digit()
+            || !bytes[index + 3].is_ascii_digit()
+        {
+            return false;
+        }
+        index += 4;
+    }
+
+    // Optional fractional part.
+    if index < bytes.len() && bytes[index] == b'.' {
+        index += 1;
+        let fraction_start = index;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+        }
+        if index == fraction_start {
+            return false;
+        }
+    }
+
+    index == bytes.len()
 }
 
 struct Printer<'src> {
@@ -212,10 +396,10 @@ impl<'src> Printer<'src> {
         let mut prev_end_row: Option<usize> = None;
 
         for child in root.named_children(&mut cursor) {
-            if let Some(prev) = prev_end_row {
-                if child.start_position().row.saturating_sub(prev) >= 1 {
-                    out.push('\n');
-                }
+            if let Some(prev) = prev_end_row
+                && child.start_position().row.saturating_sub(prev) >= 1
+            {
+                out.push('\n');
             }
 
             match child.kind() {
@@ -404,5 +588,118 @@ mod tests {
         let twice = format(&once).unwrap();
 
         assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn format_transactions_round_trips_through_the_parser() {
+        use crate::parser::parse;
+        use chrono::NaiveDate;
+        use pactole_core::{
+            AccountName, Amount, CommodityName, Metadata, MetadataKey, Posting, Transaction,
+            TransactionStatus,
+        };
+        use rust_decimal::Decimal;
+
+        let mut meta = Metadata::new();
+        meta.insert(
+            MetadataKey::new("fitid").unwrap(),
+            "2026090300001".to_string(),
+        );
+
+        let transaction = Transaction {
+            date: NaiveDate::from_ymd_opt(2026, 9, 3).unwrap(),
+            effective_date: None,
+            status: TransactionStatus::Cleared,
+            payee: Some("Carrefour".to_string()),
+            narration: Some("Courses".to_string()),
+            postings: vec![
+                Posting {
+                    account: AccountName::new("Depenses:Alimentation").unwrap(),
+                    amount: Some(Amount {
+                        number: "45.30".parse::<Decimal>().unwrap(),
+                        commodity: CommodityName::new("EUR").unwrap(),
+                    }),
+                    meta: Metadata::new(),
+                },
+                Posting {
+                    account: AccountName::new("Actifs:Banque").unwrap(),
+                    amount: Some(Amount {
+                        number: "-45.30".parse::<Decimal>().unwrap(),
+                        commodity: CommodityName::new("EUR").unwrap(),
+                    }),
+                    meta: Metadata::new(),
+                },
+            ],
+            tags: Vec::new(),
+            links: Vec::new(),
+            reference: Some("CB-1".to_string()),
+            meta,
+        };
+
+        let source = super::format_transactions(std::slice::from_ref(&transaction));
+        let journal = parse(&source, None).unwrap();
+
+        let entries = journal.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0], pactole_core::Entry::Transaction(transaction));
+    }
+
+    #[test]
+    fn render_metadata_value_distinguishes_dates_numbers_and_strings() {
+        // Dates and grammar-sized numbers are emitted bare...
+        assert_eq!(super::render_metadata_value("2026-09-03"), "2026-09-03");
+        assert_eq!(
+            super::render_metadata_value("2026090300001"),
+            "2026090300001"
+        );
+        assert_eq!(super::render_metadata_value("-1,234.50"), "-1,234.50");
+
+        // ... while anything else is quoted, including values that a naive
+        // decimal parser would have accepted as scientific notation.
+        assert_eq!(
+            super::render_metadata_value("20260903e0001"),
+            "\"20260903e0001\""
+        );
+        assert_eq!(super::render_metadata_value("SGML-1"), "\"SGML-1\"");
+        assert_eq!(super::render_metadata_value(""), "\"\"");
+    }
+
+    #[test]
+    fn format_transactions_quotes_non_numeric_metadata() {
+        use crate::parser::parse;
+        use chrono::NaiveDate;
+        use pactole_core::{
+            AccountName, Amount, CommodityName, Metadata, MetadataKey, Posting, Transaction,
+            TransactionStatus,
+        };
+        use rust_decimal::Decimal;
+
+        let mut meta = Metadata::new();
+        meta.insert(MetadataKey::new("fitid").unwrap(), "SGML-1".to_string());
+
+        let transaction = Transaction {
+            date: NaiveDate::from_ymd_opt(2026, 9, 3).unwrap(),
+            effective_date: None,
+            status: TransactionStatus::Cleared,
+            payee: Some("Boulangerie".to_string()),
+            narration: None,
+            postings: vec![Posting {
+                account: AccountName::new("Depenses:A-Classer").unwrap(),
+                amount: Some(Amount {
+                    number: "12.00".parse::<Decimal>().unwrap(),
+                    commodity: CommodityName::new("EUR").unwrap(),
+                }),
+                meta: Metadata::new(),
+            }],
+            tags: Vec::new(),
+            links: Vec::new(),
+            reference: None,
+            meta,
+        };
+
+        let source = super::format_transactions(&[transaction]);
+
+        assert!(source.contains("fitid: \"SGML-1\""));
+        assert!(parse(&source, None).is_ok());
     }
 }

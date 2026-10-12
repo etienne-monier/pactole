@@ -120,6 +120,8 @@ pactole register ledger.pactole --account Expenses:Groceries
 
 ## Where to go next
 
+- Import a bank statement with the
+  [OFX import guide](/how-to/import-ofx-bank-statement/).
 - Add another transaction and explore the filters in the
   [command-line reference](/reference/cli/).
 - Learn the meaning of every keyword in the [grammar reference](/reference/grammar/).
