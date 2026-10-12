@@ -1,40 +1,71 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
+title: Pactole
+description: A plain-text double-entry accounting ledger tool written in Rust.
+template: splash
 hero:
-  tagline: Congrats on setting up a new Starlight project!
+  tagline: Plain-text, git-friendly double-entry accounting.
   image:
-    file: ../../assets/houston.webp
+    file: ../../assets/pactole-logo.svg
+    alt: Pactole
   actions:
-    - text: Example Guide
-      link: /guides/example/
+    - text: Getting started
+      link: tutorials/getting-started/
       icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
+    - text: Command-line reference
+      link: reference/cli/
       icon: external
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Next steps
+Pactole lets you record your transactions in human-readable, git-friendly
+`.pactole` files — in the spirit of [Beancount](https://beancount.github.io/docs/)
+and Ledger-cli — and parse, check, format and query them from the command line.
+
+## How this documentation is organized
+
+Following the [Diátaxis](https://diataxis.fr/) / Divio documentation system,
+this site is split into four sections, each answering a different kind of need.
 
 <CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
+	<Card title="Tutorials" icon="open-book">
+		Learning-oriented lessons that take you by the hand through your first
+		steps with Pactole. [Start here](/tutorials/getting-started/).
 	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
+	<Card title="How-to guides" icon="puzzle">
+		Problem-oriented recipes for accomplishing a specific task, such as
+		[recording a transaction](/how-to/record-a-transaction/) or
+		[splitting a journal with includes](/how-to/split-a-journal-with-includes/).
 	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
+	<Card title="Reference" icon="document">
+		Information-oriented, terse descriptions of what Pactole offers: the
+		[grammar](/reference/grammar/), the [directives](/reference/directives/)
+		and the [command-line interface](/reference/cli/).
 	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
-	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
+	<Card title="Explanation" icon="knowledge">
+		Understanding-oriented discussion of the ideas behind Pactole, from
+		[double-entry accounting](/explanation/double-entry-accounting/) to
+		[how it differs from Beancount](/explanation/differences-from-beancount/).
 	</Card>
 </CardGrid>
+
+## Quick glance
+
+```pactole
+2026-01-01 open Assets:Checking
+2026-01-01 commodity EUR
+payee "Whole Foods"
+
+2026-09-03 * "Whole Foods" "Weekly groceries"
+  Expenses:Groceries 45.30 EUR
+  Assets:Checking -45.30 EUR
+```
+
+```sh
+pactole check my-ledger.pactole
+pactole register my-ledger.pactole --account Expenses:Groceries
+```
+
+Pactole is a work in progress: more commands (querying balances, reports, etc.)
+are coming.
