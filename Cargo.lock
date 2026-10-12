@@ -618,8 +618,7 @@ dependencies = [
 [[package]]
 name = "ofx-rs"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2a8200cbd088af447f7e812d6394bfca752e55c91ec5132a01e41304bbe03a9"
+source = "git+https://github.com/etienne-monier/ofx-rs.git?rev=8ffb65f0244c33810e3557805278ff23e44803bd#8ffb65f0244c33810e3557805278ff23e44803bd"
 dependencies = [
  "quick-xml",
  "rust_decimal",
@@ -773,9 +772,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.39.4"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdcc8dd4e2f670d309a5f0e83fe36dfdc05af317008fea29144da1a2ac858e5e"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
 ]
@@ -1368,9 +1367,9 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
+checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
 dependencies = [
  "proc-macro2",
  "quote",
