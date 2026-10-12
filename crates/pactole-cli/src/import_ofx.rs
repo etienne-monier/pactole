@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use pactole_core::Entry;
 
-use crate::config::default_import_config_path;
+use crate::config::{default_import_config_path, format_options};
 
 pub(crate) fn run(
     file: PathBuf,
@@ -13,6 +13,14 @@ pub(crate) fn run(
     into: Option<PathBuf>,
     write: bool,
 ) -> ExitCode {
+    let format_options = match format_options() {
+        Ok(options) => options,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     let config_path = match config.or_else(default_import_config_path) {
         Some(path) => path,
         None => {
@@ -82,7 +90,10 @@ pub(crate) fn run(
         eprintln!("warning: {}", describe_warning(warning));
     }
 
-    let generated = pactole_storage_fs::format_transactions(&outcome.transactions);
+    let generated = pactole_storage_fs::format_transactions_with_options(
+        &outcome.transactions,
+        &format_options,
+    );
 
     if write {
         let path = into.as_deref().unwrap_or_else(|| Path::new(""));

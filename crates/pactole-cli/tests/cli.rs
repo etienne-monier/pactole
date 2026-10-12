@@ -257,10 +257,9 @@ fn fmt_prints_canonical_form_to_stdout() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // The shipped fixture is already in canonical form, so formatting it
-    // must be a no-op.
-    let expected = std::fs::read_to_string(SAMPLE_FILE).unwrap();
-    assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Depenses:Alimentation                  45.30 EUR\n"));
+    assert!(stdout.contains("Actifs:Compte-Joint                   -45.30 EUR\n"));
 }
 
 #[test]

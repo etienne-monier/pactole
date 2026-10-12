@@ -24,10 +24,10 @@ const INLINE_KINDS: &[&str] = &[
 /// The formatter walks the tree-sitter concrete syntax tree and rewrites
 /// whitespace only:
 ///
-/// - directive headers, `key: value` metadata and `account amount`
-///   posting lines get canonical single-space separators (with `=` and
-///   `:` glued to their neighbour, e.g. `date=effective_date`,
-///   `key: value`);
+/// - directive headers and `key: value` metadata get canonical single-space
+///   separators (with `=` and `:` glued to their neighbour, e.g.
+///   `date=effective_date`, `key: value`); posting amounts are aligned to the
+///   configured posting width;
 /// - the directive body is indented with two spaces per level (metadata
 ///   and postings, four spaces for a posting's own metadata), matching
 ///   the style used throughout `GRAMMAR.md`;
@@ -53,6 +53,28 @@ const INLINE_KINDS: &[&str] = &[
 /// file with syntax errors could silently corrupt it, so this refuses to
 /// guess and reports a parse error instead.
 pub fn format(source: &str) -> Result<String, PactoleFsStorageError> {
+    format_with_options(source, &FormatOptions::default())
+}
+
+/// Options controlling canonical `.pactole` formatting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormatOptions {
+    /// Target width of a posting line. Amounts (including their commodity) are
+    /// right-aligned to this column when possible.
+    pub posting_width: usize,
+}
+
+impl Default for FormatOptions {
+    fn default() -> Self {
+        Self { posting_width: 50 }
+    }
+}
+
+/// Reformat a `.pactole` source string using explicit formatting options.
+pub fn format_with_options(
+    source: &str,
+    options: &FormatOptions,
+) -> Result<String, PactoleFsStorageError> {
     let doc = parse_document(source)
         .into_result()
         .map_err(|diagnostics| {
@@ -62,7 +84,7 @@ pub fn format(source: &str) -> Result<String, PactoleFsStorageError> {
             ))
         })?;
 
-    Ok(Printer { source }.print_source_file(doc.root_node()))
+    Ok(Printer { source, options }.print_source_file(doc.root_node()))
 }
 
 /// Render a list of [`Transaction`]s into canonical `.pactole` source text.
@@ -79,20 +101,28 @@ pub fn format(source: &str) -> Result<String, PactoleFsStorageError> {
 /// that look like a date or a number are printed unquoted, everything else is
 /// quoted as a string.
 pub fn format_transactions(transactions: &[Transaction]) -> String {
+    format_transactions_with_options(transactions, &FormatOptions::default())
+}
+
+/// Render transactions using explicit formatting options.
+pub fn format_transactions_with_options(
+    transactions: &[Transaction],
+    options: &FormatOptions,
+) -> String {
     let mut out = String::new();
 
     for (index, transaction) in transactions.iter().enumerate() {
         if index > 0 {
             out.push('\n');
         }
-        print_transaction(transaction, &mut out);
+        print_transaction(transaction, options, &mut out);
     }
 
     out
 }
 
 /// Print one transaction, ending with a trailing newline.
-fn print_transaction(transaction: &Transaction, out: &mut String) {
+fn print_transaction(transaction: &Transaction, options: &FormatOptions, out: &mut String) {
     out.push_str(&transaction.date.format("%Y-%m-%d").to_string());
     if let Some(effective_date) = transaction.effective_date {
         out.push('=');
@@ -141,10 +171,8 @@ fn print_transaction(transaction: &Transaction, out: &mut String) {
         out.push_str("  ");
         out.push_str(posting.account.as_str());
         if let Some(amount) = &posting.amount {
-            out.push(' ');
-            out.push_str(&amount.number.to_string());
-            out.push(' ');
-            out.push_str(amount.commodity.as_str());
+            let rendered_amount = format!("{} {}", amount.number, amount.commodity);
+            append_aligned_amount(out, &rendered_amount, options.posting_width);
         }
         out.push('\n');
 
@@ -181,6 +209,17 @@ fn render_metadata_value(value: &str) -> String {
     } else {
         quote_string(value)
     }
+}
+
+/// Append an amount so that its right edge reaches `posting_width`, while
+/// keeping at least one separator after the account when the line is already
+/// wider than the configured width.
+fn append_aligned_amount(out: &mut String, amount: &str, posting_width: usize) {
+    let padding = posting_width
+        .saturating_sub(out.len() + amount.len())
+        .max(1);
+    out.extend(std::iter::repeat_n(' ', padding));
+    out.push_str(amount);
 }
 
 /// Whether `value` matches the grammar's `date` rule exactly
@@ -250,6 +289,7 @@ fn is_grammar_number(value: &str) -> bool {
 
 struct Printer<'src> {
     source: &'src str,
+    options: &'src FormatOptions,
 }
 
 impl<'src> Printer<'src> {
@@ -346,11 +386,17 @@ impl<'src> Printer<'src> {
         let mut header = String::new();
 
         for child in node.named_children(&mut cursor) {
-            if matches!(child.kind(), "account" | "amount") {
-                if !header.is_empty() {
-                    header.push(' ');
+            match child.kind() {
+                "account" => header.push_str(self.render(child).trim()),
+                "amount" => {
+                    let rendered_amount = self.render(child);
+                    append_aligned_amount(
+                        &mut header,
+                        &rendered_amount,
+                        self.options.posting_width.saturating_sub(2),
+                    );
                 }
-                header.push_str(&self.render(child));
+                _ => {}
             }
         }
 
@@ -430,7 +476,7 @@ impl<'src> Printer<'src> {
 
 #[cfg(test)]
 mod tests {
-    use super::format;
+    use super::{FormatOptions, format, format_with_options};
 
     #[test]
     fn normalizes_whitespace_and_indentation() {
@@ -450,7 +496,10 @@ mod tests {
         let source = "2026-09-03=2026-09-05 * \"Payee\"\n\
                        \x20 Assets:Checking 10.00 EUR\n";
 
-        assert_eq!(format(source).unwrap(), source);
+        assert_eq!(
+            format(source).unwrap(),
+            "2026-09-03=2026-09-05 * \"Payee\"\n  Assets:Checking                        10.00 EUR\n"
+        );
     }
 
     #[test]
@@ -539,7 +588,12 @@ mod tests {
                        Expenses:Groceries 45.30 EUR ; a note\n  \
                        Assets:Checking -45.30 EUR\n";
 
-        assert_eq!(format(source).unwrap(), source);
+        assert_eq!(
+            format(source).unwrap(),
+            "2026-09-03 * \"Carrefour\" \"Courses\"\n  \
+             Expenses:Groceries                     45.30 EUR ; a note\n  \
+             Assets:Checking                       -45.30 EUR\n"
+        );
     }
 
     #[test]
@@ -560,9 +614,9 @@ mod tests {
         assert_eq!(
             format(source).unwrap(),
             "2026-09-03 * \"Carrefour\" \"Courses\"\n  \
-             Expenses:Groceries 45.30 EUR\n    \
+             Expenses:Groceries                     45.30 EUR\n    \
              ; a note\n  \
-             Assets:Checking -45.30 EUR\n"
+             Assets:Checking                       -45.30 EUR\n"
         );
     }
 
@@ -572,7 +626,28 @@ mod tests {
                        Expenses:Groceries 45.30 EUR\n  \
                        Assets:Checking -45.30 EUR\n";
 
-        assert_eq!(format(source).unwrap(), source);
+        assert_eq!(
+            format(source).unwrap(),
+            "2026-09-03 * \"Carrefour\" \"Courses\" ; a note\n  \
+             Expenses:Groceries                     45.30 EUR\n  \
+             Assets:Checking                       -45.30 EUR\n"
+        );
+    }
+
+    #[test]
+    fn aligns_amounts_and_commodities_to_the_configured_width() {
+        let source = "2026-09-03 * \"Shop\"\n  \
+                       Expenses:Groceries 45.30 EUR\n  \
+                       Assets:Checking -1.00 EUR\n";
+
+        let formatted = format_with_options(source, &FormatOptions { posting_width: 30 }).unwrap();
+
+        assert_eq!(
+            formatted,
+            "2026-09-03 * \"Shop\"\n  \
+             Expenses:Groceries 45.30 EUR\n  \
+             Assets:Checking    -1.00 EUR\n"
+        );
     }
 
     #[test]

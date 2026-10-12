@@ -14,7 +14,10 @@ pub use crate::analysis::{
 };
 pub use crate::errors::PactoleFsStorageError;
 pub use crate::loader::{FsSourceLoader, InMemorySourceLoader, SourceLoadError, SourceLoader};
-pub use crate::printer::{format, format_transactions};
+pub use crate::printer::{
+    FormatOptions, format, format_transactions, format_transactions_with_options,
+    format_with_options,
+};
 
 /// Formats a list of syntax diagnostics into a single human-readable string,
 /// prefixed with the position of the first diagnostic (line:column) so callers

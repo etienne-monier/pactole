@@ -106,6 +106,14 @@ printing the result to stdout:
 cat path/to/file.pactole | pactole fmt -
 ```
 
+Posting amounts and commodities are right-aligned to 50 columns by default.
+Override the width in `~/.config/pactole/format.toml` (or
+`$XDG_CONFIG_HOME/pactole/format.toml`):
+
+```toml
+posting_width = 50
+```
+
 List the transactions of a file, one line per matching posting, with
 a running balance kept per commodity (like the `register` report of
 other plain-text accounting tools). Without any filter, every posting
