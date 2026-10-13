@@ -100,6 +100,27 @@ fn is_indented(line_text: &str) -> bool {
     line_text.starts_with(' ') || line_text.starts_with('\t')
 }
 
+fn is_complete_date_token(token: &str) -> bool {
+    let date = token.split_once('=').map_or(
+        token,
+        |(date, effective)| {
+            if effective.len() == 10 { date } else { "" }
+        },
+    );
+    date.len() == 10
+        && date.as_bytes()[4] == b'-'
+        && date.as_bytes()[7] == b'-'
+        && date
+            .bytes()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+}
+
+fn transaction_header_before_payee(text: &str) -> bool {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    words.len() == 2 && is_complete_date_token(words[0]) && matches!(words[1], "*" | "!" | "?")
+}
+
 fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
     vec![
         ("open", "Open an account"),
@@ -131,17 +152,14 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
         // Look backwards from quote
         let before_quote = &line_text[..quote_idx];
         if before_quote.trim_end().ends_with("include") {
-            let prefix = rest
-                .chars()
-                .take_while(|c| *c != '"' && *c != '\n' && *c != '\r')
-                .collect();
+            let prefix = line_text[quote_idx + 1..].to_string();
             return CompletionContext::IncludePath { prefix };
         }
-        if before_quote.trim_end().ends_with("payee") {
-            let prefix = rest
-                .chars()
-                .take_while(|c| *c != '"' && *c != '\n' && *c != '\r')
-                .collect();
+        if before_quote.trim_end().ends_with("payee")
+            || (before_quote.matches('"').count() == 0
+                && transaction_header_before_payee(before_quote.trim_end()))
+        {
+            let prefix = line_text[quote_idx + 1..].to_string();
             return CompletionContext::Payee { prefix };
         }
     }
@@ -214,10 +232,11 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
     if words.is_empty() {
         return CompletionContext::DirectiveKeyword { date_range: None };
     }
-    let first = words[0];
+    let keyword_index = usize::from(is_complete_date_token(words[0]));
+    let first = words.get(keyword_index).copied().unwrap_or_default();
     match first {
         "open" | "close" | "balance" => {
-            if words.len() >= 2 {
+            if words.len() > keyword_index + 1 {
                 let prefix = words[words.len() - 1].to_string();
                 return CompletionContext::Account { prefix };
             }
@@ -226,7 +245,7 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
             }
         }
         "commodity" => {
-            if words.len() >= 2 {
+            if words.len() > keyword_index + 1 {
                 let prefix = words[words.len() - 1].to_string();
                 return CompletionContext::Commodity { prefix };
             }
@@ -478,5 +497,39 @@ mod tests {
                 .all(|item| item.detail.as_deref() != Some("Today's date"))
         );
         assert!(items.iter().any(|item| item.label == "open"));
+    }
+
+    #[test]
+    fn recognizes_account_completion_after_a_dated_open_directive() {
+        let source = "2026-01-01 open Assets:Che";
+        let position = Position::new(0, source.len() as u32);
+        let context = context_at(source, source.len(), &position);
+        let items = completions_for_context(
+            &context,
+            &SymbolIndex {
+                accounts_open: ["Assets:Checking".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert!(items.iter().any(|item| item.label == "Assets:Checking"));
+    }
+
+    #[test]
+    fn recognizes_payee_completion_in_a_transaction_header() {
+        let source = "2026-01-01 * \"Car";
+        let position = Position::new(0, source.len() as u32);
+        let context = context_at(source, source.len(), &position);
+        let items = completions_for_context(
+            &context,
+            &SymbolIndex {
+                payees: ["Carrefour".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert!(items.iter().any(|item| item.label == "Carrefour"));
     }
 }
