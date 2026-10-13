@@ -52,6 +52,12 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
     for entry in &mut journal.entries {
         match entry {
             Entry::Open(open) => {
+                if open_accounts.contains_key(&open.account) {
+                    return Err(ValidationError::AccountAlreadyOpen {
+                        account: open.account.clone(),
+                        date: open.date,
+                    });
+                }
                 open_accounts.insert(open.account.clone(), open.commodities.clone());
             }
             Entry::Close(close) => {
@@ -447,6 +453,37 @@ mod tests {
                 date: date(2024, 1, 1),
             })
         );
+    }
+
+    #[test]
+    fn rejects_opening_an_already_open_account() {
+        let journal = Journal {
+            entries: vec![
+                open_restricted(date(2024, 1, 1), "Actifs:Compte", &["EUR"]),
+                open_restricted(date(2024, 2, 1), "Actifs:Compte", &["USD"]),
+            ],
+        };
+
+        assert_eq!(
+            validate_journal(journal),
+            Err(ValidationError::AccountAlreadyOpen {
+                account: AccountName::new("Actifs:Compte").unwrap(),
+                date: date(2024, 2, 1),
+            })
+        );
+    }
+
+    #[test]
+    fn accepts_reopening_an_account_after_closing_it() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                close(date(2024, 2, 1), "Actifs:Compte"),
+                open(date(2024, 3, 1), "Actifs:Compte"),
+            ],
+        };
+
+        assert!(validate_journal(journal).is_ok());
     }
 
     #[test]

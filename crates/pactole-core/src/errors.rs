@@ -28,6 +28,11 @@ pub enum ModelError {
 /// the purely grammatical checks reported as [`ModelError`].
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
+    #[error("account `{account}` is already open on {date}")]
+    AccountAlreadyOpen {
+        account: AccountName,
+        date: NaiveDate,
+    },
     #[error("account `{account}` is not open on {date}")]
     AccountNotOpen {
         account: AccountName,
