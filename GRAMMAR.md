@@ -84,7 +84,7 @@ default) leaves the account unrestricted.
 ### Transactions
 
 ```
-transaction := date ("=" effective_date)? status payee narration?
+transaction := date ("=" effective_date)? status? payee narration?
                (tag | link)*
                reference?
 ```
@@ -92,9 +92,10 @@ transaction := date ("=" effective_date)? status payee narration?
 - `date`: the transaction's date (see [Dates](#dates)).
 - `=effective_date` (optional): a second, "effective" date, borrowed from
   Ledger-cli. Not part of standard Beancount.
-- `status`: one of three flags, `*` (cleared), `!` (pending) or `?`
-  (uncleared). Unlike Beancount, no custom flag (arbitrary uppercase
-  letter) is allowed, and there is no `txn` keyword.
+- `status`: optionally one of three flags, `*` (cleared), `!` (pending) or
+  `?` (uncleared). When omitted, the transaction is considered uncleared
+  (`?`). Unlike Beancount, no custom flag (arbitrary uppercase letter) is
+  allowed, and there is no `txn` keyword.
 - `payee`: a quoted string, **mandatory** (unlike Beancount, where this
   field is optional and a single string is treated as the narration
   instead).

@@ -20,13 +20,14 @@ A transaction is a header line followed by indented postings:
 The header has this shape:
 
 ```text
-DATE[=EFFECTIVE_DATE] STATUS "payee" ["narration"] [TAGS/LINKS] [(reference)]
+ DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] [TAGS/LINKS] [(reference)]
 ```
 
 - **DATE** is the transaction date in ISO `YYYY-MM-DD` format.
 - **EFFECTIVE_DATE** (optional) is a second date after `=`, borrowed from
   Ledger-cli.
-- **STATUS** is one of `*` (cleared), `!` (pending) or `?` (uncleared).
+- **STATUS** is optional. When present, it is one of `*` (cleared), `!`
+  (pending) or `?` (uncleared). When omitted, the transaction is uncleared.
 - **payee** is a quoted string and is **mandatory**.
 - **narration** is an optional second quoted string.
 - **TAGS/LINKS** are zero or more `#tag` and `^link` tokens, freely interleaved.

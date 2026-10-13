@@ -34,8 +34,9 @@ be declared somewhere in the journal, so typos like `"Whole Foods"` vs.
 
 ## Status flags
 
-Only `*` (cleared), `!` (pending) and `?` (uncleared) are accepted. There is no
-custom flag letter and no `txn` keyword.
+Only `*` (cleared), `!` (pending) and `?` (uncleared) are accepted. The status
+is optional and defaults to `?` (uncleared). There is no custom flag letter and
+no `txn` keyword.
 
 ## No cost or price annotations
 

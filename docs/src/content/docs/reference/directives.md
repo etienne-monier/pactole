@@ -98,13 +98,14 @@ account's `open` restriction.
 ## Transaction
 
 ```text
-DATE[=EFFECTIVE_DATE] STATUS "payee" ["narration"] TAGS/LINKS [(reference)]
+DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]
   ACCOUNT AMOUNT?
   ...
 ```
 
-Records a movement of funds. All postings must sum to zero per commodity; at
-most one posting may omit its amount (it is inferred).
+Records a movement of funds. The optional status defaults to `?` (uncleared).
+All postings must sum to zero per commodity; at most one posting may omit its
+amount (it is inferred).
 
 ```pactole
 2026-09-03=2026-09-05 * "Whole Foods" "Weekly groceries" #food (CB-00123)

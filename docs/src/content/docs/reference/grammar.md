@@ -56,7 +56,7 @@ itself.
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                   |
 | `payee`       | `payee "name"`                                                    |
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`        |
-| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS "payee" ["narration"] TAGS/LINKS [(reference)]` |
+| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]` |
 | `include`     | `include "path"`                                                  |
 
 `payee` is the only directive with no leading date: a payee has no temporal life
@@ -82,7 +82,7 @@ unrestricted.
 ### Transactions
 
 ```text
-transaction := date ("=" effective_date)? status payee narration?
+transaction := date ("=" effective_date)? status? payee narration?
                (tag | link)*
                reference?
 ```
@@ -90,8 +90,9 @@ transaction := date ("=" effective_date)? status payee narration?
 - `date`: the transaction's date (see [Dates](#dates)).
 - `=effective_date` (optional): a second, "effective" date, borrowed from
   Ledger-cli. Not part of standard Beancount.
-- `status`: one of `*` (cleared), `!` (pending) or `?` (uncleared). No custom
-  flag and no `txn` keyword.
+- `status`: optionally one of `*` (cleared), `!` (pending) or `?` (uncleared).
+  When omitted, the transaction is considered uncleared. No custom flag and no
+  `txn` keyword.
 - `payee`: a quoted string, **mandatory**.
 - `narration` (optional): a second quoted string.
 - `tag`/`link`: zero or more, **freely interleaved**.
@@ -272,7 +273,8 @@ amounts and indentation to be freely aligned:
 - `payee` is mandatory in a transaction and `narration` is optional (the reverse
   of the Beancount convention). A `payee` *declaration* does not exist in
   Beancount at all.
-- Status flags limited to `*`, `!`, `?` (no custom flags, no `txn` keyword).
+- Status flags are limited to `*`, `!`, `?` (no custom flags, no `txn` keyword);
+  the status may be omitted and defaults to `?` (uncleared).
 - No cost/price annotations on postings (`{cost}`, `@`, `@@`).
 - No enforced account root categories.
 - Added an effective date (`date=effective_date`) and a parenthesized reference

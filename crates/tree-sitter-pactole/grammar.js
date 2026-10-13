@@ -136,8 +136,7 @@ export default grammar({
         field("date", $.date),
         optional(seq("=", field("effective_date", $.date))),
         $._ws,
-        $.status,
-        $._ws,
+        optional(seq($.status, $._ws)),
         $.payee,
         optional(seq($._ws, $.narration)),
         // Tags and links may be freely interleaved, in any order.

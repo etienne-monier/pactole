@@ -572,12 +572,25 @@
           "name": "_ws"
         },
         {
-          "type": "SYMBOL",
-          "name": "status"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_ws"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "status"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_ws"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "SYMBOL",

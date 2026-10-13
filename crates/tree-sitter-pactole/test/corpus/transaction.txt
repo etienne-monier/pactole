@@ -68,6 +68,35 @@ Minimal transaction with payee only and elided last posting amount
       (account))))
 
 ====================================
+Transaction with default uncleared status
+====================================
+
+2026-09-03 "Loyer" "Acompte mensuel"
+  Depenses:Divers 10.00 EUR
+  Actifs:Compte-Joint -10.00 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (payee
+        (string))
+      (narration
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
 Transaction with uncleared status, payee and narration
 ====================================
 

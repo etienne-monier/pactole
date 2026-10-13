@@ -421,7 +421,11 @@ impl<'src> AstBuilder<'src> {
             .map(|n| self.parse_date(n))
             .transpose()?;
 
-        let status = self.parse_status(self.require_child(transaction, "status")?)?;
+        let status = self
+            .find_child(transaction, "status")
+            .map(|node| self.parse_status(node))
+            .transpose()?
+            .unwrap_or(TransactionStatus::Uncleared);
 
         let payee = self
             .find_child(transaction, "payee")
@@ -508,7 +512,7 @@ impl<'src> AstBuilder<'src> {
 #[cfg(test)]
 mod tests {
     use super::parse;
-    use pactole_core::{CommodityName, Entry};
+    use pactole_core::{CommodityName, Entry, TransactionStatus};
 
     #[test]
     fn parses_open_with_a_single_restricted_commodity() {
@@ -608,6 +612,22 @@ mod tests {
         match &journal.entries[2] {
             Entry::Transaction(transaction) => {
                 assert_eq!(transaction.postings.len(), 2);
+            }
+            other => panic!("expected a Transaction entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn defaults_missing_transaction_status_to_uncleared() {
+        let source = "2026-09-03 \"Carrefour\" \"Courses\"\n  \
+                       Depenses:Alimentation 45.30 EUR\n  \
+                       Actifs:Compte-Joint -45.30 EUR\n";
+
+        let journal = parse(source, None).unwrap();
+
+        match &journal.entries[0] {
+            Entry::Transaction(transaction) => {
+                assert_eq!(transaction.status, TransactionStatus::Uncleared);
             }
             other => panic!("expected a Transaction entry, got {other:?}"),
         }

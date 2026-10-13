@@ -73,10 +73,11 @@ Let's read this file top to bottom:
   transaction will touch. An account must be opened before it can be used.
 - `payee "Whole Foods"` declares the merchant as a known payee. Every
   transaction's payee must be declared somewhere in the journal.
-- The last block is a **transaction**. Its header starts with the date, then a
-  status flag (`*` means "cleared"), then the payee and an optional narration.
-  Its two **postings** (indented lines) move 45.30 EUR out of `Assets:Checking`
-  and into `Expenses:Groceries`. Postings always sum to zero.
+- The last block is a **transaction**. Its header starts with the date, then an
+  optional status flag (`*` means "cleared"), then the payee and an optional
+  narration. If the status is omitted, the transaction is uncleared. Its two
+  **postings** (indented lines) move 45.30 EUR out of `Assets:Checking` and into
+  `Expenses:Groceries`. Postings always sum to zero.
 
 ## 4. Check the ledger
 

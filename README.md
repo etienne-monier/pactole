@@ -60,7 +60,8 @@ the generated declarations.
 
 A Pactole ledger is a plain `.pactole` text file made of directives
 (`open`, `commodity`, `payee`, `balance`, `transaction`...). See
-[`GRAMMAR.md`](GRAMMAR.md) for the full syntax, for example:
+[`GRAMMAR.md`](GRAMMAR.md) for the full syntax. Transaction statuses are
+optional and default to uncleared (`?`), for example:
 
 ```pactole
 2026-09-03 open Assets:Checking
