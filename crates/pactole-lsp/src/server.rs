@@ -13,8 +13,8 @@ use lsp_types::notification::{
 use lsp_types::request::Request;
 use lsp_types::{
     CodeActionParams, CodeActionProviderCapability, CompletionOptions, CompletionParams,
-    Diagnostic, InitializeParams, PublishDiagnosticsParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    Diagnostic, HoverProviderCapability, InitializeParams, PublishDiagnosticsParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
 use pactole_storage_fs::analyze_file_with_loader;
@@ -27,7 +27,29 @@ use crate::documents::{Documents, DocumentsSourceLoader};
 pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
     let (connection, io_threads) = Connection::stdio();
 
-    let server_capabilities = serde_json::to_value(ServerCapabilities {
+    let server_capabilities = serde_json::to_value(server_capabilities())?;
+    let initialize_params = connection.initialize(server_capabilities)?;
+    let initialize_params: InitializeParams = serde_json::from_value(initialize_params)?;
+
+    let workspace_root = workspace_root_from_initialize_params(&initialize_params);
+    let config = Config::from_initialization_options(
+        initialize_params.initialization_options.as_ref(),
+        workspace_root.as_deref(),
+    );
+    log::info!(
+        "initialized: workspace_root={:?} journal_file={:?}",
+        workspace_root,
+        config.journal_file
+    );
+
+    main_loop(connection, config)?;
+    io_threads.join()?;
+    log::info!("shutting down");
+    Ok(())
+}
+
+fn server_capabilities() -> ServerCapabilities {
+    ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         completion_provider: Some(CompletionOptions {
             resolve_provider: Some(false),
@@ -54,26 +76,9 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
             work_done_progress_options: Default::default(),
         }),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
         ..Default::default()
-    })?;
-    let initialize_params = connection.initialize(server_capabilities)?;
-    let initialize_params: InitializeParams = serde_json::from_value(initialize_params)?;
-
-    let workspace_root = workspace_root_from_initialize_params(&initialize_params);
-    let config = Config::from_initialization_options(
-        initialize_params.initialization_options.as_ref(),
-        workspace_root.as_deref(),
-    );
-    log::info!(
-        "initialized: workspace_root={:?} journal_file={:?}",
-        workspace_root,
-        config.journal_file
-    );
-
-    main_loop(connection, config)?;
-    io_threads.join()?;
-    log::info!("shutting down");
-    Ok(())
+    }
 }
 
 fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error + Sync + Send>> {
@@ -373,6 +378,13 @@ mod tests {
 
     fn url(path: &str) -> Url {
         Url::from_file_path(path).expect("valid file path")
+    }
+
+    #[test]
+    fn advertises_hover_support() {
+        let capabilities = serde_json::to_value(server_capabilities()).unwrap();
+
+        assert_eq!(capabilities["hoverProvider"], serde_json::json!(true));
     }
 
     #[test]

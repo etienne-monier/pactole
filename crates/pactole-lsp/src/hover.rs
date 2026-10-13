@@ -23,26 +23,45 @@ fn uri_to_path(uri: &Url) -> Option<PathBuf> {
 }
 
 fn find_word_at(text: &str, offset: usize) -> String {
-    if offset >= text.len() {
+    let offset = offset.min(text.len());
+    if offset > 0 && !text.is_char_boundary(offset) {
         return String::new();
     }
+
+    let line_start = text[..offset].rfind('\n').map_or(0, |index| index + 1);
+    let line_end = text[offset..]
+        .find('\n')
+        .map_or(text.len(), |index| offset + index);
+    let line_before_cursor = &text[line_start..offset];
+    if line_before_cursor.matches('"').count() % 2 == 1
+        && let Some(open_quote) = line_before_cursor.rfind('"')
+    {
+        let content_start = line_start + open_quote + 1;
+        let content_end = text[content_start..line_end]
+            .find('"')
+            .map_or(line_end, |index| content_start + index);
+        return text[content_start..content_end].to_string();
+    }
+
+    fn is_word_character(ch: char) -> bool {
+        ch.is_alphanumeric() || matches!(ch, '_' | '-' | ':' | '#' | '^')
+    }
+
     let mut start = offset;
     while start > 0 {
-        let byte = start - 1;
-        if byte < text.len() {
-            let ch = text[byte..start].chars().next().unwrap_or('\n');
-            if ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == ':' || ch == '#' || ch == '^'
-            {
-                start = byte;
-                continue;
-            }
+        let Some((byte, ch)) = text[..start].char_indices().next_back() else {
+            break;
+        };
+        if is_word_character(ch) {
+            start = byte;
+        } else {
+            break;
         }
-        break;
     }
     let mut end = offset;
     while end < text.len() {
         let ch = text[end..].chars().next().unwrap_or('\n');
-        if ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == ':' || ch == '#' || ch == '^' {
+        if is_word_character(ch) {
             end += ch.len_utf8();
         } else {
             break;
@@ -196,4 +215,49 @@ pub fn handle_hover(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_a_symbol_without_splitting_utf8_characters() {
+        let source = "note café\n";
+        let offset = source.find("café").unwrap() + "café".len();
+
+        assert_eq!(find_word_at(source, offset), "café");
+    }
+
+    #[test]
+    fn finds_the_complete_quoted_payee() {
+        let source = "2026-01-01 * \"Whole Foods\"\n";
+        let offset = source.find("Foods").unwrap() + 2;
+
+        assert_eq!(find_word_at(source, offset), "Whole Foods");
+    }
+
+    #[test]
+    fn finds_tags_and_links() {
+        let source = "2026-01-01 * \"Shop\" #groceries ^receipt\n";
+
+        assert_eq!(
+            find_word_at(source, source.find("groceries").unwrap() + 4),
+            "#groceries"
+        );
+        assert_eq!(
+            find_word_at(source, source.find("receipt").unwrap() + 3),
+            "^receipt"
+        );
+    }
+
+    #[test]
+    fn builds_hover_for_a_declared_symbol() {
+        let source = "2026-01-01 open Assets:Checking\n";
+        let file = pactole_storage_fs::analyze_file(source);
+        let info = build_hover_for_word_combined("Assets:Checking", None, &file).unwrap();
+
+        assert_eq!(info.kind, "Account");
+        assert!(info.detail.contains("opened on 2026-01-01"));
+    }
 }
