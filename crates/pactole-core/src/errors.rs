@@ -53,19 +53,27 @@ pub enum ValidationError {
     #[error("payee `{payee}` is not declared (transaction on {date})")]
     PayeeNotDeclared { payee: String, date: NaiveDate },
     #[error(
-        "transaction has {0} postings without an amount, but at most one posting can be left \
-         without an amount for auto-balancing"
+        "transaction on {date} has {count} postings without an amount, but at most one posting \
+         can be left without an amount for auto-balancing"
     )]
-    TooManyPostingsWithoutAmount(usize),
+    TooManyPostingsWithoutAmount { count: usize, date: NaiveDate },
     #[error(
         "cannot auto-balance transaction: unable to determine a single commodity for the \
-         missing amount from the other postings (commodities found: {0:?})"
+         missing amount from the other postings on {date} (commodities found: {commodities:?})"
     )]
-    AmbiguousAutoBalanceCommodity(Vec<String>),
+    AmbiguousAutoBalanceCommodity {
+        commodities: Vec<String>,
+        date: NaiveDate,
+    },
     #[error(
-        "transaction is not balanced: postings for commodity `{0}` sum to `{1}` instead of zero"
+        "transaction on {date} is not balanced: postings for commodity `{commodity}` sum to \
+         `{sum}` instead of zero"
     )]
-    TransactionNotBalanced(String, Decimal),
+    TransactionNotBalanced {
+        commodity: String,
+        sum: Decimal,
+        date: NaiveDate,
+    },
     #[error(
         "commodity `{commodity}` is not allowed on account `{account}` (posting on {date}): the \
          account was opened with a restricted list of commodities that does not include it"

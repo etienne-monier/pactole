@@ -115,6 +115,65 @@ fn check_reports_undeclared_payee() {
 }
 
 #[test]
+fn check_reports_the_source_location_of_a_business_error() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-check-location-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2024-01-01 open Assets:Checking\n\
+         2024-02-01 open Assets:Checking\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(":2:1: error:"), "stderr: {stderr}");
+    assert!(stderr.contains("already open"), "stderr: {stderr}");
+}
+
+#[test]
+fn check_reports_all_independent_business_errors() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-check-all-errors-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2024-01-01 open Assets:Checking\n\
+         2024-02-01 open Assets:Checking\n\
+         2024-01-01 commodity EUR\n\
+         2024-02-01 commodity EUR\n\
+         payee \"Carrefour\"\n\
+         payee \"Carrefour\"\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(stderr.matches(" error: ").count(), 3, "stderr: {stderr}");
+    assert!(stderr.contains("already open"), "stderr: {stderr}");
+    assert!(stderr.contains("already declared"), "stderr: {stderr}");
+}
+
+#[test]
 fn payee_declared_after_its_first_use_is_still_accepted() {
     // A `payee` declaration carries no date, so it is not checked
     // chronologically: declaring it anywhere in the file, even after the

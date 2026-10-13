@@ -11,4 +11,4 @@ pub use crate::models::{
 };
 pub use crate::register::{RegisterEntry, RegisterFilter, register};
 pub use crate::traits::ReadableStorage;
-pub use crate::validation::validate_journal;
+pub use crate::validation::{ValidationReport, validate_journal, validate_journal_all};

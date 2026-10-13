@@ -36,7 +36,24 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 ///
 /// On success, returns the same journal, sorted and with transactions
 /// auto-balanced.
-pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidationReport {
+    pub journal: Journal,
+    pub errors: Vec<ValidationError>,
+}
+
+pub fn validate_journal(journal: Journal) -> Result<Journal, ValidationError> {
+    let report = validate_journal_all(journal);
+    match report.errors.into_iter().next() {
+        Some(error) => Err(error),
+        None => Ok(report.journal),
+    }
+}
+
+/// Validates every entry and returns all errors that can be diagnosed without
+/// aborting the journal walk. Invalid entries do not mutate validation state,
+/// preventing one error from causing a cascade of misleading later errors.
+pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
     journal.entries.sort_by_key(Entry::date);
 
     // Maps each open account to the (possibly empty) list of commodities
@@ -48,64 +65,72 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
     // Running balance, per (account, commodity) pair, of every posting
     // seen so far, used to check `balance` assertions.
     let mut running_balances: HashMap<(AccountName, CommodityName), Decimal> = HashMap::new();
+    let mut errors = Vec::new();
 
     for entry in &mut journal.entries {
         match entry {
             Entry::Open(open) => {
                 if open_accounts.contains_key(&open.account) {
-                    return Err(ValidationError::AccountAlreadyOpen {
+                    errors.push(ValidationError::AccountAlreadyOpen {
                         account: open.account.clone(),
                         date: open.date,
                     });
+                    continue;
                 }
                 open_accounts.insert(open.account.clone(), open.commodities.clone());
             }
             Entry::Close(close) => {
                 if open_accounts.remove(&close.account).is_none() {
-                    return Err(ValidationError::AccountNotOpen {
+                    errors.push(ValidationError::AccountNotOpen {
                         account: close.account.clone(),
                         date: close.date,
                     });
+                    continue;
                 }
             }
             Entry::Commodity(commodity) => {
                 if !declared_commodities.insert(commodity.name.clone()) {
-                    return Err(ValidationError::CommodityAlreadyDeclared {
+                    errors.push(ValidationError::CommodityAlreadyDeclared {
                         commodity: commodity.name.clone(),
                         date: commodity.date,
                     });
+                    continue;
                 }
             }
             Entry::Payee(payee) => {
                 if !declared_payees.insert(payee.name.clone()) {
-                    return Err(ValidationError::PayeeAlreadyDeclared {
+                    errors.push(ValidationError::PayeeAlreadyDeclared {
                         payee: payee.name.clone(),
                     });
+                    continue;
                 }
             }
             Entry::Balance(balance) => {
                 let Some(allowed_commodities) = open_accounts.get(&balance.account) else {
-                    return Err(ValidationError::AccountNotOpen {
+                    errors.push(ValidationError::AccountNotOpen {
                         account: balance.account.clone(),
                         date: balance.date,
                     });
+                    continue;
                 };
 
                 if !declared_commodities.contains(&balance.amount.commodity) {
-                    return Err(ValidationError::CommodityNotDeclared {
+                    errors.push(ValidationError::CommodityNotDeclared {
                         commodity: balance.amount.commodity.clone(),
                         date: balance.date,
                     });
+                    continue;
                 }
 
                 if !allowed_commodities.is_empty()
                     && !allowed_commodities.contains(&balance.amount.commodity)
                 {
-                    return Err(ValidationError::CommodityNotAllowed {
+                    errors.push(ValidationError::CommodityNotAllowed {
                         account: balance.account.clone(),
                         commodity: balance.amount.commodity.clone(),
                         date: balance.date,
                     });
+                    continue;
                 }
 
                 let key = (balance.account.clone(), balance.amount.commodity.clone());
@@ -113,7 +138,7 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
                 let expected = balance.amount.number;
                 let tolerance = balance.tolerance.unwrap_or(Decimal::ZERO);
                 if (actual - expected).abs() > tolerance {
-                    return Err(ValidationError::BalanceAssertionFailed {
+                    errors.push(ValidationError::BalanceAssertionFailed {
                         account: balance.account.clone(),
                         commodity: balance.amount.commodity.clone(),
                         date: balance.date,
@@ -121,15 +146,20 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
                         actual,
                         tolerance,
                     });
+                    continue;
                 }
             }
             Entry::Transaction(transaction) => {
-                validate_transaction(
+                let transaction_errors = validate_transaction(
                     transaction,
                     &open_accounts,
                     &declared_commodities,
                     &declared_payees,
-                )?;
+                );
+                if !transaction_errors.is_empty() {
+                    errors.extend(transaction_errors);
+                    continue;
+                }
 
                 for posting in &transaction.postings {
                     if let Some(amount) = &posting.amount {
@@ -141,7 +171,7 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
         }
     }
 
-    Ok(journal)
+    ValidationReport { journal, errors }
 }
 
 /// Checks that every posting of `transaction` uses an open account and a
@@ -153,11 +183,12 @@ fn validate_transaction(
     open_accounts: &HashMap<AccountName, Vec<CommodityName>>,
     declared_commodities: &HashSet<CommodityName>,
     declared_payees: &HashSet<String>,
-) -> Result<(), ValidationError> {
+) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
     if let Some(payee) = &transaction.payee
         && !declared_payees.contains(payee)
     {
-        return Err(ValidationError::PayeeNotDeclared {
+        errors.push(ValidationError::PayeeNotDeclared {
             payee: payee.clone(),
             date: transaction.date,
         });
@@ -165,7 +196,7 @@ fn validate_transaction(
 
     for posting in &transaction.postings {
         if !open_accounts.contains_key(&posting.account) {
-            return Err(ValidationError::AccountNotOpen {
+            errors.push(ValidationError::AccountNotOpen {
                 account: posting.account.clone(),
                 date: transaction.date,
             });
@@ -173,14 +204,21 @@ fn validate_transaction(
         if let Some(amount) = &posting.amount
             && !declared_commodities.contains(&amount.commodity)
         {
-            return Err(ValidationError::CommodityNotDeclared {
+            errors.push(ValidationError::CommodityNotDeclared {
                 commodity: amount.commodity.clone(),
                 date: transaction.date,
             });
         }
     }
 
-    balance_transaction(transaction)?;
+    if !errors.is_empty() {
+        return errors;
+    }
+
+    if let Err(error) = balance_transaction(transaction) {
+        errors.push(error);
+        return errors;
+    }
 
     // Enforce `open`'s commodity restrictions after balancing, so that an
     // auto-balanced posting's inferred commodity is checked too.
@@ -194,7 +232,7 @@ fn validate_transaction(
         if let Some(amount) = &posting.amount
             && !allowed.contains(&amount.commodity)
         {
-            return Err(ValidationError::CommodityNotAllowed {
+            errors.push(ValidationError::CommodityNotAllowed {
                 account: posting.account.clone(),
                 commodity: amount.commodity.clone(),
                 date: transaction.date,
@@ -202,7 +240,7 @@ fn validate_transaction(
         }
     }
 
-    Ok(())
+    errors
 }
 /// Validates and auto-balances a transaction's postings.
 ///
@@ -223,7 +261,10 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
         .collect();
 
     if missing.len() > 1 {
-        return Err(ValidationError::TooManyPostingsWithoutAmount(missing.len()));
+        return Err(ValidationError::TooManyPostingsWithoutAmount {
+            count: missing.len(),
+            date: transaction.date,
+        });
     }
 
     let mut sums: BTreeMap<&str, (CommodityName, Decimal)> = BTreeMap::new();
@@ -238,7 +279,10 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
     if let Some(index) = missing.first().copied() {
         if sums.len() != 1 {
             let commodities: Vec<String> = sums.keys().map(|k| k.to_string()).collect();
-            return Err(ValidationError::AmbiguousAutoBalanceCommodity(commodities));
+            return Err(ValidationError::AmbiguousAutoBalanceCommodity {
+                commodities,
+                date: transaction.date,
+            });
         }
 
         let (_, (commodity, sum)) = sums.into_iter().next().unwrap();
@@ -251,10 +295,11 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
 
     for (_, (commodity, sum)) in sums {
         if !sum.is_zero() {
-            return Err(ValidationError::TransactionNotBalanced(
-                commodity.as_str().to_string(),
+            return Err(ValidationError::TransactionNotBalanced {
+                commodity: commodity.as_str().to_string(),
                 sum,
-            ));
+                date: transaction.date,
+            });
         }
     }
 
@@ -656,10 +701,11 @@ mod tests {
 
         assert_eq!(
             validate_journal(journal),
-            Err(ValidationError::TransactionNotBalanced(
-                "EUR".to_string(),
-                "50.00".parse().unwrap()
-            ))
+            Err(ValidationError::TransactionNotBalanced {
+                commodity: "EUR".to_string(),
+                sum: "50.00".parse().unwrap(),
+                date: date(2024, 1, 5),
+            })
         );
     }
 
@@ -682,7 +728,10 @@ mod tests {
 
         assert_eq!(
             validate_journal(journal),
-            Err(ValidationError::TooManyPostingsWithoutAmount(2))
+            Err(ValidationError::TooManyPostingsWithoutAmount {
+                count: 2,
+                date: date(2024, 1, 5),
+            })
         );
     }
 
@@ -708,10 +757,10 @@ mod tests {
 
         assert_eq!(
             validate_journal(journal),
-            Err(ValidationError::AmbiguousAutoBalanceCommodity(vec![
-                "EUR".to_string(),
-                "USD".to_string()
-            ]))
+            Err(ValidationError::AmbiguousAutoBalanceCommodity {
+                commodities: vec!["EUR".to_string(), "USD".to_string()],
+                date: date(2024, 1, 5),
+            })
         );
     }
 
