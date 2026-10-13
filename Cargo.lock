@@ -676,6 +676,7 @@ dependencies = [
 name = "pactole-lsp"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "env_logger",
  "log",
  "lsp-server",

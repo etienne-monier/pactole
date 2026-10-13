@@ -12,8 +12,9 @@ use lsp_types::notification::{
 };
 use lsp_types::request::Request;
 use lsp_types::{
-    CompletionOptions, CompletionParams, Diagnostic, InitializeParams, PublishDiagnosticsParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    CodeActionParams, CodeActionProviderCapability, CompletionOptions, CompletionParams,
+    Diagnostic, InitializeParams, PublishDiagnosticsParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
 use pactole_storage_fs::analyze_file_with_loader;
@@ -37,10 +38,22 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
                 "#".to_string(),
                 "^".to_string(),
                 "\t".to_string(),
+                "0".to_string(),
+                "1".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+                "4".to_string(),
+                "5".to_string(),
+                "6".to_string(),
+                "7".to_string(),
+                "8".to_string(),
+                "9".to_string(),
+                "-".to_string(),
             ]),
             all_commit_characters: None,
             work_done_progress_options: Default::default(),
         }),
+        code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         ..Default::default()
     })?;
     let initialize_params = connection.initialize(server_capabilities)?;
@@ -99,6 +112,16 @@ fn handle_request(
     config: &Config,
     documents: &mut Documents,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
+    // -----------------------------
+    // Code actions
+    // -----------------------------
+    if request.method == lsp_types::request::CodeActionRequest::METHOD {
+        let params: CodeActionParams = serde_json::from_value(request.params)?;
+        let result = crate::code_action::actions_for(documents, &params.text_document.uri, &params);
+        let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
+        connection.sender.send(Message::Response(resp))?;
+        return Ok(());
+    }
     // -----------------------------
     // Completion request
     // -----------------------------

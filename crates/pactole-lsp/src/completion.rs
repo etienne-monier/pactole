@@ -4,9 +4,11 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionList, CompletionParams, InsertTextFormat, Url,
+    CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionTextEdit,
+    InsertTextFormat, Position, Range, TextEdit, Url,
 };
 
+use chrono::Local;
 use pactole_core::Entry;
 use pactole_storage_fs::{AnalyzedProject, ParsedFile};
 
@@ -27,7 +29,7 @@ struct SymbolIndex {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum CompletionContext {
-    DirectiveKeyword,
+    DirectiveKeyword { date_range: Option<Range> },
     IncludePath { prefix: String },
     Payee { prefix: String },
     Account { prefix: String },
@@ -109,7 +111,7 @@ fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-fn context_at(text: &str, offset: usize) -> CompletionContext {
+fn context_at(text: &str, offset: usize, position: &Position) -> CompletionContext {
     // Find line and char
     let mut line_start: usize = 0;
     let mut _line: usize = 0;
@@ -194,12 +196,23 @@ fn context_at(text: &str, offset: usize) -> CompletionContext {
     // Not indented -> directive header
     let trimmed = line_text.trim_start();
     if trimmed.is_empty() {
-        return CompletionContext::DirectiveKeyword;
+        return CompletionContext::DirectiveKeyword {
+            date_range: Some(Range::new(Position::new(position.line, 0), *position)),
+        };
+    }
+    let date_prefix = trimmed.len() <= 10
+        && trimmed
+            .chars()
+            .all(|character| character.is_ascii_digit() || character == '-');
+    if !is_indented(line_text) && date_prefix {
+        return CompletionContext::DirectiveKeyword {
+            date_range: Some(Range::new(Position::new(position.line, 0), *position)),
+        };
     }
     // Check for keywords
     let words: Vec<&str> = trimmed.split_whitespace().collect();
     if words.is_empty() {
-        return CompletionContext::DirectiveKeyword;
+        return CompletionContext::DirectiveKeyword { date_range: None };
     }
     let first = words[0];
     match first {
@@ -229,7 +242,7 @@ fn context_at(text: &str, offset: usize) -> CompletionContext {
         },
         _ => {
             if !is_indented(line_text) && !trimmed.contains(' ') {
-                return CompletionContext::DirectiveKeyword;
+                return CompletionContext::DirectiveKeyword { date_range: None };
             }
             CompletionContext::Unknown
         }
@@ -243,7 +256,20 @@ fn completions_for_context(
 ) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = Vec::new();
     match ctx {
-        CompletionContext::DirectiveKeyword => {
+        CompletionContext::DirectiveKeyword { date_range } => {
+            if let Some(range) = date_range {
+                let today = Local::now().date_naive().format("%Y-%m-%d").to_string();
+                items.push(CompletionItem {
+                    label: today.clone(),
+                    kind: Some(CompletionItemKind::VALUE),
+                    detail: Some("Today's date".to_string()),
+                    text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                        range: *range,
+                        new_text: today,
+                    })),
+                    ..Default::default()
+                });
+            }
             for (kw, doc) in directive_keywords_list() {
                 items.push(CompletionItem {
                     label: kw.to_string(),
@@ -374,7 +400,7 @@ pub fn handle_completion(
         .to_string();
     let offset = position_to_offset(&source, &pos);
 
-    let ctx = context_at(&source, offset);
+    let ctx = context_at(&source, offset, &pos);
     let current_doc_path = uri_to_path(&uri);
 
     let index = if let Some(journal_file) = &config.journal_file {
@@ -396,4 +422,61 @@ pub fn handle_completion(
         is_incomplete: false,
         items,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_directive_line_offers_today_date() {
+        let position = Position::new(0, 0);
+        let context = context_at("", 0, &position);
+        let items = completions_for_context(&context, &SymbolIndex::default(), None);
+
+        let date = Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let item = items
+            .iter()
+            .find(|item| item.label == date)
+            .expect("today's date completion");
+
+        assert_eq!(item.detail.as_deref(), Some("Today's date"));
+        assert!(matches!(
+            item.text_edit,
+            Some(CompletionTextEdit::Edit(TextEdit { range, .. }))
+                if range == Range::new(Position::new(0, 0), Position::new(0, 0))
+        ));
+    }
+
+    #[test]
+    fn partial_date_is_replaced_by_today() {
+        let position = Position::new(0, 5);
+        let context = context_at("2026-", 5, &position);
+        let items = completions_for_context(&context, &SymbolIndex::default(), None);
+
+        let item = items
+            .iter()
+            .find(|item| item.detail.as_deref() == Some("Today's date"))
+            .expect("today's date completion");
+        assert!(matches!(
+            &item.text_edit,
+            Some(CompletionTextEdit::Edit(TextEdit { range, new_text }))
+                if *range == Range::new(Position::new(0, 0), Position::new(0, 5))
+                    && new_text == &Local::now().date_naive().format("%Y-%m-%d").to_string()
+        ));
+    }
+
+    #[test]
+    fn ordinary_keyword_prefix_does_not_offer_a_date() {
+        let position = Position::new(0, 2);
+        let context = context_at("op", 2, &position);
+        let items = completions_for_context(&context, &SymbolIndex::default(), None);
+
+        assert!(
+            items
+                .iter()
+                .all(|item| item.detail.as_deref() != Some("Today's date"))
+        );
+        assert!(items.iter().any(|item| item.label == "open"));
+    }
 }

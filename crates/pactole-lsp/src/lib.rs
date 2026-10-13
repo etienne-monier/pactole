@@ -11,8 +11,10 @@
 //! previous analysis are cleared for any file no longer covered by the
 //! latest one (see `server::publish_for`).
 //!
-//! Completion, hover, and formatting are intentionally not implemented yet.
+//! Completion, code actions and hover are supported for editor assistance;
+//! formatting is intentionally left to the `pactole fmt` command.
 
+pub mod code_action;
 pub mod completion;
 pub mod config;
 pub mod conversion;

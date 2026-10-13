@@ -21,7 +21,8 @@ it neither adds nor modifies anything in these crates.
 
 ## Current features
 
-Diagnostics only (`textDocument/publishDiagnostics`), via:
+Diagnostics (`textDocument/publishDiagnostics`), completion
+(`textDocument/completion`) and hover information, via:
 
 - `documents.rs`: `Documents` (in-memory table of open URI → current
   text) and `DocumentsSourceLoader`, a
@@ -49,11 +50,16 @@ Diagnostics only (`textDocument/publishDiagnostics`), via:
   `include`s are then not followed). URIs that leave the analyzed set
   (e.g. a removed `include`) receive an empty diagnostics list so they
   never go stale.
+- `completion.rs`: completion for known accounts, payees, commodities, tags
+  and links, plus a date-of-the-day item at the beginning of a directive. The
+  date item replaces a partially typed `YYYY-` prefix.
+- `code_action.rs`: a quick fix that inserts today's date at the beginning of
+  an undated `open`, `close`, `commodity`, `balance` or transaction directive.
 
 ## Explicitly out of scope (first version)
 
-Completion, hover, navigation, formatting via LSP (use `pactole fmt`),
-incremental sync, reading `~/.config/pactole`. Any unhandled request
+Navigation, formatting via LSP (use `pactole fmt`), incremental sync, reading
+`~/.config/pactole`. Any unhandled request
 receives a `MethodNotFound` error rather than being silently ignored.
 See the roadmap in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §10
 for the planned status of these items.
@@ -69,7 +75,7 @@ Pass `journal_file` in the `initializationOptions` of the LSP
 
 ## Dependencies / boundaries
 
-- `lsp-server`, `lsp-types` (LSP protocol), `serde`/`serde_json` (JSON
+- `chrono` (the local date), `lsp-server`, `lsp-types` (LSP protocol), `serde`/`serde_json` (JSON
   deserialization), `pactole-storage-fs`, `pactole-syntax`.
 - `log` + `env_logger` for debug traces (see below).
 - No `thiserror` dependency: no error types of its own, only error

@@ -60,7 +60,12 @@ For other editors, configure a stdio language server whose command is
 - reports lowering errors for invalid directives;
 - analyzes included files when `journal_file` is configured;
 - uses an open document's current, unsaved contents when resolving includes;
-- clears diagnostics for files that are no longer part of the analyzed journal.
+- clears diagnostics for files that are no longer part of the analyzed journal;
+- offers the current date as a completion at the beginning of a directive;
+  selecting it inserts the date in `YYYY-MM-DD` format and replaces a partial
+  date such as `2026-`;
+- offers a quick fix to insert the date of the day on an undated `open`,
+  `close`, `commodity`, `balance` or transaction directive.
 
 Document synchronization is full-document rather than incremental. This keeps
 the server simple and robust for the typically small, hand-edited journals
@@ -68,11 +73,10 @@ Pactole is designed for.
 
 ## Current limitations
 
-The first version of the language server does not provide:
+The language server does not currently provide:
 
-- completion;
-- hover information;
 - navigation or references;
+- automatic insertion without selecting a completion or code action;
 - formatting through LSP (use [`pactole fmt`](/reference/cli/) instead);
 - incremental synchronization;
 - configuration from `~/.config/pactole`.

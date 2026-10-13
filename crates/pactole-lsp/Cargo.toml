@@ -17,6 +17,7 @@ name = "pactole-lsp"
 path = "src/main.rs"
 
 [dependencies]
+chrono = "0.4.45"
 env_logger = "0.11.8"
 log = "0.4.28"
 lsp-server = "0.7.9"
