@@ -69,10 +69,19 @@ pub fn validate_journal(mut journal: Journal) -> Result<Journal, ValidationError
                 }
             }
             Entry::Commodity(commodity) => {
-                declared_commodities.insert(commodity.name.clone());
+                if !declared_commodities.insert(commodity.name.clone()) {
+                    return Err(ValidationError::CommodityAlreadyDeclared {
+                        commodity: commodity.name.clone(),
+                        date: commodity.date,
+                    });
+                }
             }
             Entry::Payee(payee) => {
-                declared_payees.insert(payee.name.clone());
+                if !declared_payees.insert(payee.name.clone()) {
+                    return Err(ValidationError::PayeeAlreadyDeclared {
+                        payee: payee.name.clone(),
+                    });
+                }
             }
             Entry::Balance(balance) => {
                 let Some(allowed_commodities) = open_accounts.get(&balance.account) else {
@@ -480,6 +489,52 @@ mod tests {
                 open(date(2024, 1, 1), "Actifs:Compte"),
                 close(date(2024, 2, 1), "Actifs:Compte"),
                 open(date(2024, 3, 1), "Actifs:Compte"),
+            ],
+        };
+
+        assert!(validate_journal(journal).is_ok());
+    }
+
+    #[test]
+    fn rejects_declaring_a_commodity_twice() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                commodity(date(2024, 2, 1), "EUR"),
+            ],
+        };
+
+        assert_eq!(
+            validate_journal(journal),
+            Err(ValidationError::CommodityAlreadyDeclared {
+                commodity: CommodityName::new("EUR").unwrap(),
+                date: date(2024, 2, 1),
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_declaring_a_payee_twice() {
+        let journal = Journal {
+            entries: vec![payee("Carrefour"), payee("Carrefour")],
+        };
+
+        assert_eq!(
+            validate_journal(journal),
+            Err(ValidationError::PayeeAlreadyDeclared {
+                payee: "Carrefour".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn accepts_distinct_commodities_and_payees() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                payee("Carrefour"),
+                payee("Cinema"),
             ],
         };
 

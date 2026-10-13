@@ -38,11 +38,18 @@ pub enum ValidationError {
         account: AccountName,
         date: NaiveDate,
     },
+    #[error("commodity `{commodity}` is already declared on {date}")]
+    CommodityAlreadyDeclared {
+        commodity: CommodityName,
+        date: NaiveDate,
+    },
     #[error("commodity `{commodity}` is not declared on {date}")]
     CommodityNotDeclared {
         commodity: CommodityName,
         date: NaiveDate,
     },
+    #[error("payee `{payee}` is already declared")]
+    PayeeAlreadyDeclared { payee: String },
     #[error("payee `{payee}` is not declared (transaction on {date})")]
     PayeeNotDeclared { payee: String, date: NaiveDate },
     #[error(
