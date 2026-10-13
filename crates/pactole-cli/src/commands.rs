@@ -33,6 +33,13 @@ pub(crate) enum Command {
         write: bool,
     },
 
+    /// Generate shell completion scripts and print them to stdout.
+    Completions {
+        /// Shell for which to generate completions.
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
+
     /// Check that a `.pactole` file is valid, both grammatically and from a
     /// business point of view.
     Check {

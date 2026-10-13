@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-The `pactole` binary exposes six subcommands. Run `pactole --help` or
+The `pactole` binary exposes seven subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
@@ -47,6 +47,29 @@ printed to stdout (`--write` is ignored).
 pactole fmt ledger.pactole
 pactole fmt --write ledger.pactole
 cat ledger.pactole | pactole fmt -
+```
+
+## `pactole completions`
+
+```text
+pactole completions <SHELL>
+```
+
+Generates a completion script on stdout for one of the supported shells:
+`bash`, `elvish`, `fish`, `powershell` or `zsh`.
+
+For example, to install completions for Zsh:
+
+```sh
+mkdir -p ~/.zfunc
+pactole completions zsh > ~/.zfunc/_pactole
+```
+
+For Bash:
+
+```sh
+mkdir -p ~/.local/share/bash-completion/completions
+pactole completions bash > ~/.local/share/bash-completion/completions/pactole
 ```
 
 ## `pactole check`

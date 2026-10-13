@@ -24,6 +24,8 @@ command.
   its canonical form, printed to stdout by default, or written in place
   with `--write`. Accepts `-` as the file name to read from stdin (always
   printed to stdout in that case).
+- **`pactole completions <shell>`**: generates shell completions to stdout
+  for Bash, Elvish, Fish, PowerShell or Zsh.
 - **`pactole check <file>`**: syntax parsing **then** full business
   validation (`pactole_core::validate_journal`) — accounts opened before
   use/close, commodities declared before use, each transaction's payee

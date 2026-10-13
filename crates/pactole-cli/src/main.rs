@@ -9,7 +9,8 @@ mod register;
 
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::generate;
 
 use crate::commands::{Cli, Command};
 
@@ -19,6 +20,11 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Parse { file } => parse::run(file),
         Command::Fmt { file, write } => format::run(file, write),
+        Command::Completions { shell } => {
+            let mut command = Cli::command();
+            generate(shell, &mut command, "pactole", &mut std::io::stdout());
+            ExitCode::SUCCESS
+        }
         Command::Check { file } => check::run(file),
         Command::Register {
             file,

@@ -91,6 +91,14 @@ every transaction balances):
 pactole check path/to/file.pactole
 ```
 
+Generate shell completion scripts to stdout:
+
+```sh
+pactole completions bash > ~/.local/share/bash-completion/completions/pactole
+pactole completions zsh > ~/.zfunc/_pactole
+pactole completions fish > ~/.config/fish/completions/pactole.fish
+```
+
 Reformat a file into its canonical form, printed to stdout by default,
 or written back in place with `--write`:
 

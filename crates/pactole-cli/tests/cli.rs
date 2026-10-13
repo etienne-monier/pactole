@@ -294,6 +294,23 @@ fn fmt_reads_from_stdin_when_file_is_dash() {
 }
 
 #[test]
+fn completions_generates_a_bash_script() {
+    let output = pactole_cmd()
+        .args(["completions", "bash"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("_pactole"));
+    assert!(stdout.contains("completions"));
+}
+
+#[test]
 fn fmt_reports_error_on_syntax_error() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("pactole-fmt-test-{}.pactole", std::process::id()));
