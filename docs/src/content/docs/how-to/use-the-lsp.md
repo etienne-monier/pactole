@@ -54,6 +54,9 @@ explains how to install Pactole syntax highlighting.
 For other editors, configure a stdio language server whose command is
 `pactole-lsp`. The exact configuration format depends on the editor.
 
+See [Configure editors](/how-to/configure-editors/) for complete Zed, Helix
+and generic editor configuration examples, including the external formatter.
+
 ## What the language server does
 
 - reports syntax errors and missing syntax nodes;

@@ -22,7 +22,8 @@ editors, other host languages, etc.).
   `pactole-syntax`).
 - `bindings/rust/build.rs`: compiles `src/parser.c` as C via the `cc`
   crate at build time.
-- `queries/highlights.scm`: syntax highlighting queries for editors (see
+- `queries/*.scm`: syntax highlighting, indentation, text-object, symbol,
+  tag, and injection queries for editors (see
   [`../../HELIX.md`](../../HELIX.md) for integration into Helix).
 - `test/`: tree-sitter test corpus (`tree-sitter test`).
 - `tree-sitter.json`: language metadata for the tree-sitter ecosystem

@@ -72,10 +72,11 @@ ln -sf /absolute/path/to/pactole/crates/tree-sitter-pactole/queries/highlights.s
   ~/.config/helix/runtime/queries/pactole/highlights.scm
 ```
 
-Only `highlights.scm` exists today. Other optional query files
-(`indents.scm`, `textobjects.scm`, `injections.scm`, `locals.scm`,
-`tags.scm`) can be added later the same way, following the
-[tree-sitter query docs](https://tree-sitter.github.io/tree-sitter/3-syntax-highlighting.html#highlights).
+The repository also contains starter queries for indentation, text objects,
+injections, locals and tags. Helix loads the query files it supports from the
+same directory; unsupported query types are harmless and can be ignored by
+older Helix versions. Extend them as the editor integration grows, following
+the [tree-sitter query docs](https://tree-sitter.github.io/tree-sitter/3-syntax-highlighting.html#highlights).
 
 ## 4. Verify the setup
 

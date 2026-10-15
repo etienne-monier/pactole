@@ -68,5 +68,7 @@ cargo uninstall pactole-cli
 
 - [Getting started](/tutorials/getting-started/) — write your first ledger once
   Pactole is installed.
+- [Configure editors](/how-to/configure-editors/) — set up syntax highlighting,
+  diagnostics and formatting.
 - [Use the language server](/how-to/use-the-lsp/) — configure editor diagnostics.
 - [Command-line reference](/reference/cli/) — every command and option.

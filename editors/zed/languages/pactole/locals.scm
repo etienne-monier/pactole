@@ -1,0 +1,1 @@
+../../../../crates/tree-sitter-pactole/queries/locals.scm

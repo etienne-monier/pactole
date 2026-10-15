@@ -89,3 +89,5 @@ used.
 
 - [Command-line reference](/reference/cli/) — the full `fmt` options.
 - [Grammar reference](/reference/grammar/) — the syntax `fmt` understands.
+- [Configure editors](/how-to/configure-editors/) — configure Zed, Helix or
+  another editor to run `pactole fmt -`.

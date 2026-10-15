@@ -21,6 +21,12 @@
 
 ; Strings (payee, narration, quoted metadata values)
 (string) @string
+
+; Payee values are symbols in the journal, rather than generic strings.
+; Keep declarations and transaction payees visually consistent.
+(payee_declaration (string) @constant)
+(transaction (payee (string) @constant))
+
 (path) @string.special.path
 
 ; Accounts, e.g. Assets:Checking
