@@ -1,3 +1,5 @@
+//! Build script for the generated Tree-sitter parser and scanner.
+
 fn main() {
     let src_dir = std::path::Path::new("src");
 

@@ -23,8 +23,10 @@ pub enum ImportError {
     /// A configured account name is not a valid Pactole account.
     #[error("invalid account name `{account}`: {source}")]
     InvalidAccount {
+        /// Configured or imported account name that failed validation.
         account: String,
         #[source]
+        /// Core validation error.
         source: ModelError,
     },
 
@@ -32,8 +34,10 @@ pub enum ImportError {
     /// valid Pactole commodity.
     #[error("invalid commodity name `{commodity}`: {source}")]
     InvalidCommodity {
+        /// Configured or imported commodity name that failed validation.
         commodity: String,
         #[source]
+        /// Core validation error.
         source: ModelError,
     },
 

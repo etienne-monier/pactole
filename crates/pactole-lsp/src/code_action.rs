@@ -42,6 +42,7 @@ fn line_at(source: &str, line: u32) -> Option<&str> {
     source.lines().nth(line as usize)
 }
 
+/// Returns code actions applicable to the requested document range.
 pub fn actions_for(
     documents: &Documents,
     uri: &Url,

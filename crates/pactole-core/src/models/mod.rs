@@ -1,3 +1,5 @@
+//! Domain entities used by Pactole journals.
+
 mod balance;
 mod declarations;
 mod names;
@@ -12,24 +14,35 @@ pub use transaction::{Posting, Transaction, TransactionStatus};
 // Journal structure
 // -------------------------------------------------
 
+/// A collection of top-level Pactole directives.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Journal {
+    /// Directives in their current order. Validation returns a chronologically
+    /// sorted journal while preserving source order before validation.
     pub entries: Vec<Entry>,
 }
 
 impl Journal {
+    /// Returns the directives in this journal in their current order.
     pub fn entries(&self) -> &[Entry] {
         &self.entries
     }
 }
 
+/// A top-level directive in a Pactole journal.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Entry {
+    /// Opens an account.
     Open(Open),
+    /// Closes an account.
     Close(Close),
+    /// Declares a commodity.
     Commodity(Commodity),
+    /// Declares a known payee.
     Payee(Payee),
+    /// Records a transaction and its postings.
     Transaction(Transaction),
+    /// Asserts an account balance.
     Balance(Balance),
 }
 

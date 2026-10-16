@@ -43,11 +43,17 @@ pub struct RegisterFilter {
 /// register up to (and including) this line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterEntry {
+    /// Date of the transaction containing the matched posting.
     pub date: NaiveDate,
+    /// Cleared, pending or uncleared status of the transaction.
     pub status: TransactionStatus,
+    /// Optional transaction payee.
     pub payee: Option<String>,
+    /// Optional transaction narration.
     pub narration: Option<String>,
+    /// Account of the matched posting.
     pub account: AccountName,
+    /// Amount of the matched posting, if it was explicitly or implicitly set.
     pub amount: Option<Amount>,
 
     /// Running balance of the register, per commodity, after this

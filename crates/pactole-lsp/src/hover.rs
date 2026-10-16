@@ -169,6 +169,7 @@ fn build_hover_for_word_combined(
     None
 }
 
+/// Computes hover information for the symbol at the requested document position.
 pub fn handle_hover(
     config: &Config,
     documents: &Documents,

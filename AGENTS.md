@@ -117,42 +117,47 @@ pactole/
      - No `Span`/tree-sitter type leaks into `pactole-core`: `ParsedEntry`/`ParsedInclude`/
        `LoweringDiagnostic` live in `pactole-storage-fs` and only wrap `pactole_syntax::Span`
        around existing `pactole-core` types.
-   - **`loader.rs`** (public API: `SourceLoader`, `SourceLoadError`, `FsSourceLoader`,
-     `InMemorySourceLoader`) and **multi-file analysis** (public API:
-     `analyze_file_with_loader`, `AnalyzedProject`, `AnalyzedFile`, `IncludeIssue`, in
-     `analysis.rs`): a minimal abstraction over "where source text comes from", so
-     multi-file/include resolution is not tied to reading real files from disk.
-     - `SourceLoader` is a small trait (`fn load(&self, path: &Path) -> Result<String,
-       SourceLoadError>`) that only loads raw source text for an already-resolved path; it knows
-        nothing about `.pactole` syntax. `FsSourceLoader` reads real files for project analysis and
-        `PactoleFileStorage`; `InMemorySourceLoader` serves
-       content from an in-memory `path -> String` map, standing in for a future `pactole-lsp`
-       loader backed by the editor's open (possibly unsaved) buffers.
-      - `analyze_file_with_loader(entry_path, loader)` recursively follows `include` directives
-        through a `&dyn SourceLoader`, reusing `analyze_file` per file. Each file keeps its own
-        `ParsedFile` inside an `AnalyzedFile { path, file }`, while `AnalyzedProject::journal()`
-        and `validated_journal()` provide flattened journals when needed.
-     - It never fails on the *content* of included files: a relative include resolved without a
-       reachable base directory, a target the loader cannot provide, or an include cycle are all
-       reported as `IncludeIssue { path, include, message }` on `AnalyzedProject` rather than
-       aborting the whole analysis. Only a failure to load `entry_path` itself is returned as an
-       `Err`, since there is then nothing to analyze at all. A "diamond" include (the same file
-       reached through two different paths) is visited once; a self-include or mutual cycle is
-       detected via a stack of in-progress paths and reported as an `IncludeIssue`, not lowered.
-     - `analyze_file(&str) -> ParsedFile` is kept exactly as-is (single-file, no include
-       resolution) for backward compatibility; `analyze_file_with_loader` is strictly additive.
-     - Kept intentionally minimal: no caching, no incremental re-analysis, and no attempt to
-       track which loaded files a given analysis depends on for invalidation — a future
-       `pactole-lsp` is expected to build that on top of this contract rather than this crate
-       growing it prematurely.
+     - **`loader.rs`** (public API: `SourceLoader`, `SourceLoadError`, `FsSourceLoader`,
+       `InMemorySourceLoader`) and **multi-file analysis** (public API:
+       `analyze_file_with_loader`, `AnalyzedProject`, `AnalyzedFile`, in
+       `analysis.rs`): a minimal abstraction over "where source text comes from", so
+       multi-file/include resolution is not tied to reading real files from disk.
+       - `SourceLoader` is a small trait (`fn load(&self, path: &Path) -> Result<String,
+         SourceLoadError>`) that only loads raw source text for an already-resolved path; it knows
+         nothing about `.pactole` syntax. `FsSourceLoader` reads real files for project analysis and
+         `PactoleFileStorage`; `InMemorySourceLoader` serves
+         content from an in-memory `path -> String` map, standing in for a future `pactole-lsp`
+         loader backed by the editor's open (possibly unsaved) buffers.
+       - `analyze_file_with_loader(entry_path, loader)` recursively follows `include` directives
+         through a `&dyn SourceLoader`, reusing `analyze_file` per file. Each file keeps its own
+         `ParsedFile` inside an `AnalyzedFile { path, file }`, while `AnalyzedProject::journal()`
+         and `validated_journal()` provide flattened journals when needed.
+       - It never fails on the *content* of included files: a relative include resolved without a
+         reachable base directory, a target the loader cannot provide, or an include cycle are all
+         reported as positioned include diagnostics on `AnalyzedProject` rather than
+         aborting the whole analysis. Only a failure to load `entry_path` itself is returned as an
+         `Err`, since there is then nothing to analyze at all. A "diamond" include (the same file
+         reached through two different paths) is visited once; a self-include or mutual cycle is
+         detected via a stack of in-progress paths and reported as an include diagnostic, not lowered.
+       - `analyze_file(&str) -> ParsedFile` is kept exactly as-is (single-file, no include
+         resolution) for backward compatibility; `analyze_file_with_loader` is strictly additive.
+       - Include diagnostics are exposed through `AnalyzedProject::diagnostics()` and
+         `structural_diagnostics()` as positioned `Diagnostic` values; the internal include issue
+         representation is not part of the public API.
+       - Kept intentionally minimal: no caching, no incremental re-analysis, and no attempt to
+         track which loaded files a given analysis depends on for invalidation — a future
+         `pactole-lsp` is expected to build that on top of this contract rather than this crate
+         growing it prematurely.
 
 6. **`pactole-cli`**:
    - Command-line application binary named `pactole` (using `clap` derive).
    - Subcommands:
-     - `pactole parse <file>`: Parse file and debug-print journal entries.
-     - `pactole fmt <file> [--write]`: Format `.pactole` file canonically (supports `-` for stdin).
-     - `pactole check <file>`: Syntax parsing + business validation.
-     - `pactole register <file> [filters]`: Register report with running balances.
+      - `pactole parse <file>`: Parse file and debug-print journal entries.
+      - `pactole fmt <file> [--write]`: Format `.pactole` file canonically (supports `-` for stdin).
+      - `pactole completions <shell>`: Generate shell completion scripts.
+      - `pactole check <file>`: Syntax parsing + business validation.
+      - `pactole register <file> [filters]`: Register report with running balances.
+      - `pactole init [ledger]`: Initialize a starter ledger and OFX configuration.
      - `pactole import-ofx <file> [--config <path>] [--into <path>] [--write]`: Import an OFX/QFX
        statement (SGML 1.x or XML 2.x) into canonical `.pactole` transactions, via
        `pactole_import::import_ofx` + `pactole_storage_fs::format_transactions`. Configuration
@@ -182,7 +187,7 @@ pactole/
        byte-offset `Span`/`Point` into LSP's UTF-16-based `Range`/`Position` by re-scanning the
        relevant source line (a byte offset alone does not determine a UTF-16 character offset
        once the source has non-ASCII characters).
-     - `diagnostics.rs`: `diagnostics_for_file` (syntax + lowering diagnostics for one
+      - `diagnostics.rs`: `standalone_diagnostics` (syntax + lowering diagnostics for one
        `pactole_storage_fs::ParsedFile`) and `project_diagnostics` (per-file diagnostics, plus
        include issues attached to the file containing the offending `include`, for an
        `AnalyzedProject`).
@@ -208,13 +213,13 @@ pactole/
          `publish_for` call; any URI no longer covered by the latest one (e.g. an `include` was
          removed, dropping a file out of the project) is published an empty diagnostics list, so
          diagnostics never go stale once a file drops out of the analyzed set.
-   - **Explicitly out of scope for this first version**: completion, hover, formatting-over-LSP
-     (use `pactole fmt` for formatting), incremental sync, and any reading of
-     `~/.config/pactole`. Unhandled requests are answered with a `MethodNotFound` error rather
-     than silently ignored.
+    - Completion, code actions and hover are supported. Formatting over LSP (use `pactole fmt`),
+      navigation, incremental sync, and reading `~/.config/pactole` remain out of scope for this
+      first version. Unhandled requests are answered with a `MethodNotFound` error rather than
+      silently ignored.
    - **Depends on `pactole-storage-fs`/`pactole-syntax` only through their existing public API**
      (`analyze_file`, `analyze_file_with_loader`, `FsSourceLoader`, `SourceLoader`,
-     `SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `IncludeIssue`, `SyntaxDiagnostic`,
+      `SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `SyntaxDiagnostic`,
      `Span`/`Point`); it does not add or change anything in those crates.
    - Has no dependency on `thiserror`: it has no error enums of its own, only propagating errors
      via `Box<dyn Error + Sync + Send>` in `server.rs`.

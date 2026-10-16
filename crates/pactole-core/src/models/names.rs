@@ -3,6 +3,7 @@ use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt;
 
+/// Metadata attached to a directive or posting.
 pub type Metadata = BTreeMap<MetadataKey, String>;
 
 /// A metadata key: only lowercase letters, `_` or `-` (see the `key` rule
@@ -22,6 +23,7 @@ impl MetadataKey {
         }
     }
 
+    /// Returns the validated key as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -57,6 +59,7 @@ impl AccountName {
         }
     }
 
+    /// Returns the validated account name as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -87,6 +90,7 @@ impl CommodityName {
         }
     }
 
+    /// Returns the validated commodity name as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }

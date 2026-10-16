@@ -1,3 +1,10 @@
+//! Pure domain models, validation and reporting for Pactole journals.
+//!
+//! This crate performs no I/O and has no dependency on the parser or storage
+//! layers. A typical consumer builds a [`Journal`], validates it with
+//! [`validate_journal`] or [`validate_journal_all`], then produces a register
+//! report with [`register`]. Monetary values use [`rust_decimal::Decimal`].
+
 mod errors;
 mod models;
 mod register;

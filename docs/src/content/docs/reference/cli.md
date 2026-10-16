@@ -88,6 +88,10 @@ Errors include syntax errors, lowering errors, business validation errors and
 includes whose content could not be loaded. Include cycles are warnings because
 all files involved have still been loaded and validated.
 
+See [Diagnostics and project analysis](/reference/diagnostics/) for the
+distinction between standalone and project analysis, diagnostic severities and
+the include error codes.
+
 ```sh
 pactole check ledger.pactole
 pactole check --strict ledger.pactole

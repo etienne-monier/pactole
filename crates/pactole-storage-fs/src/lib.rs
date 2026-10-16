@@ -1,3 +1,10 @@
+//! Filesystem-backed parsing, analysis and formatting for Pactole journals.
+//!
+//! Use [`analyze_file`] for tolerant single-file tooling, or
+//! [`analyze_file_with_loader`] for include-aware project analysis. Use
+//! [`PactoleFileStorage`] when implementing [`pactole_core::ReadableStorage`]
+//! for a local journal, and [`format()`] for canonical source formatting.
+
 use pactole_core::{Journal, ReadableStorage};
 use pactole_syntax::SyntaxDiagnostic;
 use std::fs;
@@ -37,9 +44,18 @@ fn describe_syntax_diagnostics(diagnostics: &[SyntaxDiagnostic]) -> String {
     format!("{}{}", position, messages.join("; "))
 }
 
+/// A filesystem-backed journal storage that keeps the root file content in
+/// memory while it is parsed.
+///
+/// Updating [`Self::content`] before calling [`Self::parse`] lets callers
+/// analyze unsaved root-file content; included files are loaded through the
+/// filesystem loader.
 pub struct PactoleFileStorage {
+    /// Path of the root journal, when the storage was created from a path.
     pub filepath: Option<PathBuf>,
+    /// Current root-file content to parse.
     pub content: String,
+    /// Validated journal populated by [`Self::parse`].
     pub journal: Option<Journal>,
 }
 
@@ -60,6 +76,9 @@ impl SourceLoader for RootContentLoader {
 }
 
 impl PactoleFileStorage {
+    /// Parses the current root content and stores its structurally valid
+    /// journal. Include, syntax and lowering errors are returned instead of
+    /// producing a partial storage journal.
     pub fn parse(&mut self) -> Result<(), errors::PactoleFsStorageError> {
         let entry_path = self.filepath.clone().unwrap_or_default();
         let loader = RootContentLoader {

@@ -1,44 +1,17 @@
+//! Business validation and auto-balancing for Pactole journals.
+
 use crate::errors::ValidationError;
 use crate::models::{AccountName, Amount, CommodityName, Entry, Journal, Transaction};
 use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-/// Validates a [`Journal`] from a business point of view, on top of the
-/// purely grammatical validation already performed while building each
-/// entry (see [`crate::ModelError`]).
-///
-/// This:
-/// - sorts every entry chronologically (a stable sort, so entries sharing
-///   the same date keep their original relative order); [`Payee`]
-///   declarations carry no date and always sort first, so they are known
-///   from the start regardless of where in the file they appear,
-/// - checks that an account is open (i.e. has been `open`ed and not yet
-///   `close`d) before being used in a transaction posting, a balance
-///   assertion, or being closed itself,
-/// - checks that a commodity has been declared before being used in a
-///   transaction posting,
-/// - when an `open` directive restricts an account to a list of
-///   commodities, checks that every posting on that account (including
-///   auto-balanced ones) uses one of them; an empty list means the
-///   account is unrestricted,
-/// - checks that a transaction's payee (when set) has been declared with
-///   a `payee` directive somewhere in the journal,
-/// - balances every transaction: at most one posting may be left without
-///   an amount, in which case it is auto-filled from the others, and the
-///   postings for each commodity must sum to zero,
-/// - checks every `balance` assertion against the running balance of its
-///   account/commodity pair, computed from the transactions seen so far
-///   (in the same, stable chronological order used everywhere else),
-///   allowing for the assertion's optional tolerance (an unset tolerance
-///   means an exact match is required); like transaction postings, a
-///   `balance` assertion's commodity must be declared and, when the
-///   account is restricted to a list of commodities, must belong to it.
-///
-/// On success, returns the same journal, sorted and with transactions
-/// auto-balanced.
+/// A complete validation result, including the normalized journal and all
+/// non-cascading issues found while walking it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationReport {
+    /// Chronologically sorted journal, with inferable amounts filled in.
     pub journal: Journal,
+    /// Issues paired with their positions in the input journal.
     pub issues: Vec<ValidationIssue>,
 }
 
@@ -57,10 +30,18 @@ impl ValidationReport {
 /// storage layer can use it to recover the originating file and source span.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationIssue {
+    /// Zero-based position in the journal supplied to validation, before the
+    /// validator's chronological sort.
     pub input_index: usize,
+    /// Business error associated with the input entry.
     pub error: ValidationError,
 }
 
+/// Validates a journal and returns the first business error, if any.
+///
+/// On success, returns the journal sorted chronologically and with inferable
+/// transaction amounts filled in. Use [`validate_journal_all`] to retain every
+/// non-cascading issue and its input index.
 pub fn validate_journal(journal: Journal) -> Result<Journal, ValidationError> {
     let report = validate_journal_all(journal);
     match report.issues.first() {
@@ -72,6 +53,12 @@ pub fn validate_journal(journal: Journal) -> Result<Journal, ValidationError> {
 /// Validates every entry and returns all errors that can be diagnosed without
 /// aborting the journal walk. Invalid entries do not mutate validation state,
 /// preventing one error from causing a cascade of misleading later errors.
+///
+/// The returned journal is chronologically sorted with stable ordering for
+/// equal dates. Payee declarations, which have no date, are available before
+/// dated entries. Validation checks account lifecycles, declarations,
+/// transaction balancing and balance assertions; at most one missing posting
+/// amount is inferred when its commodity is unambiguous.
 pub fn validate_journal_all(journal: Journal) -> ValidationReport {
     let mut indexed_entries: Vec<(usize, Entry)> =
         journal.entries.into_iter().enumerate().collect();

@@ -90,27 +90,39 @@ pub struct LoweringDiagnostic {
 /// Severity shared by all diagnostics produced by project analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticSeverity {
+    /// The diagnostic blocks the default CLI/LSP operation.
     Error,
+    /// The diagnostic is reported but does not fail `check` unless `--strict` is used.
     Warning,
 }
 
 /// Origin of a project diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticSource {
+    /// Tree-sitter syntax analysis.
     Syntax,
+    /// CST-to-domain lowering.
     Lowering,
+    /// Include graph resolution.
     Include,
+    /// Core journal validation.
     Business,
 }
 
 /// A source-positioned diagnostic ready for consumption by a CLI or editor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
+    /// File in which the diagnostic was produced.
     pub path: PathBuf,
+    /// Half-open source span of the diagnostic.
     pub span: Span,
+    /// Whether the diagnostic blocks the operation by default.
     pub severity: DiagnosticSeverity,
+    /// Layer that produced the diagnostic.
     pub source: DiagnosticSource,
+    /// Stable machine-readable code, when the source provides one.
     pub code: Option<String>,
+    /// Human-readable explanation of the problem.
     pub message: String,
 }
 
@@ -445,7 +457,7 @@ impl IncludeIssueKind {
 /// syntax and lowering issues are reported per-file via each
 /// [`AnalyzedFile::file`]. It can, however, fail to even load the entry
 /// path itself (see [`analyze_file_with_loader`]'s return type); everything
-/// reachable from includes is instead reported as [`IncludeIssue`]s so a
+/// reachable from includes is instead reported as include diagnostics so a
 /// single unreadable or cyclic include does not abort the whole analysis.
 pub struct AnalyzedProject {
     files: Vec<AnalyzedFile>,
@@ -535,6 +547,8 @@ impl AnalyzedProject {
         diagnostics
     }
 
+    /// Returns syntax, lowering and include diagnostics, excluding business
+    /// validation diagnostics.
     pub fn structural_diagnostics(&self) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
@@ -572,10 +586,12 @@ impl AnalyzedProject {
 }
 
 impl Diagnostic {
+    /// Returns whether this diagnostic is an error.
     pub const fn is_error(&self) -> bool {
         matches!(self.severity, DiagnosticSeverity::Error)
     }
 
+    /// Returns whether this diagnostic is a warning.
     pub const fn is_warning(&self) -> bool {
         matches!(self.severity, DiagnosticSeverity::Warning)
     }
@@ -626,7 +642,7 @@ fn file_diagnostics(path: &Path, file: &ParsedFile) -> Vec<Diagnostic> {
 /// A relative include is resolved against the directory of the file it
 /// appears in; an include with no reachable base directory (e.g. the entry
 /// path itself has no parent), a target the loader cannot provide, or an
-/// include cycle are all reported as [`IncludeIssue`]s rather than causing
+/// include cycle are all reported as include diagnostics rather than causing
 /// the whole analysis to fail. Only a failure to load `entry_path` itself
 /// is returned as an `Err`, since there is then nothing to analyze at all.
 pub fn analyze_file_with_loader(

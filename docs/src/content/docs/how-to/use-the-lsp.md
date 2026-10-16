@@ -46,6 +46,10 @@ Without `journal_file`, the server analyzes only the document currently open in
 the editor. This is also the fallback used when the configured journal cannot
 be loaded.
 
+See [Diagnostics and project analysis](/reference/diagnostics/) for the
+standalone/project distinction, partial analysis behavior and include
+diagnostic codes.
+
 ## Editor-specific configuration
 
 For Helix, see the [Helix integration guide](https://github.com/etienne-monier/pactole/blob/main/HELIX.md), which also
@@ -61,6 +65,8 @@ and generic editor configuration examples, including the external formatter.
 
 - reports syntax errors and missing syntax nodes;
 - reports lowering errors for invalid directives;
+- reports business validation errors when a complete `journal_file` project is
+  available;
 - analyzes included files when `journal_file` is configured;
 - uses an open document's current, unsaved contents when resolving includes;
 - clears diagnostics for files that are no longer part of the analyzed journal;

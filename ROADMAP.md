@@ -67,6 +67,11 @@ APIs instead of maintaining independent heuristics.
 
 ## P0 — Domain reliability and diagnostics
 
+The public diagnostic and project-analysis contracts are documented in the
+[diagnostics reference](/reference/diagnostics/), including standalone versus
+project analysis, include severity, source-order journals and validated
+journals.
+
 ### P0.1 — Stabilize the business diagnostic contract
 
 - [x] Define a business diagnostic type with `kind`, `message`, severity, file,

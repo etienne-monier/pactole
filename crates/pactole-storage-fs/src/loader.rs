@@ -27,8 +27,10 @@ pub enum SourceLoadError {
     /// The path exists but could not be read (e.g. a filesystem I/O error).
     #[error("I/O error reading {path}: {source}")]
     Io {
+        /// Path that could not be read.
         path: PathBuf,
         #[source]
+        /// Underlying filesystem error.
         source: std::io::Error,
     },
 }
