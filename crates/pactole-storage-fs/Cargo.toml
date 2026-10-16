@@ -1,6 +1,6 @@
 [package]
 name = "pactole-storage-fs"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,8 +13,8 @@ categories = ["parser-implementations", "finance"]
 
 [dependencies]
 chrono = "0.4.45"
-pactole-core = { version = "0.1.0", path = "../pactole-core" }
-pactole-syntax = { version = "0.1.0", path = "../pactole-syntax" }
+pactole-core = { version = "0.2.0", path = "../pactole-core" }
+pactole-syntax = { version = "0.2.0", path = "../pactole-syntax" }
 rust_decimal = "1.43.0"
 thiserror = "2.0.20"
 toml = "1.1.5"

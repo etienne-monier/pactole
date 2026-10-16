@@ -1,6 +1,6 @@
 [package]
 name = "pactole-import"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ categories = ["finance", "parser-implementations"]
 chrono = "0.4.45"
 # Pending upstream release: ofx-rs 0.2.0 pins quick-xml below the RustSec-fixed version.
 ofx-rs = { version = "0.2.0", git = "https://github.com/etienne-monier/ofx-rs.git", rev = "8ffb65f0244c33810e3557805278ff23e44803bd" }
-pactole-core = { version = "0.1.0", path = "../pactole-core" }
+pactole-core = { version = "0.2.0", path = "../pactole-core" }
 rust_decimal = "1.43.0"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0.20"

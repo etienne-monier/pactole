@@ -1,6 +1,6 @@
 [package]
 name = "pactole-syntax"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,4 +13,4 @@ categories = ["parser-implementations"]
 
 [dependencies]
 tree-sitter = "0.27.0"
-tree-sitter-pactole = { version = "0.1.0", path = "../tree-sitter-pactole" }
+tree-sitter-pactole = { version = "0.2.0", path = "../tree-sitter-pactole" }

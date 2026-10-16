@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.2.0] - 2026-10-16
+
 ### Added
 
 - Plain-text, double-entry accounting journal format defined by
@@ -67,7 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release notes
 
-No versioned release has been published yet. Move the relevant entries from
-`[Unreleased]` into a dated version section when the first release is created.
+This is the first public Pactole release. Version `0.1.0` was published
+manually to reserve and connect the crates on crates.io; the first functional
+release is `0.2.0`.
 
 [unreleased]: https://github.com/etienne-monier/pactole/commits/develop
+[0.2.0]: https://github.com/etienne-monier/pactole/releases/tag/v0.2.0
