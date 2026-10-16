@@ -36,8 +36,12 @@ impl<'src> AstBuilder<'src> {
 
     /// Return the source text spanned by the given node.
     fn text(&self, node: Node<'_>) -> &'src str {
-        node.utf8_text(self.source.as_bytes())
-            .expect("source is valid UTF-8")
+        match node.utf8_text(self.source.as_bytes()) {
+            Ok(text) => text,
+            Err(error) => {
+                unreachable!("tree-sitter returned a non-UTF-8 source span: {error}")
+            }
+        }
     }
 
     /// Build a parser error carrying the given message.

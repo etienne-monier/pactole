@@ -294,8 +294,12 @@ struct Printer<'src> {
 
 impl<'src> Printer<'src> {
     fn text(&self, node: Node<'_>) -> &'src str {
-        node.utf8_text(self.source.as_bytes())
-            .expect("source is valid UTF-8")
+        match node.utf8_text(self.source.as_bytes()) {
+            Ok(text) => text,
+            Err(error) => {
+                unreachable!("tree-sitter returned a non-UTF-8 source span: {error}")
+            }
+        }
     }
 
     /// Render a node that may appear as a child of an inline node: recurse

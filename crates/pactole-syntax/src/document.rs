@@ -68,17 +68,19 @@ impl ParsedDocument {
 ///
 /// # Panics
 ///
-/// Panics if the tree-sitter parser fails to load the Pactole grammar, which
-/// would indicate a build-time inconsistency rather than a user-facing error.
+/// Panics if the tree-sitter parser fails to load the Pactole grammar or fails
+/// to produce a tree for a string input. Either case indicates a build-time or
+/// library invariant violation rather than a user-facing parse error.
 pub fn parse_document(source: &str) -> ParsedDocument {
     let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_pactole::LANGUAGE.into())
-        .expect("Error loading Pactole parser");
+    if let Err(error) = parser.set_language(&tree_sitter_pactole::LANGUAGE.into()) {
+        panic!("failed to load Pactole parser: {error}");
+    }
 
-    let tree = parser
-        .parse(source, None)
-        .expect("tree-sitter parsing should always succeed for a string input");
+    let tree = match parser.parse(source, None) {
+        Some(tree) => tree,
+        None => panic!("tree-sitter failed to produce a tree for a string input"),
+    };
 
     // Collect with source text available, so `ERROR` diagnostics can quote
     // the unexpected text rather than falling back to a bare tree-sitter

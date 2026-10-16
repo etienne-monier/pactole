@@ -290,9 +290,10 @@ fn validate_transaction(
     // Enforce `open`'s commodity restrictions after balancing, so that an
     // auto-balanced posting's inferred commodity is checked too.
     for posting in &transaction.postings {
-        let allowed = open_accounts
-            .get(&posting.account)
-            .expect("account presence was already checked above");
+        let allowed = match open_accounts.get(&posting.account) {
+            Some(allowed) => allowed,
+            None => unreachable!("account presence was checked before commodity restrictions"),
+        };
         if allowed.is_empty() {
             continue;
         }
@@ -352,7 +353,9 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
             });
         }
 
-        let (_, (commodity, sum)) = sums.into_iter().next().unwrap();
+        let Some((_, (commodity, sum))) = sums.into_iter().next() else {
+            unreachable!("a missing amount requires exactly one commodity sum");
+        };
         transaction.postings[index].amount = Some(Amount {
             number: -sum,
             commodity,
