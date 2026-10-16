@@ -627,7 +627,7 @@ dependencies = [
 [[package]]
 name = "ofx-rs"
 version = "0.2.0"
-source = "git+https://github.com/etienne-monier/ofx-rs.git?rev=8ffb65f0244c33810e3557805278ff23e44803bd#8ffb65f0244c33810e3557805278ff23e44803bd"
+source = "git+https://github.com/etienne-monier/ofx-rs.git?rev=6803cfc1deb4957d40b82168aee631542a21f524#6803cfc1deb4957d40b82168aee631542a21f524"
 dependencies = [
  "quick-xml",
  "rust_decimal",

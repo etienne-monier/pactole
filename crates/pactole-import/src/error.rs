@@ -10,10 +10,19 @@ pub enum ImportError {
     #[error("failed to parse OFX document: {0}")]
     Ofx(String),
 
-    /// The document parsed, but contained no bank or credit card statement
-    /// that could be imported.
-    #[error("no bank or credit card statement found in the OFX document")]
+    /// The document parsed, but contained no bank, credit card or
+    /// investment statement that could be imported.
+    #[error("no bank, credit card or investment statement found in the OFX document")]
     NoStatement,
+
+    /// The document visibly contains `<STMTTRN>` transactions, but the
+    /// parser produced none from any statement: an OFX dialect (or an
+    /// account aggregate) was mishandled and the transactions were dropped.
+    #[error(
+        "the OFX document contains transactions but none could be read; this usually means an \
+         unsupported OFX dialect — please report the file"
+    )]
+    TransactionsDropped,
 
     /// A transaction could not be converted to a domain model (e.g. an
     /// unrepresentable date).

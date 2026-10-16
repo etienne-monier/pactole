@@ -7,6 +7,8 @@ use rust_decimal::Decimal;
 
 const XML: &str = include_str!("fixtures/statement_xml.ofx");
 const SGML: &str = include_str!("fixtures/statement_sgml.ofx");
+const SGML_ACCTKEY: &str = include_str!("fixtures/statement_sgml_acctkey.ofx");
+const INVESTMENT: &str = include_str!("fixtures/statement_investment.ofx");
 
 fn base_config() -> ImportConfig {
     ImportConfig {
@@ -76,6 +78,70 @@ fn imports_a_sgml_bank_statement() {
         transaction.postings[0].amount.as_ref().unwrap().number,
         dec("12.00")
     );
+}
+
+#[test]
+fn imports_a_sgml_bank_statement_carrying_acctkey() {
+    // Regression: `ACCTKEY` inside `BANKACCTFROM` used to make the SGML
+    // normalizer close the account aggregate early and drop the whole
+    // `BANKTRANLIST`, so the statement parsed with no transaction at all.
+    let outcome = pactole_import::import_ofx(SGML_ACCTKEY, &base_config(), &no_fitids()).unwrap();
+
+    assert_eq!(outcome.transactions.len(), 1);
+
+    let transaction = &outcome.transactions[0];
+    assert_eq!(
+        transaction.payee.as_deref(),
+        Some("VIREMENT PERMANENT POUR")
+    );
+    assert_eq!(fitid(transaction), Some("1234sen"));
+    assert_eq!(
+        transaction.postings[0].amount.as_ref().unwrap().number,
+        dec("10.00")
+    );
+}
+
+#[test]
+fn imports_the_banking_transactions_of_an_investment_statement() {
+    let outcome = pactole_import::import_ofx(INVESTMENT, &base_config(), &no_fitids()).unwrap();
+
+    // Only the INVBANKTRAN banking transaction is imported; the BUYSTOCK
+    // trade is an investment operation and is left out.
+    assert_eq!(outcome.transactions.len(), 1);
+    let transaction = &outcome.transactions[0];
+    assert_eq!(fitid(transaction), Some("INV-1"));
+    assert_eq!(
+        transaction.payee.as_deref(),
+        Some("VIREMENT PERMANENT POUR")
+    );
+}
+
+#[test]
+fn reports_an_error_when_statements_contain_transactions_that_are_dropped() {
+    // A field the SGML normalizer does not know inside `BANKACCTFROM` makes
+    // it close the account aggregate early and unwind the stack, dropping
+    // `BANKTRANLIST`: the parser then reports an empty statement even though
+    // the source plainly contains a transaction.
+    let source = "\
+OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+SECURITY:NONE
+ENCODING:USASCII
+CHARSET:1252
+COMPRESSION:NONE
+OLDFILEUID:NONE
+NEWFILEUID:NONE
+
+<OFX>
+<SIGNONMSGSRSV1><SONRS><STATUS><CODE>0<SEVERITY>INFO</STATUS><DTSERVER>20261016120000<LANGUAGE>FRA</SONRS></SIGNONMSGSRSV1>
+<BANKMSGSRSV1><STMTTRNRS><TRNUID>1234<STATUS><CODE>0<SEVERITY>INFO</STATUS><STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>0000<ACCTID>1231<ACCTTYPE>CHECKING<UNKNOWNLEAF>41</BANKACCTFROM><BANKTRANLIST><DTSTART>20260918<DTEND>20261016<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261015<TRNAMT>-10.00<FITID>DROPPED-1<NAME>FOURNISSEUR</STMTTRN></BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1>
+</OFX>
+";
+
+    let error = pactole_import::import_ofx(source, &base_config(), &no_fitids()).unwrap_err();
+
+    assert!(matches!(error, ImportError::TransactionsDropped));
 }
 
 #[test]

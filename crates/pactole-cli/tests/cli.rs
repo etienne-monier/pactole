@@ -665,6 +665,60 @@ fn import_ofx_skips_transactions_already_in_the_target_file() {
 }
 
 #[test]
+fn import_ofx_skips_transactions_already_in_an_included_file() {
+    // The target journal only holds an `include`: the FITID it must
+    // recognize lives in the included file, so FITID collection has to
+    // follow the include rather than look at the entry file alone.
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);
+    let included = write_import_temp(
+        "included.pactole",
+        "2026-09-03 * \"Carrefour\" \"Courses\"\n\
+         \u{20}\u{20}fitid: 2026090300001\n\
+         \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
+         \u{20}\u{20}Actifs:Banque -45.30 EUR\n",
+    );
+    let into = write_import_temp(
+        "journal.pactole",
+        &format!(
+            "include \"{}\"\n",
+            included.file_name().unwrap().to_str().unwrap()
+        ),
+    );
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            rules.to_str().unwrap(),
+            "--into",
+            into.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&rules).ok();
+    std::fs::remove_file(&included).ok();
+    std::fs::remove_file(&into).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The transaction recorded in the included file is gone; the other one remains.
+    assert!(!stdout.contains("2026-09-03 *"));
+    assert!(stdout.contains("2026-09-05 *"));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("imported 1 transaction(s), skipped 1"));
+}
+
+#[test]
 fn import_ofx_write_appends_to_the_target_file() {
     let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
     let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);

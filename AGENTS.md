@@ -164,8 +164,8 @@ pactole/
        (bank account, default counter account, optional fallback currency, `[[rules]]`) is read
        from `~/.config/pactole/import-ofx.toml` by default (overridable with `--config`). Without
        `--into`, transactions are printed to stdout; with `--into <file>`, FITIDs already present
-       in that file are skipped (idempotence), and with `--write` the generated transactions are
-       appended to it.
+       in that file (and in the files it `include`s) are skipped (idempotence), and with `--write`
+       the generated transactions are appended to it.
    - Integration tests in `crates/pactole-cli/tests/cli.rs`.
 
 5. **`pactole-lsp`**:
@@ -234,7 +234,10 @@ pactole/
      - `record.rs`: `ImportRecord`, a format-neutral intermediate representation (date, signed
        amount, currency, payee, memo, transaction type, check number, reference, FITID).
      - `ofx.rs`: OFX parser (1.x SGML and 2.x XML, via the `ofx-rs` crate) producing
-       `ImportRecord`s.
+       `ImportRecord`s from `BANKMSGSRSV1`, `CREDITCARDMSGSRSV1` and `INVSTMTMSGSRSV1`
+       (investment statements contribute their `INVBANKTRAN` banking transactions only). A
+       document that plainly contains `<STMTTRN>` elements but yields no record fails with
+       `ImportError::TransactionsDropped` instead of importing nothing silently.
      - `config.rs`: `ImportConfig`, `Rule`, `Direction` — serde types describing the bank
        account, the default counter account, the optional fallback currency and the
        categorization rules. These types fix no file format; the caller chooses TOML.

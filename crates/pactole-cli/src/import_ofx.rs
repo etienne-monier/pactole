@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use pactole_core::Entry;
+use pactole_storage_fs::FsSourceLoader;
 
 use crate::config::{default_import_config_path, format_options};
 
@@ -59,7 +60,13 @@ pub(crate) fn run(
     if let Some(path) = &into {
         match fs::read_to_string(path) {
             Ok(source) => {
-                known_fitids = collect_fitids(&source);
+                known_fitids = match collect_fitids(path) {
+                    Ok(fitids) => fitids,
+                    Err(err) => {
+                        eprintln!("error: cannot analyze {}: {err}", path.display());
+                        return ExitCode::FAILURE;
+                    }
+                };
                 existing = Some(source);
             }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
@@ -123,17 +130,22 @@ pub(crate) fn run(
     ExitCode::SUCCESS
 }
 
-fn collect_fitids(source: &str) -> HashSet<String> {
-    let analyzed = pactole_storage_fs::analyze_file(source);
+fn collect_fitids(path: &Path) -> Result<HashSet<String>, pactole_storage_fs::SourceLoadError> {
+    // Analyze `path` as the entry point of a project so `include` directives
+    // are followed: FITIDs recorded in any reachable file are recognized and
+    // re-imports stay idempotent even when the target journal is split across
+    // several files.
+    let project = pactole_storage_fs::analyze_file_with_loader(path, &FsSourceLoader)?;
 
-    analyzed
-        .entries()
+    Ok(project
+        .files()
         .iter()
+        .flat_map(|file| file.file.entries())
         .filter_map(|parsed_entry| match &parsed_entry.entry {
             Entry::Transaction(transaction) => transaction.meta.get("fitid").cloned(),
             _ => None,
         })
-        .collect()
+        .collect())
 }
 
 fn describe_warning(warning: &pactole_import::ImportWarning) -> String {

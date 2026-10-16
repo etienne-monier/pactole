@@ -9,8 +9,9 @@ use crate::record::ImportRecord;
 /// Parses an OFX document (1.x SGML or 2.x XML) into format-neutral
 /// [`ImportRecord`]s.
 ///
-/// Both `BANKMSGSRSV1` (bank statements) and `CREDITCARDMSGSRSV1` (credit
-/// card statements) are supported; every statement response present in the
+/// `BANKMSGSRSV1` (bank statements), `CREDITCARDMSGSRSV1` (credit card
+/// statements) and `INVSTMTMSGSRSV1` (investment statements, banking
+/// transactions only) are supported; every statement response present in the
 /// document contributes its transactions.
 pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportError> {
     let document = parse(source).map_err(|error| ImportError::Ofx(error.to_string()))?;
@@ -38,11 +39,66 @@ pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportErr
         }
     }
 
+    // Investment statements carry their banking transactions (deposits,
+    // withdrawals) in an INVTRANLIST; ofx-rs already lowers those into plain
+    // transactions and skips the investment-specific ones.
+    if let Some(investment) = document.investment() {
+        for wrapper in investment.statement_responses() {
+            if let Some(statement) = wrapper.response() {
+                found_statement = true;
+                let currency = statement.currency_default().as_str();
+                collect(statement.transaction_list(), currency, &mut records)?;
+            }
+        }
+    }
+
     if !found_statement {
         return Err(ImportError::NoStatement);
     }
 
+    // A document that visibly contains transactions but yielded none means
+    // the parser dropped them (an OFX dialect it mishandles), not that the
+    // statement is empty. Failing loudly beats importing nothing silently.
+    if records.is_empty() && contains_stmttrn_tag(source) {
+        return Err(ImportError::TransactionsDropped);
+    }
+
     Ok(records)
+}
+
+/// Returns whether the source text contains an `<STMTTRN>` element outside of
+/// a comment.
+///
+/// Comments are skipped so a commented-out transaction is not mistaken for
+/// one the parser dropped, and the check looks for the `<STMTTRN>` element
+/// itself so that the `<STMTTRNRS>` statement wrapper does not count.
+fn contains_stmttrn_tag(source: &str) -> bool {
+    let mut remaining = source;
+
+    while let Some(start) = remaining.find("<!--") {
+        if remaining.get(..start).is_some_and(has_stmttrn_element) {
+            return true;
+        }
+        match remaining
+            .get(start + "<!--".len()..)
+            .and_then(|after| after.find("-->"))
+        {
+            Some(end) => {
+                remaining = remaining
+                    .get(start + "<!--".len() + end + "-->".len()..)
+                    .unwrap_or_default();
+            }
+            // Unterminated comment: everything after it is commented out.
+            None => return false,
+        }
+    }
+
+    has_stmttrn_element(remaining)
+}
+
+/// Case-insensitive test for the `<STMTTRN>` opening tag.
+fn has_stmttrn_element(text: &str) -> bool {
+    text.to_ascii_uppercase().contains("<STMTTRN>")
 }
 
 /// Extracts the transactions of one statement into [`ImportRecord`]s.
@@ -87,4 +143,35 @@ fn to_naive_date(value: &OfxDateTime) -> Result<NaiveDate, ImportError> {
         u32::from(date.day()),
     )
     .ok_or_else(|| ImportError::InvalidTransaction(format!("invalid date `{value}`")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::contains_stmttrn_tag;
+
+    #[test]
+    fn detects_a_statement_transaction_element() {
+        assert!(contains_stmttrn_tag("<STMTTRN><TRNTYPE>DEBIT"));
+        assert!(contains_stmttrn_tag("<stmttrn>\n<TRNTYPE>DEBIT"));
+    }
+
+    #[test]
+    fn ignores_the_statement_wrapper() {
+        // `<STMTTRNRS>` wraps a statement and is present even when the
+        // statement itself carries no transaction.
+        assert!(!contains_stmttrn_tag("<STMTTRNRS><TRNUID>1</TRNUID>"));
+    }
+
+    #[test]
+    fn ignores_commented_out_transactions() {
+        assert!(!contains_stmttrn_tag(
+            "<BANKTRANLIST><!-- <STMTTRN> --></BANKTRANLIST>"
+        ));
+        // A real transaction after a comment is still detected.
+        assert!(contains_stmttrn_tag(
+            "<!-- <STMTTRN> --><STMTTRN><TRNTYPE>DEBIT"
+        ));
+        // An unterminated comment hides everything that follows.
+        assert!(!contains_stmttrn_tag("<!-- <STMTTRN>"));
+    }
 }
