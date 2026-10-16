@@ -69,53 +69,53 @@ APIs instead of maintaining independent heuristics.
 
 ### P0.1 — Stabilize the business diagnostic contract
 
-- [ ] Define a business diagnostic type with `kind`, `message`, severity, file,
+- [x] Define a business diagnostic type with `kind`, `message`, severity, file,
   and `Span`.
-- [ ] Document the distinction between syntax, lowering, include, and business
+- [x] Document the distinction between syntax, lowering, include, and business
   validation diagnostics.
-- [ ] Define how an error is attached to an entry, posting, account, or
+- [x] Define how an error is attached to an entry, posting, account, or
   directive.
 - [ ] Add tests converting business diagnostics to UTF-16 LSP diagnostics,
   including non-ASCII text.
 
 ### P0.2 — Add the simplest positioned business validations
 
-- [ ] Report a used but undeclared payee on the transaction payee.
-- [ ] Report a used but undeclared commodity on its occurrence.
-- [ ] Report an account used before its `open` directive on the invalid use.
-- [ ] Report an account used after its `close` directive on the invalid use.
-- [ ] Report inconsistent account openings or closings.
+- [x] Report a used but undeclared payee on the transaction payee.
+- [x] Report a used but undeclared commodity on its occurrence.
+- [x] Report an account used before its `open` directive on the invalid use.
+- [x] Report an account used after its `close` directive on the invalid use.
+- [x] Report inconsistent account openings or closings.
 - [ ] Validate directive chronological order and locate the offending entry.
 - [ ] Publish these diagnostics in the CLI `check` command and in the LSP with
   stable diagnostic codes.
 
 ### P0.3 — Diagnose transaction balancing
 
-- [ ] Expose the balancing difference per commodity in a structured error.
+- [x] Expose the balancing difference per commodity in a structured error.
 - [ ] Attach the error to the transaction and, when possible, to the posting
   that should be completed.
-- [ ] Distinguish a missing inferable amount, multiple implicit amounts, and a
+- [x] Distinguish a missing inferable amount, multiple implicit amounts, and a
   genuinely unbalanced transaction.
-- [ ] Test single-commodity, multi-commodity, implicit-amount, and tolerance
+- [x] Test single-commodity, multi-commodity, implicit-amount, and tolerance
   cases.
-- [ ] Ensure analysis continues with subsequent transactions after an invalid
+- [x] Ensure analysis continues with subsequent transactions after an invalid
   transaction.
 
 ### P0.4 — Validate balance assertions
 
-- [ ] Calculate the balance at an assertion date without losing posting
+- [x] Calculate the balance at an assertion date without losing posting
   provenance.
-- [ ] Report the difference between the calculated and expected balance.
-- [ ] Position the error on the `balance` directive.
-- [ ] Cover assertions by commodity, unknown accounts, and boundary dates.
+- [x] Report the difference between the calculated and expected balance.
+- [x] Position the error on the `balance` directive.
+- [x] Cover assertions by commodity, unknown accounts, and boundary dates.
 
 ### P0.5 — Strengthen regression tests
 
 - [ ] Add realistic multi-file journal fixtures.
-- [ ] Add CLI integration tests for each validation family.
-- [ ] Add LSP tests for publishing and clearing diagnostics.
+- [x] Add CLI integration tests for each validation family.
+- [x] Add LSP tests for publishing and clearing diagnostics.
 - [ ] Add property tests for balancing and idempotent formatting.
-- [ ] Run `cargo fmt`, `cargo clippy --workspace --all-targets`, and
+- [x] Run `cargo fmt`, `cargo clippy --workspace --all-targets`, and
   `cargo test --workspace` consistently in CI.
 
 ## P1 — Editing and checking experience
@@ -169,10 +169,10 @@ APIs instead of maintaining independent heuristics.
 
 ### P1.6 — Improve the CLI workflow
 
-- [ ] Display `check` errors as `file:line:column`.
+- [x] Display `check` errors as `file:line:column`.
 - [ ] Add a structured JSON output option for diagnostics.
 - [ ] Add an option or command to explicitly check the complete include graph.
-- [ ] Keep text output stable for scripts and CI.
+- [x] Keep text output stable for scripts and CI.
 - [ ] Extend `pactole init` with a journal skeleton and minimal explanations.
 
 ## P1 — Essential accounting reports

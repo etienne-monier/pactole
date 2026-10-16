@@ -1,22 +1,19 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use pactole_core::ReadableStorage;
-use pactole_storage_fs::PactoleFileStorage;
+use pactole_storage_fs::{FsSourceLoader, SourceLoadError};
 
 pub(crate) fn run(file: PathBuf) -> ExitCode {
-    let mut storage = match PactoleFileStorage::try_from(file) {
-        Ok(storage) => storage,
-        Err(err) => return failure(err),
+    let project = match pactole_storage_fs::analyze_file_with_loader(&file, &FsSourceLoader) {
+        Ok(project) => project,
+        Err(error) => return failure(error),
     };
 
-    if let Err(err) = storage.parse() {
-        return failure(err);
-    }
-
-    let journal = match storage.journal() {
+    let structural = project.structural_diagnostics();
+    crate::diagnostics::print(&structural);
+    let journal = match project.journal() {
         Ok(journal) => journal,
-        Err(err) => return failure(err),
+        Err(_) => return ExitCode::FAILURE,
     };
 
     for entry in journal.entries() {
@@ -26,7 +23,7 @@ pub(crate) fn run(file: PathBuf) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn failure(error: impl std::fmt::Display) -> ExitCode {
+fn failure(error: SourceLoadError) -> ExitCode {
     eprintln!("error: {error}");
     ExitCode::FAILURE
 }

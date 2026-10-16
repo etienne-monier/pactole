@@ -75,7 +75,11 @@ pactole/
 
 4. **`pactole-storage-fs`**:
    - Implements `ReadableStorage` for local files (`PactoleFileStorage`).
-   - `parser.rs`: Converts tree-sitter CST nodes into `pactole-core` domain models and handles recursive resolution of `include` directives.
+    - `analysis.rs`: Converts tree-sitter CST nodes into positioned domain
+      entries, resolves includes through `SourceLoader`, and exposes
+      source-order and validated journals with unified diagnostics.
+    - `parser.rs`: Contains the shared CST-to-domain lowering logic used by
+      `analysis.rs`; include resolution is no longer implemented here.
    - `printer.rs`: Formats AST/source code into canonical `.pactole` layout. Also exposes
      `format_transactions(&[Transaction]) -> String`, which serializes a list of domain
      transactions into canonical `.pactole` text (used by `pactole import-ofx`; the inverse of
@@ -83,29 +87,31 @@ pactole/
    - `errors.rs`: `PactoleFsStorageError`.
    - **Reuses `pactole-syntax`**: parser initialization and syntax-error detection go through
      `pactole_syntax::parse_document`/`ParsedDocument::into_result`, so tree-sitter parser setup
-     and `ERROR`/`MISSING` detection are not duplicated here. `parser.rs` and `printer.rs` both
-     parse via `pactole-syntax` and then walk the resulting `ParsedDocument`'s tree with their own
-     tree-sitter-node logic (CST-to-domain-model conversion and canonical formatting respectively).
-   - **Stability note**: this crate's strict, existing API (`PactoleFileStorage`, `parser.rs`,
-     `printer.rs`) is unchanged by the introduction of `pactole-syntax`. The canonical formatter
-     stays in `pactole-storage-fs` for now; it is not moved or duplicated into `pactole-syntax`.
-   - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `ParsedInclude`,
-     `LoweringDiagnostic`): a positioned, directive-by-directive analysis for tooling (editors, a
+      and `ERROR`/`MISSING` detection are not duplicated here. `analysis.rs` and `printer.rs` walk
+      the resulting `ParsedDocument` tree for lowering and canonical formatting respectively.
+    - **Stability note**: `PactoleFileStorage` and `ReadableStorage` remain
+      available. Their parsing path now delegates to the same loader-based
+      project analysis as the CLI and LSP. The canonical formatter stays in
+      `pactole-storage-fs` for now; it is not moved or duplicated into
+      `pactole-syntax`.
+    - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `ParsedInclude`,
+      `LoweringDiagnostic`, `Diagnostic`): a positioned, directive-by-directive analysis for tooling (editors, a
      future `pactole-lsp`) that needs spans and per-directive diagnostics instead of an
      all-or-nothing `Journal`. `analyze_file` never fails, even on syntactically invalid or
      partially invalid input:
-     - It reuses `pactole-syntax::parse_document` for tolerant parsing and the very same
-       `AstBuilder` lowering logic as `parser.rs` (via a shared, crate-private
-       `AstBuilder::build_directive_outcome`) — there is no second parser.
+      - It reuses `pactole-syntax::parse_document` for tolerant parsing and the
+        shared `AstBuilder::build_directive_outcome` lowering logic — there is
+        no second parser.
      - Each top-level `directive` node is lowered independently: on success it becomes a
        `ParsedEntry { span, entry }` (reusing `pactole_syntax::Span` and `pactole_core::Entry`);
        on failure it becomes a `LoweringDiagnostic { span, message }` and analysis continues with
-       the next directive, rather than aborting the whole file as `parser::parse` does.
-     - `include` directives are *detected* as `ParsedInclude { span, path }` with their raw,
-       unresolved path; **their target file is neither read nor parsed** by `analysis.rs`. The
-       existing strict, recursive include resolution in `parser.rs`/`PactoleFileStorage` is
-       unchanged and remains the only place includes are actually followed.
-     - `ParsedFile::syntax_diagnostics()` exposes the underlying `pactole-syntax`
+        the next directive.
+      - `include` directives are detected as `ParsedInclude { span, path }` and
+        recursively resolved by `analyze_file_with_loader` through a
+        `SourceLoader`, while preserving file provenance.
+      - `AnalyzedProject::journal()` returns the source-order flattened journal, while
+        `validated_journal()` returns the chronologically validated and auto-balanced journal.
+      - `ParsedFile::syntax_diagnostics()` exposes the underlying `pactole-syntax`
        `SyntaxDiagnostic`s (`ERROR`/`MISSING` nodes) unchanged, so callers can distinguish
        syntax-level issues from lowering-level ones.
      - No `Span`/tree-sitter type leaks into `pactole-core`: `ParsedEntry`/`ParsedInclude`/
@@ -118,16 +124,14 @@ pactole/
      multi-file/include resolution is not tied to reading real files from disk.
      - `SourceLoader` is a small trait (`fn load(&self, path: &Path) -> Result<String,
        SourceLoadError>`) that only loads raw source text for an already-resolved path; it knows
-       nothing about `.pactole` syntax. `FsSourceLoader` reads real files (this is what
-       `parser.rs`/`PactoleFileStorage` use implicitly, unchanged); `InMemorySourceLoader` serves
+        nothing about `.pactole` syntax. `FsSourceLoader` reads real files for project analysis and
+        `PactoleFileStorage`; `InMemorySourceLoader` serves
        content from an in-memory `path -> String` map, standing in for a future `pactole-lsp`
        loader backed by the editor's open (possibly unsaved) buffers.
-     - `analyze_file_with_loader(entry_path, loader)` recursively follows `include` directives
-       through a `&dyn SourceLoader`, reusing `analyze_file` per file. Unlike
-       `parser::parse`/`PactoleFileStorage`, it never flattens files into one `Journal`: each file
-       keeps its own `ParsedFile` (span-positioned entries + syntax/lowering diagnostics) inside an
-       `AnalyzedFile { path, file }`, preserving per-file provenance for tooling that must report a
-       diagnostic against the file it came from.
+      - `analyze_file_with_loader(entry_path, loader)` recursively follows `include` directives
+        through a `&dyn SourceLoader`, reusing `analyze_file` per file. Each file keeps its own
+        `ParsedFile` inside an `AnalyzedFile { path, file }`, while `AnalyzedProject::journal()`
+        and `validated_journal()` provide flattened journals when needed.
      - It never fails on the *content* of included files: a relative include resolved without a
        reachable base directory, a target the loader cannot provide, or an include cycle are all
        reported as `IncludeIssue { path, include, message }` on `AnalyzedProject` rather than

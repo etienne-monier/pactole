@@ -66,6 +66,12 @@ Declarations and transactions can live in any order across files, since
 pactole check ledger.pactole
 ```
 
+An include whose target cannot be loaded is an error: the journal is incomplete
+and business validation is suspended until the include is fixed. An include
+cycle is reported as a warning because the files involved are still available
+and can be validated. Use `pactole check --strict` when warnings must also fail
+the command in CI.
+
 ## Related
 
 - [Grammar reference](/reference/grammar/) — where `include` fits in the grammar.

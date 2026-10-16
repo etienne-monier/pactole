@@ -1,6 +1,7 @@
 mod check;
 mod commands;
 mod config;
+mod diagnostics;
 mod format;
 mod import_ofx;
 mod init;
@@ -25,7 +26,7 @@ fn main() -> ExitCode {
             generate(shell, &mut command, "pactole", &mut std::io::stdout());
             ExitCode::SUCCESS
         }
-        Command::Check { file } => check::run(file),
+        Command::Check { file, strict } => check::run(file, strict),
         Command::Register {
             file,
             account,

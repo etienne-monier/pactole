@@ -667,7 +667,6 @@ mod tests {
 
     #[test]
     fn format_transactions_round_trips_through_the_parser() {
-        use crate::parser::parse;
         use chrono::NaiveDate;
         use pactole_core::{
             AccountName, Amount, CommodityName, Metadata, MetadataKey, Posting, Transaction,
@@ -712,11 +711,15 @@ mod tests {
         };
 
         let source = super::format_transactions(std::slice::from_ref(&transaction));
-        let journal = parse(&source, None).unwrap();
-
-        let entries = journal.entries();
+        let parsed = crate::analyze_file(&source);
+        assert!(parsed.syntax_diagnostics().is_empty());
+        assert!(parsed.lowering_diagnostics().is_empty());
+        let entries = parsed.entries();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0], pactole_core::Entry::Transaction(transaction));
+        assert_eq!(
+            entries[0].entry,
+            pactole_core::Entry::Transaction(transaction)
+        );
     }
 
     #[test]
@@ -741,7 +744,6 @@ mod tests {
 
     #[test]
     fn format_transactions_quotes_non_numeric_metadata() {
-        use crate::parser::parse;
         use chrono::NaiveDate;
         use pactole_core::{
             AccountName, Amount, CommodityName, Metadata, MetadataKey, Posting, Transaction,
@@ -775,6 +777,8 @@ mod tests {
         let source = super::format_transactions(&[transaction]);
 
         assert!(source.contains("fitid: \"SGML-1\""));
-        assert!(parse(&source, None).is_ok());
+        let parsed = crate::analyze_file(&source);
+        assert!(parsed.syntax_diagnostics().is_empty());
+        assert!(parsed.lowering_diagnostics().is_empty());
     }
 }

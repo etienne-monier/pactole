@@ -1,7 +1,7 @@
 //! The LSP server's stdio transport, main loop, and request/notification
 //! handling.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::PathBuf;
 
@@ -20,7 +20,7 @@ use lsp_types::{
 use pactole_storage_fs::analyze_file_with_loader;
 
 use crate::config::{Config, workspace_root_from_initialize_params};
-use crate::diagnostics::{diagnostics_for_file, project_diagnostics};
+use crate::diagnostics::{project_diagnostics, standalone_diagnostics};
 use crate::documents::{Documents, DocumentsSourceLoader};
 
 /// Runs the server over stdio until the client sends `exit`.
@@ -239,9 +239,9 @@ fn handle_notification(
     Ok(())
 }
 
-/// Recomputes and publishes diagnostics for `uri` (and, when a
-/// `journal_file` is configured and reachable, every file in its include
-/// graph).
+/// Recomputes and publishes diagnostics for `uri` and, when a `journal_file`
+/// is configured and reachable, every file in its include graph. A currently
+/// open document outside that graph receives standalone diagnostics.
 ///
 /// Any URI that was published with diagnostics by a previous call but is no
 /// longer covered by this one (e.g. an `include` directive was removed, so
@@ -259,37 +259,48 @@ fn publish_for(
     published: &mut HashSet<Url>,
     uri: &Url,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
+    let publications = collect_diagnostics(config, documents, uri);
+    let newly_published: HashSet<Url> = publications.keys().cloned().collect();
+    for (file_uri, diagnostics) in publications {
+        publish_diagnostics(connection, &file_uri, diagnostics)?;
+    }
+    clear_stale(connection, published, &newly_published)?;
+    *published = newly_published;
+    Ok(())
+}
+
+/// Collects diagnostics without depending on the LSP transport.
+///
+/// A configured project is preferred. If the current document is not part of
+/// that project, it receives standalone syntax/lowering diagnostics instead
+/// of being silently ignored. Standalone analysis deliberately does not run
+/// business validation because the file has no project context.
+fn collect_diagnostics(
+    config: &Config,
+    documents: &Documents,
+    uri: &Url,
+) -> HashMap<Url, Vec<Diagnostic>> {
     if let Some(journal_file) = &config.journal_file {
-        // A base journal file is configured.
-        // This is loaded as a project.
         let loader = DocumentsSourceLoader::new(documents);
         match analyze_file_with_loader(journal_file, &loader) {
             Ok(project) => {
-                let mut newly_published = HashSet::new();
-                let per_file = project_diagnostics(&project);
-                let file_count = per_file.len();
-                let diagnostic_count: usize = per_file.values().map(Vec::len).sum();
-                for (path, diags) in per_file {
+                let mut publications = HashMap::new();
+                for (path, diagnostics) in project_diagnostics(&project) {
                     if let Some(file_uri) = path_to_url(&path) {
-                        newly_published.insert(file_uri.clone());
-                        publish_diagnostics(connection, &file_uri, diags)?;
+                        publications.insert(file_uri, diagnostics);
                     }
                 }
-                log::debug!(
-                    "project analysis succeeded: journal_file={:?} files={} diagnostics={}",
-                    journal_file,
-                    file_count,
-                    diagnostic_count
-                );
-                clear_stale(connection, published, &newly_published)?;
-                *published = newly_published;
-                return Ok(());
+
+                if !publications.contains_key(uri)
+                    && let Some(source) = documents.get(uri)
+                {
+                    let file = pactole_storage_fs::analyze_file(source);
+                    let path = uri.to_file_path().unwrap_or_default();
+                    publications.insert(uri.clone(), standalone_diagnostics(&file, &path));
+                }
+                return publications;
             }
             Err(_) => {
-                // Fall through to standalone analysis of the current
-                // document: an unreadable configured journal file should
-                // not prevent diagnostics on the document the user is
-                // actually editing.
                 log::warn!(
                     "project analysis failed, falling back to standalone analysis of {}: journal_file={:?}",
                     uri,
@@ -299,32 +310,13 @@ fn publish_for(
         }
     }
 
-    // Load the document as a standalone file
-    if let Some(source) = documents.get(uri) {
-        let file = pactole_storage_fs::analyze_file(source);
-        let diags = diagnostics_for_file(&file);
-        log::debug!(
-            "standalone analysis: uri={} diagnostics={}",
-            uri,
-            diags.len()
-        );
-        let mut newly_published = HashSet::new();
-        newly_published.insert(uri.clone());
-        publish_diagnostics(connection, uri, diags)?;
-        clear_stale(connection, published, &newly_published)?;
-        *published = newly_published;
-    } else {
-        // Neither the configured `journal_file` nor `uri` itself could be
-        // analyzed (e.g. the journal file became unreadable and `uri` is a
-        // document that has since been closed). Nothing is published this
-        // time, so every URI previously published must be cleared instead
-        // of being left stuck with stale diagnostics forever.
+    let Some(source) = documents.get(uri) else {
         log::warn!("no analysis available for {uri}, clearing all published diagnostics");
-        clear_stale(connection, published, &HashSet::new())?;
-        published.clear();
-    }
-
-    Ok(())
+        return HashMap::new();
+    };
+    let file = pactole_storage_fs::analyze_file(source);
+    let path = uri.to_file_path().unwrap_or_default();
+    HashMap::from([(uri.clone(), standalone_diagnostics(&file, &path))])
 }
 
 /// Computes the set of URIs in `previously` that are absent from `now`,

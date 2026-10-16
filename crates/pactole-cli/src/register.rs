@@ -2,9 +2,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use chrono::NaiveDate;
-use pactole_core::ReadableStorage;
 use pactole_core::{RegisterFilter, TransactionStatus};
-use pactole_storage_fs::PactoleFileStorage;
+use pactole_storage_fs::FsSourceLoader;
 
 use crate::commands::StatusArg;
 
@@ -19,23 +18,16 @@ pub(crate) fn run(
     tag: Option<String>,
     status: Option<StatusArg>,
 ) -> ExitCode {
-    let mut storage = match PactoleFileStorage::try_from(file) {
-        Ok(storage) => storage,
+    let project = match pactole_storage_fs::analyze_file_with_loader(&file, &FsSourceLoader) {
+        Ok(project) => project,
         Err(err) => return failure(err),
     };
 
-    if let Err(err) = storage.parse() {
-        return failure(err);
-    }
-
-    let journal = match storage.journal() {
+    let diagnostics = project.diagnostics();
+    crate::diagnostics::print(&diagnostics);
+    let journal = match project.validated_journal() {
         Ok(journal) => journal,
-        Err(err) => return failure(err),
-    };
-
-    let journal = match pactole_core::validate_journal(journal) {
-        Ok(journal) => journal,
-        Err(err) => return failure(err),
+        Err(_) => return ExitCode::FAILURE,
     };
 
     let account = match account {

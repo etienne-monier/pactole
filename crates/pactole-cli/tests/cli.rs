@@ -137,7 +137,7 @@ fn check_reports_the_source_location_of_a_business_error() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains(":2:1: error:"), "stderr: {stderr}");
+    assert!(stderr.contains(":2:17: error:"), "stderr: {stderr}");
     assert!(stderr.contains("already open"), "stderr: {stderr}");
 }
 
@@ -225,6 +225,33 @@ fn check_reports_business_validation_error_that_parse_does_not_catch() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("error:"));
     assert!(stderr.contains("not open"));
+}
+
+#[test]
+fn check_cycle_is_a_warning_unless_strict() {
+    let dir = std::env::temp_dir().join(format!("pactole-check-cycle-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let main = dir.join("main.pactole");
+    let other = dir.join("other.pactole");
+    std::fs::write(&main, "include \"other.pactole\"\n").unwrap();
+    std::fs::write(&other, "include \"main.pactole\"\n").unwrap();
+
+    let normal = pactole_cmd()
+        .args(["check", main.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(normal.status.success());
+    assert!(String::from_utf8_lossy(&normal.stdout).contains("OK"));
+    assert!(String::from_utf8_lossy(&normal.stderr).contains("warning:"));
+    assert!(String::from_utf8_lossy(&normal.stderr).contains("include-cycle"));
+
+    let strict = pactole_cmd()
+        .args(["check", "--strict", main.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(!strict.status.success());
+
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]

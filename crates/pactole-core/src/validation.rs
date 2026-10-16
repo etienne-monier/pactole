@@ -39,13 +39,32 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationReport {
     pub journal: Journal,
-    pub errors: Vec<ValidationError>,
+    pub issues: Vec<ValidationIssue>,
+}
+
+impl ValidationReport {
+    /// Returns the validation errors in the same order as [`Self::issues`].
+    pub fn errors(&self) -> impl Iterator<Item = &ValidationError> {
+        self.issues.iter().map(|issue| &issue.error)
+    }
+}
+
+/// A validation error together with the index of the offending entry in the
+/// journal passed to [`validate_journal_all`], before chronological sorting.
+///
+/// The index is deliberately a domain-level location, not a source span:
+/// `pactole-core` must remain independent from parsers and file storage. A
+/// storage layer can use it to recover the originating file and source span.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidationIssue {
+    pub input_index: usize,
+    pub error: ValidationError,
 }
 
 pub fn validate_journal(journal: Journal) -> Result<Journal, ValidationError> {
     let report = validate_journal_all(journal);
-    match report.errors.into_iter().next() {
-        Some(error) => Err(error),
+    match report.issues.first() {
+        Some(issue) => Err(issue.error.clone()),
         None => Ok(report.journal),
     }
 }
@@ -53,8 +72,10 @@ pub fn validate_journal(journal: Journal) -> Result<Journal, ValidationError> {
 /// Validates every entry and returns all errors that can be diagnosed without
 /// aborting the journal walk. Invalid entries do not mutate validation state,
 /// preventing one error from causing a cascade of misleading later errors.
-pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
-    journal.entries.sort_by_key(Entry::date);
+pub fn validate_journal_all(journal: Journal) -> ValidationReport {
+    let mut indexed_entries: Vec<(usize, Entry)> =
+        journal.entries.into_iter().enumerate().collect();
+    indexed_entries.sort_by_key(|(_, entry)| entry.date());
 
     // Maps each open account to the (possibly empty) list of commodities
     // it is restricted to, as declared on its `open` directive. An empty
@@ -65,15 +86,19 @@ pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
     // Running balance, per (account, commodity) pair, of every posting
     // seen so far, used to check `balance` assertions.
     let mut running_balances: HashMap<(AccountName, CommodityName), Decimal> = HashMap::new();
-    let mut errors = Vec::new();
+    let mut issues = Vec::new();
 
-    for entry in &mut journal.entries {
+    for (input_index, entry) in &mut indexed_entries {
         match entry {
             Entry::Open(open) => {
                 if open_accounts.contains_key(&open.account) {
-                    errors.push(ValidationError::AccountAlreadyOpen {
+                    let error = ValidationError::AccountAlreadyOpen {
                         account: open.account.clone(),
                         date: open.date,
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 }
@@ -81,43 +106,63 @@ pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
             }
             Entry::Close(close) => {
                 if open_accounts.remove(&close.account).is_none() {
-                    errors.push(ValidationError::AccountNotOpen {
+                    let error = ValidationError::AccountNotOpen {
                         account: close.account.clone(),
                         date: close.date,
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 }
             }
             Entry::Commodity(commodity) => {
                 if !declared_commodities.insert(commodity.name.clone()) {
-                    errors.push(ValidationError::CommodityAlreadyDeclared {
+                    let error = ValidationError::CommodityAlreadyDeclared {
                         commodity: commodity.name.clone(),
                         date: commodity.date,
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 }
             }
             Entry::Payee(payee) => {
                 if !declared_payees.insert(payee.name.clone()) {
-                    errors.push(ValidationError::PayeeAlreadyDeclared {
+                    let error = ValidationError::PayeeAlreadyDeclared {
                         payee: payee.name.clone(),
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 }
             }
             Entry::Balance(balance) => {
                 let Some(allowed_commodities) = open_accounts.get(&balance.account) else {
-                    errors.push(ValidationError::AccountNotOpen {
+                    let error = ValidationError::AccountNotOpen {
                         account: balance.account.clone(),
                         date: balance.date,
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 };
 
                 if !declared_commodities.contains(&balance.amount.commodity) {
-                    errors.push(ValidationError::CommodityNotDeclared {
+                    let error = ValidationError::CommodityNotDeclared {
                         commodity: balance.amount.commodity.clone(),
                         date: balance.date,
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 }
@@ -125,10 +170,14 @@ pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
                 if !allowed_commodities.is_empty()
                     && !allowed_commodities.contains(&balance.amount.commodity)
                 {
-                    errors.push(ValidationError::CommodityNotAllowed {
+                    let error = ValidationError::CommodityNotAllowed {
                         account: balance.account.clone(),
                         commodity: balance.amount.commodity.clone(),
                         date: balance.date,
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 }
@@ -138,13 +187,17 @@ pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
                 let expected = balance.amount.number;
                 let tolerance = balance.tolerance.unwrap_or(Decimal::ZERO);
                 if (actual - expected).abs() > tolerance {
-                    errors.push(ValidationError::BalanceAssertionFailed {
+                    let error = ValidationError::BalanceAssertionFailed {
                         account: balance.account.clone(),
                         commodity: balance.amount.commodity.clone(),
                         date: balance.date,
                         expected,
                         actual,
                         tolerance,
+                    };
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
                     });
                     continue;
                 }
@@ -156,8 +209,14 @@ pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
                     &declared_commodities,
                     &declared_payees,
                 );
-                if !transaction_errors.is_empty() {
-                    errors.extend(transaction_errors);
+                let has_transaction_errors = !transaction_errors.is_empty();
+                for error in transaction_errors {
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error,
+                    });
+                }
+                if has_transaction_errors {
                     continue;
                 }
 
@@ -171,7 +230,15 @@ pub fn validate_journal_all(mut journal: Journal) -> ValidationReport {
         }
     }
 
-    ValidationReport { journal, errors }
+    ValidationReport {
+        journal: Journal {
+            entries: indexed_entries
+                .into_iter()
+                .map(|(_, entry)| entry)
+                .collect(),
+        },
+        issues,
+    }
 }
 
 /// Checks that every posting of `transaction` uses an open account and a
@@ -352,6 +419,27 @@ mod tests {
             payee: Some(payee.to_string()),
             ..transaction(d, postings)
         }
+    }
+
+    #[test]
+    fn validation_issue_index_refers_to_the_unsorted_input() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 2, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Actifs:Compte"),
+            ],
+        };
+
+        let report = validate_journal_all(journal);
+
+        assert_eq!(report.issues.len(), 1);
+        assert_eq!(report.issues[0].input_index, 0);
+        assert!(matches!(
+            report.issues[0].error,
+            ValidationError::AccountAlreadyOpen { .. }
+        ));
+        assert_eq!(report.journal.entries[0].date(), Some(date(2024, 1, 1)));
+        assert_eq!(report.errors().count(), 1);
     }
 
     fn payee(name: &str) -> Entry {

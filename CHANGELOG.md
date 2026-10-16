@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Business diagnostics now target the most precise available source span for
+  payees, posting accounts, commodities, and balance assertions, while
+  transaction-level diagnostics retain the transaction span when no posting
+  index is available.
 - The LSP prefers open, unsaved document buffers when resolving included files,
   and falls back to the filesystem for unopened files.
 - LSP diagnostics are published per source file and stale diagnostics are

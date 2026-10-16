@@ -9,8 +9,9 @@ The `pactole` binary exposes seven subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
-On success a command exits with status `0`. On failure it prints a line starting
-with `error:` on stderr and exits with a non-zero status.
+On success a command exits with status `0`. Errors are printed on stderr and
+cause a non-zero status. Commands that support warnings may still exit with
+status `0` unless `--strict` is passed.
 
 ## `pactole parse`
 
@@ -75,15 +76,21 @@ pactole completions bash > ~/.local/share/bash-completion/completions/pactole
 ## `pactole check`
 
 ```text
-pactole check <FILE>
+pactole check <FILE> [--strict]
 ```
 
 Parses the file like `parse`, then validates the resulting journal (see the
-[validation invariants](/reference/directives/#validation-invariants)). Prints
-`OK` on success.
+[validation invariants](/reference/directives/#validation-invariants). Prints
+`OK` on success. Warnings are printed on stderr but do not fail the command by
+default; `--strict` treats warnings as errors.
+
+Errors include syntax errors, lowering errors, business validation errors and
+includes whose content could not be loaded. Include cycles are warnings because
+all files involved have still been loaded and validated.
 
 ```sh
 pactole check ledger.pactole
+pactole check --strict ledger.pactole
 ```
 
 ## `pactole init`

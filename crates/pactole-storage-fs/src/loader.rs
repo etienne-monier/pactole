@@ -50,9 +50,8 @@ pub trait SourceLoader {
 
 /// A [`SourceLoader`] that reads source text from real files on disk.
 ///
-/// This is the loader used implicitly by [`crate::parser::parse`] and
-/// [`crate::PactoleFileStorage`] (whose behavior is unchanged); it is
-/// exposed here so multi-file callers of
+/// This is the loader used by filesystem-backed project analysis and
+/// [`crate::PactoleFileStorage`]; it is exposed so multi-file callers of
 /// [`crate::analysis::analyze_file_with_loader`] can opt into the same
 /// filesystem-backed resolution explicitly.
 #[derive(Debug, Default, Clone, Copy)]

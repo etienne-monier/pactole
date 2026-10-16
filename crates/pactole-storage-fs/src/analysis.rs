@@ -3,22 +3,19 @@
 //! needs spans and per-directive diagnostics rather than an all-or-nothing
 //! `Journal`.
 //!
-//! Unlike [`crate::parser::parse`], which fails as soon as either the syntax
-//! is invalid or a single directive cannot be lowered, [`analyze_file`] never
-//! fails: it reuses `pactole-syntax`'s tolerant parsing and the same
-//! `AstBuilder` lowering logic as `parser.rs`, but collects one outcome per
+//! [`analyze_file`] never fails: it reuses `pactole-syntax`'s tolerant parsing
+//! and the shared `AstBuilder` lowering logic, collecting one outcome per
 //! top-level directive instead of stopping at the first error.
 //!
-//! `include` directives are *detected* here, with their raw (unresolved)
-//! path and span, but are not recursively read/parsed: resolving includes
-//! remains the sole responsibility of [`crate::parser::parse`] and
-//! [`crate::PactoleFileStorage`], whose existing strict behavior is
-//! unchanged by this module.
+//! `include` directives are detected here with their raw path and span, then
+//! resolved by [`analyze_file_with_loader`] while preserving per-file
+//! provenance.
 
 use std::path::{Path, PathBuf};
 
-use pactole_core::Entry;
+use pactole_core::{Entry, Journal, ValidationError, validate_journal_all};
 use pactole_syntax::{ParsedDocument, Span, SyntaxDiagnostic, parse_document};
+use tree_sitter::Node;
 
 use crate::loader::{SourceLoadError, SourceLoader};
 use crate::parser::{AstBuilder, DirectiveOutcome};
@@ -31,6 +28,36 @@ pub struct ParsedEntry {
     pub span: Span,
     /// The lowered domain entry.
     pub entry: Entry,
+    /// Spans of the significant source elements inside the directive.
+    pub spans: EntrySpans,
+}
+
+/// Source spans for the significant elements of a lowered entry.
+///
+/// The domain model deliberately contains no source information. These spans
+/// keep that information at the storage boundary so diagnostics can point to
+/// the offending account, commodity, or payee instead of the whole directive.
+#[derive(Debug, Clone, Default)]
+pub struct EntrySpans {
+    /// The date node, when the entry has one.
+    pub date: Option<Span>,
+    /// The main account node of the directive, when applicable.
+    pub account: Option<Span>,
+    /// Commodity nodes belonging directly to the directive.
+    pub commodities: Vec<Span>,
+    /// The transaction payee string, without its surrounding `payee` node.
+    pub payee: Option<Span>,
+    /// Source spans for transaction postings, in posting order.
+    pub postings: Vec<PostingSpans>,
+}
+
+/// Source spans for one transaction posting.
+#[derive(Debug, Clone)]
+pub struct PostingSpans {
+    /// The posting account node.
+    pub account: Span,
+    /// The posting commodity node, when an amount is present.
+    pub commodity: Option<Span>,
 }
 
 /// A single `include` directive detected in the source, with its raw
@@ -60,11 +87,123 @@ pub struct LoweringDiagnostic {
     pub message: String,
 }
 
+/// Severity shared by all diagnostics produced by project analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
+}
+
+/// Origin of a project diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSource {
+    Syntax,
+    Lowering,
+    Include,
+    Business,
+}
+
+/// A source-positioned diagnostic ready for consumption by a CLI or editor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Diagnostic {
+    pub path: PathBuf,
+    pub span: Span,
+    pub severity: DiagnosticSeverity,
+    pub source: DiagnosticSource,
+    pub code: Option<String>,
+    pub message: String,
+}
+
+/// Stable category for a business validation diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BusinessDiagnosticKind {
+    AccountAlreadyOpen,
+    AccountNotOpen,
+    CommodityAlreadyDeclared,
+    CommodityNotDeclared,
+    PayeeAlreadyDeclared,
+    PayeeNotDeclared,
+    TooManyPostingsWithoutAmount,
+    AmbiguousAutoBalanceCommodity,
+    TransactionNotBalanced,
+    CommodityNotAllowed,
+    BalanceAssertionFailed,
+}
+
+impl BusinessDiagnosticKind {
+    /// Stable identifier suitable for CLI and LSP output.
+    const fn code(self) -> &'static str {
+        match self {
+            Self::AccountAlreadyOpen => "account-already-open",
+            Self::AccountNotOpen => "account-not-open",
+            Self::CommodityAlreadyDeclared => "commodity-already-declared",
+            Self::CommodityNotDeclared => "commodity-not-declared",
+            Self::PayeeAlreadyDeclared => "payee-already-declared",
+            Self::PayeeNotDeclared => "payee-not-declared",
+            Self::TooManyPostingsWithoutAmount => "too-many-postings-without-amount",
+            Self::AmbiguousAutoBalanceCommodity => "ambiguous-auto-balance-commodity",
+            Self::TransactionNotBalanced => "transaction-not-balanced",
+            Self::CommodityNotAllowed => "commodity-not-allowed",
+            Self::BalanceAssertionFailed => "balance-assertion-failed",
+        }
+    }
+}
+
+/// A business validation error positioned in its originating source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BusinessDiagnostic {
+    path: PathBuf,
+    span: Span,
+    kind: BusinessDiagnosticKind,
+    message: String,
+}
+
+impl BusinessDiagnostic {
+    fn from_error(path: PathBuf, span: Span, error: &ValidationError) -> Self {
+        Self {
+            path,
+            span,
+            kind: business_kind(error),
+            message: error.to_string(),
+        }
+    }
+}
+
+fn business_kind(error: &ValidationError) -> BusinessDiagnosticKind {
+    match error {
+        ValidationError::AccountAlreadyOpen { .. } => BusinessDiagnosticKind::AccountAlreadyOpen,
+        ValidationError::AccountNotOpen { .. } => BusinessDiagnosticKind::AccountNotOpen,
+        ValidationError::CommodityAlreadyDeclared { .. } => {
+            BusinessDiagnosticKind::CommodityAlreadyDeclared
+        }
+        ValidationError::CommodityNotDeclared { .. } => {
+            BusinessDiagnosticKind::CommodityNotDeclared
+        }
+        ValidationError::PayeeAlreadyDeclared { .. } => {
+            BusinessDiagnosticKind::PayeeAlreadyDeclared
+        }
+        ValidationError::PayeeNotDeclared { .. } => BusinessDiagnosticKind::PayeeNotDeclared,
+        ValidationError::TooManyPostingsWithoutAmount { .. } => {
+            BusinessDiagnosticKind::TooManyPostingsWithoutAmount
+        }
+        ValidationError::AmbiguousAutoBalanceCommodity { .. } => {
+            BusinessDiagnosticKind::AmbiguousAutoBalanceCommodity
+        }
+        ValidationError::TransactionNotBalanced { .. } => {
+            BusinessDiagnosticKind::TransactionNotBalanced
+        }
+        ValidationError::CommodityNotAllowed { .. } => BusinessDiagnosticKind::CommodityNotAllowed,
+        ValidationError::BalanceAssertionFailed { .. } => {
+            BusinessDiagnosticKind::BalanceAssertionFailed
+        }
+    }
+}
+
 /// The result of a positioned, directive-by-directive analysis of a
 /// `.pactole` source text.
 ///
-/// Unlike [`crate::parser::parse`], this never fails: a syntactically
-/// invalid source yields empty [`ParsedFile::entries`]/[`ParsedFile::includes`]
+/// This never fails: a syntactically invalid source yields empty
+/// [`ParsedFile::entries`]/[`ParsedFile::includes`]
 /// and non-empty [`ParsedFile::syntax_diagnostics`]; a syntactically valid
 /// source with directives that fail to lower yields the entries that *did*
 /// lower successfully plus [`ParsedFile::lowering_diagnostics`] for the ones
@@ -84,7 +223,8 @@ impl ParsedFile {
     }
 
     /// The entries that were successfully lowered from top-level directives,
-    /// in document order, each carrying the span of its source directive.
+    /// in document order, each carrying directive and element-level source
+    /// spans.
     pub fn entries(&self) -> &[ParsedEntry] {
         &self.entries
     }
@@ -107,6 +247,14 @@ impl ParsedFile {
     pub fn lowering_diagnostics(&self) -> &[LoweringDiagnostic] {
         &self.lowering_diagnostics
     }
+
+    /// Builds the unified syntax and lowering diagnostics for this file.
+    ///
+    /// Business and include diagnostics are intentionally absent: a standalone
+    /// file has no project context in which those validations would be sound.
+    pub fn diagnostics(&self, path: &Path) -> Vec<Diagnostic> {
+        file_diagnostics(path, self)
+    }
 }
 
 /// Analyzes `source` directive-by-directive, producing a positioned
@@ -115,9 +263,8 @@ impl ParsedFile {
 ///
 /// This does not resolve `include` directives: they are reported as
 /// [`ParsedInclude`] entries with their raw path, and their target files are
-/// neither read nor parsed. Use [`crate::parser::parse`] (via
-/// [`crate::PactoleFileStorage`]) for the existing strict behavior that
-/// recursively inlines includes and fails on the first error.
+/// neither read nor parsed. Use [`analyze_file_with_loader`] for recursive
+/// include resolution with source provenance.
 pub fn analyze_file(source: &str) -> ParsedFile {
     let document = parse_document(source);
 
@@ -140,7 +287,11 @@ pub fn analyze_file(source: &str) -> ParsedFile {
             let span = Span::from_node(&child);
 
             match builder.build_directive_outcome(child) {
-                Ok(DirectiveOutcome::Entry(entry)) => entries.push(ParsedEntry { span, entry }),
+                Ok(DirectiveOutcome::Entry(entry)) => entries.push(ParsedEntry {
+                    span,
+                    entry,
+                    spans: entry_spans(child),
+                }),
                 Ok(DirectiveOutcome::Include(path)) => includes.push(ParsedInclude { span, path }),
                 Err(err) => lowering_diagnostics.push(LoweringDiagnostic {
                     span,
@@ -156,6 +307,75 @@ pub fn analyze_file(source: &str) -> ParsedFile {
         includes,
         lowering_diagnostics,
     }
+}
+
+fn entry_spans(directive: Node<'_>) -> EntrySpans {
+    let Some(header) = directive.named_child(0) else {
+        return EntrySpans::default();
+    };
+
+    let mut spans = EntrySpans {
+        date: named_child(header, "date").map(|node| Span::from_node(&node)),
+        ..EntrySpans::default()
+    };
+
+    match header.kind() {
+        "open" | "close" | "balance" => {
+            spans.account = named_child(header, "account").map(|node| Span::from_node(&node));
+            spans.commodities = named_children(header, "commodity_name")
+                .into_iter()
+                .map(|node| Span::from_node(&node))
+                .collect();
+        }
+        "commodity" => {
+            spans.commodities = named_children(header, "commodity_name")
+                .into_iter()
+                .map(|node| Span::from_node(&node))
+                .collect();
+        }
+        "payee_declaration" => {
+            spans.payee = named_child(header, "string").map(|node| Span::from_node(&node));
+        }
+        "transaction" => {
+            spans.payee = named_child(header, "payee")
+                .and_then(|payee| named_child(payee, "string"))
+                .map(|node| Span::from_node(&node));
+        }
+        _ => {}
+    }
+
+    let mut cursor = directive.walk();
+    for child in directive.named_children(&mut cursor) {
+        if child.kind() != "posting" {
+            continue;
+        }
+
+        let Some(account) = named_child(child, "account") else {
+            continue;
+        };
+        let commodity = named_child(child, "amount")
+            .and_then(|amount| named_child(amount, "commodity_name"))
+            .map(|node| Span::from_node(&node));
+        spans.postings.push(PostingSpans {
+            account: Span::from_node(&account),
+            commodity,
+        });
+    }
+
+    spans
+}
+
+fn named_child<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .find(|child| child.kind() == kind)
+}
+
+fn named_children<'a>(node: Node<'a>, kind: &str) -> Vec<Node<'a>> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .filter(|child| child.kind() == kind)
+        .collect()
 }
 
 /// A [`ParsedFile`] together with the path it was loaded from, as produced
@@ -174,14 +394,48 @@ pub struct AnalyzedFile {
 ///
 /// Unlike [`LoweringDiagnostic`], this is not about a single file's content
 /// but about the *graph* of files reachable from an entry point.
-pub struct IncludeIssue {
+struct IncludeIssue {
     /// The path of the file containing the `include` directive.
-    pub path: PathBuf,
+    path: PathBuf,
     /// The `include` directive itself (raw path and span within `path`).
-    pub include: ParsedInclude,
+    include: ParsedInclude,
+    kind: IncludeIssueKind,
     /// A human-readable description of why this include could not be
     /// resolved.
-    pub message: String,
+    message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IncludeIssueKind {
+    MissingBaseDirectory,
+    Cycle,
+    DepthExceeded,
+    SourceNotFound,
+    SourceLoadFailed,
+}
+
+impl IncludeIssueKind {
+    const fn drops_content(self) -> bool {
+        !matches!(self, Self::Cycle)
+    }
+
+    const fn severity(self) -> DiagnosticSeverity {
+        if self.drops_content() {
+            DiagnosticSeverity::Error
+        } else {
+            DiagnosticSeverity::Warning
+        }
+    }
+
+    const fn code(self) -> &'static str {
+        match self {
+            Self::MissingBaseDirectory => "include-no-base-directory",
+            Self::Cycle => "include-cycle",
+            Self::DepthExceeded => "include-depth-exceeded",
+            Self::SourceNotFound => "include-not-found",
+            Self::SourceLoadFailed => "include-load-failed",
+        }
+    }
 }
 
 /// The result of a multi-file, directive-by-directive analysis rooted at an
@@ -196,6 +450,9 @@ pub struct IncludeIssue {
 pub struct AnalyzedProject {
     files: Vec<AnalyzedFile>,
     include_issues: Vec<IncludeIssue>,
+    business_diagnostics: Vec<BusinessDiagnostic>,
+    source_order: Vec<EntryRef>,
+    validated_journal: Option<Journal>,
 }
 
 impl AnalyzedProject {
@@ -207,12 +464,151 @@ impl AnalyzedProject {
         &self.files
     }
 
-    /// The `include` directives that could not be resolved: missing files,
-    /// loader errors, relative includes with no base directory, or include
-    /// cycles.
-    pub fn include_issues(&self) -> &[IncludeIssue] {
+    /// Returns whether at least one error diagnostic is present.
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics().iter().any(Diagnostic::is_error)
+    }
+
+    /// Returns whether at least one warning diagnostic is present.
+    pub fn has_warnings(&self) -> bool {
+        self.diagnostics().iter().any(Diagnostic::is_warning)
+    }
+
+    /// Returns the structurally valid journal in source order.
+    ///
+    /// This does not run business validation. An incomplete or syntactically
+    /// invalid project returns its structural diagnostics instead.
+    pub fn journal(&self) -> Result<Journal, Vec<Diagnostic>> {
+        let diagnostics = self.structural_diagnostics();
+        if diagnostics.iter().any(Diagnostic::is_error) {
+            return Err(diagnostics);
+        }
+        Ok(self.source_order_journal())
+    }
+
+    /// Returns the chronologically validated journal, including inferred
+    /// transaction amounts, or every diagnostic preventing validation.
+    pub fn validated_journal(&self) -> Result<Journal, Vec<Diagnostic>> {
+        let structural = self.structural_diagnostics();
+        if structural.iter().any(Diagnostic::is_error) {
+            return Err(structural);
+        }
+        if !self.business_diagnostics.is_empty() {
+            return Err(self.diagnostics());
+        }
+        self.validated_journal
+            .clone()
+            .ok_or_else(|| self.diagnostics())
+    }
+
+    #[cfg(test)]
+    fn include_issues(&self) -> &[IncludeIssue] {
         &self.include_issues
     }
+
+    #[cfg(test)]
+    fn business_diagnostics(&self) -> &[BusinessDiagnostic] {
+        &self.business_diagnostics
+    }
+
+    /// Returns all diagnostics for the project in source-analysis order.
+    ///
+    /// This is the canonical API for consumers such as the CLI and the LSP:
+    /// callers do not need to know how syntax, includes, lowering, and
+    /// business validation are stored internally.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diagnostics = self.structural_diagnostics();
+
+        diagnostics.extend(
+            self.business_diagnostics
+                .iter()
+                .map(|diagnostic| Diagnostic {
+                    path: diagnostic.path.clone(),
+                    span: diagnostic.span,
+                    severity: DiagnosticSeverity::Error,
+                    source: DiagnosticSource::Business,
+                    code: Some(diagnostic.kind.code().to_string()),
+                    message: diagnostic.message.clone(),
+                }),
+        );
+
+        diagnostics
+    }
+
+    pub fn structural_diagnostics(&self) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+
+        for file in &self.files {
+            diagnostics.extend(file_diagnostics(&file.path, &file.file));
+        }
+
+        for issue in &self.include_issues {
+            diagnostics.push(Diagnostic {
+                path: issue.path.clone(),
+                span: issue.include.span,
+                severity: issue.kind.severity(),
+                source: DiagnosticSource::Include,
+                code: Some(issue.kind.code().to_string()),
+                message: issue.message.clone(),
+            });
+        }
+
+        diagnostics
+    }
+
+    fn source_order_journal(&self) -> Journal {
+        Journal {
+            entries: self
+                .source_order
+                .iter()
+                .map(|entry_ref| {
+                    self.files[entry_ref.file_index].file.entries()[entry_ref.entry_index]
+                        .entry
+                        .clone()
+                })
+                .collect(),
+        }
+    }
+}
+
+impl Diagnostic {
+    pub const fn is_error(&self) -> bool {
+        matches!(self.severity, DiagnosticSeverity::Error)
+    }
+
+    pub const fn is_warning(&self) -> bool {
+        matches!(self.severity, DiagnosticSeverity::Warning)
+    }
+}
+
+fn file_diagnostics(path: &Path, file: &ParsedFile) -> Vec<Diagnostic> {
+    let mut diagnostics = file
+        .syntax_diagnostics()
+        .iter()
+        .map(|diagnostic| Diagnostic {
+            path: path.to_path_buf(),
+            span: diagnostic.span,
+            severity: DiagnosticSeverity::Error,
+            source: DiagnosticSource::Syntax,
+            code: Some("syntax-error".to_string()),
+            message: diagnostic.message.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    diagnostics.extend(
+        file.lowering_diagnostics()
+            .iter()
+            .map(|diagnostic| Diagnostic {
+                path: path.to_path_buf(),
+                span: diagnostic.span,
+                severity: DiagnosticSeverity::Error,
+                source: DiagnosticSource::Lowering,
+                code: Some("lowering-error".to_string()),
+                message: diagnostic.message.clone(),
+            }),
+    );
+
+    diagnostics
 }
 
 /// Analyzes `entry_path` and, recursively, every file it (transitively)
@@ -221,10 +617,9 @@ impl AnalyzedProject {
 ///
 /// This is the multi-file counterpart to [`analyze_file`]: where
 /// `analyze_file` reports `include` directives without following them,
-/// `analyze_file_with_loader` follows them, but — unlike
-/// [`crate::parser::parse`] — keeps each file's entries and diagnostics
-/// separate (see [`AnalyzedFile`]) rather than flattening everything into a
-/// single [`pactole_core::Journal`]. This keeps per-file provenance, which
+/// `analyze_file_with_loader` follows them while keeping each file's entries
+/// and diagnostics separate (see [`AnalyzedFile`]). It also exposes a
+/// source-order journal and keeps per-file provenance, which
 /// matters for tooling that needs to report a diagnostic against the file
 /// it actually came from.
 ///
@@ -240,6 +635,7 @@ pub fn analyze_file_with_loader(
 ) -> Result<AnalyzedProject, SourceLoadError> {
     let mut files = Vec::new();
     let mut include_issues = Vec::new();
+    let mut source_order = Vec::new();
     // Paths currently being visited, i.e. on the path from the entry point
     // to the file currently being processed: used to detect include cycles.
     let mut in_progress = Vec::new();
@@ -249,14 +645,176 @@ pub fn analyze_file_with_loader(
         loader,
         &mut files,
         &mut include_issues,
+        &mut source_order,
         &mut in_progress,
         0,
     )?;
 
+    let (business_diagnostics, validated_journal) =
+        validate_project(&files, &include_issues, &source_order);
+
     Ok(AnalyzedProject {
         files,
         include_issues,
+        business_diagnostics,
+        source_order,
+        validated_journal,
     })
+}
+
+struct LocatedEntry {
+    path: PathBuf,
+    span: Span,
+    spans: EntrySpans,
+    entry: Entry,
+}
+
+fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
+    match error {
+        ValidationError::AccountAlreadyOpen { .. } | ValidationError::AccountNotOpen { .. } => {
+            let account = match error {
+                ValidationError::AccountAlreadyOpen { account, .. }
+                | ValidationError::AccountNotOpen { account, .. } => account,
+                _ => unreachable!("account validation error matched above"),
+            };
+
+            entry
+                .spans
+                .postings
+                .iter()
+                .zip(transaction_postings(&entry.entry).iter())
+                .find_map(|(spans, posting)| (posting.account == *account).then_some(spans.account))
+                .or(entry.spans.account)
+                .unwrap_or(entry.span)
+        }
+        ValidationError::CommodityAlreadyDeclared { .. }
+        | ValidationError::CommodityNotDeclared { .. } => {
+            let commodity = match error {
+                ValidationError::CommodityAlreadyDeclared { commodity, .. }
+                | ValidationError::CommodityNotDeclared { commodity, .. } => commodity,
+                _ => unreachable!("commodity declaration error matched above"),
+            };
+
+            entry
+                .spans
+                .postings
+                .iter()
+                .zip(transaction_postings(&entry.entry).iter())
+                .find_map(|(spans, posting)| {
+                    posting
+                        .amount
+                        .as_ref()
+                        .filter(|amount| amount.commodity == *commodity)
+                        .and(spans.commodity)
+                })
+                .or_else(|| entry.spans.commodities.first().copied())
+                .unwrap_or(entry.span)
+        }
+        ValidationError::PayeeAlreadyDeclared { .. } | ValidationError::PayeeNotDeclared { .. } => {
+            entry.spans.payee.unwrap_or(entry.span)
+        }
+        ValidationError::CommodityNotAllowed { commodity, .. } => entry
+            .spans
+            .postings
+            .iter()
+            .zip(transaction_postings(&entry.entry).iter())
+            .find_map(|(spans, posting)| {
+                posting
+                    .amount
+                    .as_ref()
+                    .filter(|amount| amount.commodity == *commodity)
+                    .and(spans.commodity)
+            })
+            .or(entry.spans.account)
+            .unwrap_or(entry.span),
+        ValidationError::BalanceAssertionFailed { .. } => entry.span,
+        ValidationError::TooManyPostingsWithoutAmount { .. }
+        | ValidationError::AmbiguousAutoBalanceCommodity { .. }
+        | ValidationError::TransactionNotBalanced { .. } => entry.span,
+    }
+}
+
+fn transaction_postings(entry: &Entry) -> &[pactole_core::Posting] {
+    match entry {
+        Entry::Transaction(transaction) => &transaction.postings,
+        _ => &[],
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EntryRef {
+    file_index: usize,
+    entry_index: usize,
+}
+
+enum SourceItem {
+    Entry(usize),
+    Include(ParsedInclude),
+}
+
+fn validate_project(
+    files: &[AnalyzedFile],
+    include_issues: &[IncludeIssue],
+    source_order: &[EntryRef],
+) -> (Vec<BusinessDiagnostic>, Option<Journal>) {
+    // Do not report business errors from a partial lowering. The source
+    // structure may be incomplete and would otherwise produce misleading
+    // secondary diagnostics.
+    if !can_validate(files, include_issues) {
+        return (Vec::new(), None);
+    }
+
+    let located_entries: Vec<LocatedEntry> = source_order
+        .iter()
+        .map(|entry_ref| {
+            let file = &files[entry_ref.file_index];
+            let entry = &file.file.entries()[entry_ref.entry_index];
+            LocatedEntry {
+                path: file.path.clone(),
+                span: entry.span,
+                spans: entry.spans.clone(),
+                entry: entry.entry.clone(),
+            }
+        })
+        .collect();
+
+    let journal = Journal {
+        entries: located_entries
+            .iter()
+            .map(|entry| entry.entry.clone())
+            .collect(),
+    };
+    let report = validate_journal_all(journal);
+
+    let diagnostics: Vec<BusinessDiagnostic> = report
+        .issues
+        .iter()
+        .map(|issue| {
+            debug_assert!(issue.input_index < located_entries.len());
+            let entry = &located_entries[issue.input_index];
+            BusinessDiagnostic::from_error(
+                entry.path.clone(),
+                diagnostic_span(entry, &issue.error),
+                &issue.error,
+            )
+        })
+        .collect();
+
+    let validated_journal = if diagnostics.is_empty() {
+        Some(report.journal)
+    } else {
+        None
+    };
+
+    (diagnostics, validated_journal)
+}
+
+fn can_validate(files: &[AnalyzedFile], include_issues: &[IncludeIssue]) -> bool {
+    !files.iter().any(|file| {
+        !file.file.syntax_diagnostics().is_empty() || !file.file.lowering_diagnostics().is_empty()
+    }) && !include_issues
+        .iter()
+        .any(|issue| issue.kind.drops_content())
 }
 
 /// A hard cap on include recursion depth, as a safety net against pathological
@@ -264,6 +822,35 @@ pub fn analyze_file_with_loader(
 /// not catch (e.g. a very long, strictly non-repeating chain of includes).
 /// This is not expected to be hit in practice.
 const MAX_INCLUDE_DEPTH: usize = 256;
+
+fn source_items(file: &ParsedFile) -> Vec<SourceItem> {
+    let mut entries = file.entries().iter().enumerate().peekable();
+    let mut includes = file.includes().iter().cloned().peekable();
+    let mut items = Vec::new();
+
+    while entries.peek().is_some() || includes.peek().is_some() {
+        let take_entry = match (entries.peek(), includes.peek()) {
+            (Some((_, entry)), Some(include)) => entry.span.start.byte <= include.span.start.byte,
+            (Some(_), None) => true,
+            (None, Some(_)) => false,
+            (None, None) => break,
+        };
+
+        if take_entry {
+            let Some((entry_index, _)) = entries.next() else {
+                break;
+            };
+            items.push(SourceItem::Entry(entry_index));
+        } else {
+            let Some(include) = includes.next() else {
+                break;
+            };
+            items.push(SourceItem::Include(include));
+        }
+    }
+
+    items
+}
 
 /// Lexically normalizes `path` by collapsing `.` and `..` components without
 /// touching the filesystem (no symlink resolution, no existence check).
@@ -274,7 +861,7 @@ const MAX_INCLUDE_DEPTH: usize = 256;
 /// instead of being treated as distinct paths and recursing without bound.
 /// Absolute paths are preserved as absolute; this only collapses components,
 /// it never resolves a relative path against a base directory.
-fn normalize_lexically(path: &Path) -> PathBuf {
+pub(crate) fn normalize_lexically(path: &Path) -> PathBuf {
     use std::path::Component;
 
     let mut components = path.components().peekable();
@@ -309,6 +896,7 @@ fn visit(
     loader: &dyn SourceLoader,
     files: &mut Vec<AnalyzedFile>,
     include_issues: &mut Vec<IncludeIssue>,
+    source_order: &mut Vec<EntryRef>,
     in_progress: &mut Vec<PathBuf>,
     depth: usize,
 ) -> Result<(), SourceLoadError> {
@@ -325,10 +913,8 @@ fn visit(
     let parsed = analyze_file(&source);
     let base_dir = path.parent().map(Path::to_path_buf);
 
-    // Clone the includes out before `parsed` is moved into `files` below:
-    // `ParsedFile` is not `Clone` (it owns a tree-sitter `Tree`), but
-    // `ParsedInclude` is a small, plain value.
-    let includes: Vec<ParsedInclude> = parsed.includes().to_vec();
+    let items = source_items(&parsed);
+    let file_index = files.len();
 
     files.push(AnalyzedFile {
         path: path.clone(),
@@ -337,7 +923,18 @@ fn visit(
 
     in_progress.push(path.clone());
 
-    for include in includes {
+    for item in items {
+        let include = match item {
+            SourceItem::Entry(entry_index) => {
+                source_order.push(EntryRef {
+                    file_index,
+                    entry_index,
+                });
+                continue;
+            }
+            SourceItem::Include(include) => include,
+        };
+
         let raw = PathBuf::from(&include.path);
         let resolved = if raw.is_absolute() {
             raw
@@ -347,6 +944,7 @@ fn visit(
                 None => {
                     include_issues.push(IncludeIssue {
                         path: path.clone(),
+                        kind: IncludeIssueKind::MissingBaseDirectory,
                         message: format!(
                             "cannot resolve relative include `{}` without a base directory",
                             include.path
@@ -363,6 +961,7 @@ fn visit(
         if in_progress.contains(&resolved) {
             include_issues.push(IncludeIssue {
                 path: path.clone(),
+                kind: IncludeIssueKind::Cycle,
                 message: format!(
                     "include cycle detected: `{}` is already being analyzed",
                     resolved.display()
@@ -375,6 +974,7 @@ fn visit(
         if depth + 1 >= MAX_INCLUDE_DEPTH {
             include_issues.push(IncludeIssue {
                 path: path.clone(),
+                kind: IncludeIssueKind::DepthExceeded,
                 message: format!(
                     "include depth limit ({MAX_INCLUDE_DEPTH}) exceeded while resolving `{}`",
                     resolved.display()
@@ -389,6 +989,7 @@ fn visit(
             loader,
             files,
             include_issues,
+            source_order,
             in_progress,
             depth + 1,
         ) {
@@ -396,6 +997,7 @@ fn visit(
             Err(SourceLoadError::NotFound(missing)) => {
                 include_issues.push(IncludeIssue {
                     path: path.clone(),
+                    kind: IncludeIssueKind::SourceNotFound,
                     message: format!("included file not found: `{}`", missing.display()),
                     include,
                 });
@@ -403,6 +1005,7 @@ fn visit(
             Err(err) => {
                 include_issues.push(IncludeIssue {
                     path: path.clone(),
+                    kind: IncludeIssueKind::SourceLoadFailed,
                     message: err.to_string(),
                     include,
                 });
@@ -435,6 +1038,142 @@ mod tests {
         assert_eq!(entry.span.start.row, 0);
         assert_eq!(entry.span.start.byte, 0);
         assert_eq!(entry.span.end.byte, source.len());
+    }
+
+    #[test]
+    fn business_diagnostic_keeps_the_originating_file_and_span() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 open Assets:Checking\n\
+             2026-01-01 open Expenses:Food\n\
+             2026-01-01 commodity EUR\n\
+             include \"transactions.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/transactions.pactole",
+            "2026-01-02 * \"Unknown\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let diagnostics = project.business_diagnostics();
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].path,
+            Path::new("/journal/transactions.pactole")
+        );
+        assert_eq!(
+            diagnostics[0].kind,
+            BusinessDiagnosticKind::PayeeNotDeclared
+        );
+        assert_eq!(diagnostics[0].span.start.row, 0);
+        assert_eq!(diagnostics[0].kind.code(), "payee-not-declared");
+    }
+
+    #[test]
+    fn business_diagnostics_target_the_relevant_source_elements() {
+        let source = "2026-01-01 open Assets:Checking\n\
+                      2026-01-01 commodity EUR\n\
+                      2026-01-02 * \"Unknown\"\n\
+                      \u{20}\u{20}Assets:Missing 10 GBP\n\
+                      \u{20}\u{20}Assets:Checking -10 GBP\n\
+                      2026-01-03 balance Assets:Checking 1 EUR\n";
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let diagnostics = project.diagnostics();
+
+        let diagnostic = |code: &str| {
+            diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic.code.as_deref() == Some(code))
+                .unwrap_or_else(|| panic!("missing diagnostic {code}: {diagnostics:?}"))
+        };
+
+        let payee = diagnostic("payee-not-declared");
+        let payee_start = source.find("\"Unknown\"").unwrap();
+        assert_eq!(
+            payee.span.byte_range(),
+            payee_start..payee_start + "\"Unknown\"".len()
+        );
+
+        let account = diagnostic("account-not-open");
+        let account_start = source.find("Assets:Missing").unwrap();
+        assert_eq!(
+            account.span.byte_range(),
+            account_start..account_start + "Assets:Missing".len()
+        );
+
+        let commodity = diagnostic("commodity-not-declared");
+        let commodity_start = source.find("GBP").unwrap();
+        assert_eq!(
+            commodity.span.byte_range(),
+            commodity_start..commodity_start + "GBP".len()
+        );
+
+        let balance = diagnostic("balance-assertion-failed");
+        let balance_start = source.find("2026-01-03 balance").unwrap();
+        let balance_end = source[balance_start..].find('\n').unwrap() + balance_start + 1;
+        assert_eq!(balance.span.byte_range(), balance_start..balance_end);
+    }
+
+    #[test]
+    fn include_entries_are_validated_at_their_source_position() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"accounts.pactole\"\n\
+             2026-01-01 commodity EUR\n\
+             payee \"Shop\"\n\
+             2026-01-01 * \"Shop\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+        loader.insert(
+            "/journal/accounts.pactole",
+            "2026-01-01 open Assets:Checking\n\
+             2026-01-01 open Expenses:Food\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        assert!(project.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn entries_after_an_include_keep_their_source_order_on_equal_dates() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 commodity EUR\n\
+             payee \"Shop\"\n\
+             2026-01-01 * \"Shop\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n\
+             include \"accounts.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/accounts.pactole",
+            "2026-01-01 open Assets:Checking\n\
+             2026-01-01 open Expenses:Food\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        assert!(
+            project
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.code.as_deref() == Some("account-not-open"))
+        );
     }
 
     #[test]
@@ -530,6 +1269,26 @@ mod tests {
     }
 
     #[test]
+    fn missing_include_suppresses_partial_business_validation() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"missing.pactole\"\n\
+             2026-01-02 * \"Unknown\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        let diagnostics = project.diagnostics();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code.as_deref(), Some("include-not-found"));
+        assert!(project.business_diagnostics().is_empty());
+    }
+
+    #[test]
     fn loader_based_analysis_detects_an_include_cycle() {
         let mut loader = InMemorySourceLoader::new();
         loader.insert("/journal/a.pactole", "include \"b.pactole\"\n");
@@ -543,6 +1302,48 @@ mod tests {
         assert_eq!(issue.path, PathBuf::from("/journal/b.pactole"));
         assert_eq!(issue.include.path, "a.pactole");
         assert!(issue.message.contains("cycle"));
+    }
+
+    #[test]
+    fn include_cycle_does_not_suppress_business_validation() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/a.pactole",
+            "2026-01-01 open Assets:Checking\n\
+             2026-01-01 open Expenses:Food\n\
+             2026-01-01 commodity EUR\n\
+             include \"b.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/b.pactole",
+            "include \"a.pactole\"\n\
+             2026-01-02 * \"Unknown\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        let project = analyze_file_with_loader(Path::new("/journal/a.pactole"), &loader).unwrap();
+        let diagnostics = project.diagnostics();
+
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code.as_deref() == Some("include-cycle"))
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+        );
+    }
+
+    #[test]
+    fn only_content_dropping_include_issues_block_validation() {
+        assert!(IncludeIssueKind::MissingBaseDirectory.drops_content());
+        assert!(IncludeIssueKind::SourceNotFound.drops_content());
+        assert!(IncludeIssueKind::SourceLoadFailed.drops_content());
+        assert!(IncludeIssueKind::DepthExceeded.drops_content());
+        assert!(!IncludeIssueKind::Cycle.drops_content());
     }
 
     #[test]

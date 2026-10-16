@@ -45,6 +45,10 @@ pub(crate) enum Command {
     Check {
         /// Path to the `.pactole` file to check.
         file: PathBuf,
+
+        /// Treat warnings as errors.
+        #[arg(long)]
+        strict: bool,
     },
 
     /// List the transactions of a `.pactole` file with a running balance.

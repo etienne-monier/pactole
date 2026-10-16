@@ -1,14 +1,16 @@
 //! Builds LSP [`lsp_types::Diagnostic`]s from `pactole-storage-fs`'s
-//! positioned analysis results (syntax diagnostics, lowering diagnostics,
-//! and include issues), converting spans to LSP ranges via
+//! positioned analysis results (syntax, lowering, include, and business
+//! diagnostics), converting spans to LSP ranges via
 //! [`crate::conversion`].
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use lsp_types::{Diagnostic, DiagnosticSeverity};
-use pactole_storage_fs::{AnalyzedProject, ParsedFile};
-use pactole_syntax::DiagnosticKind;
+use pactole_storage_fs::{
+    AnalyzedProject, Diagnostic as ProjectDiagnostic,
+    DiagnosticSeverity as ProjectDiagnosticSeverity, DiagnosticSource, ParsedFile,
+};
 
 use crate::conversion::span_to_range;
 
@@ -16,47 +18,48 @@ use crate::conversion::span_to_range;
 /// [`pactole_storage_fs::analyze_file`]): its syntax diagnostics followed by
 /// its lowering diagnostics, in that order.
 ///
-/// This does not include any include-related diagnostics, since a
-/// standalone [`ParsedFile`] never resolves includes (see
-/// [`pactole_storage_fs::analysis`]'s module docs).
-pub fn diagnostics_for_file(file: &ParsedFile) -> Vec<Diagnostic> {
+/// This deliberately does not include include or business diagnostics: a
+/// standalone [`ParsedFile`] has no project context in which those checks
+/// would be sound.
+pub fn standalone_diagnostics(file: &ParsedFile, path: &std::path::Path) -> Vec<Diagnostic> {
     let source = file.document().source();
-    let mut diagnostics = Vec::new();
+    file.diagnostics(path)
+        .iter()
+        .map(|diagnostic| to_lsp_diagnostic(diagnostic, source))
+        .collect()
+}
 
-    for diagnostic in file.syntax_diagnostics() {
-        let severity = match diagnostic.kind {
-            DiagnosticKind::Error | DiagnosticKind::Missing => DiagnosticSeverity::ERROR,
-        };
-        diagnostics.push(Diagnostic {
-            range: span_to_range(source, &diagnostic.span),
-            severity: Some(severity),
-            source: Some("pactole-syntax".to_string()),
-            message: diagnostic.message.clone(),
-            ..Default::default()
-        });
+fn to_lsp_diagnostic(diagnostic: &ProjectDiagnostic, source: &str) -> Diagnostic {
+    Diagnostic {
+        range: span_to_range(source, &diagnostic.span),
+        severity: Some(match diagnostic.severity {
+            ProjectDiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
+            ProjectDiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
+        }),
+        code: diagnostic
+            .code
+            .clone()
+            .map(lsp_types::NumberOrString::String),
+        source: Some(
+            match diagnostic.source {
+                DiagnosticSource::Syntax => "pactole-syntax",
+                DiagnosticSource::Lowering => "pactole-lowering",
+                DiagnosticSource::Include => "pactole-include",
+                DiagnosticSource::Business => "pactole-business",
+            }
+            .to_string(),
+        ),
+        message: diagnostic.message.clone(),
+        ..Default::default()
     }
-
-    for diagnostic in file.lowering_diagnostics() {
-        diagnostics.push(Diagnostic {
-            range: span_to_range(source, &diagnostic.span),
-            severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("pactole-lowering".to_string()),
-            message: diagnostic.message.clone(),
-            ..Default::default()
-        });
-    }
-
-    diagnostics
 }
 
 /// Builds the diagnostics for every file reached by a multi-file
 /// [`AnalyzedProject`] (as produced by
 /// [`pactole_storage_fs::analyze_file_with_loader`]), keyed by file path.
 ///
-/// Each file's own syntax/lowering diagnostics (see [`diagnostics_for_file`])
-/// are combined with any [`pactole_storage_fs::IncludeIssue`]s whose
-/// `include` directive lives in that file, reported as warnings so a single
-/// unresolved include does not read as a hard parse failure.
+/// Each file's syntax, lowering, include, and business diagnostics are
+/// converted through the same LSP conversion function.
 ///
 /// Files with no diagnostics at all are still present in the returned map
 /// (mapped to an empty `Vec`), so callers can clear stale diagnostics for
@@ -65,37 +68,25 @@ pub fn project_diagnostics(project: &AnalyzedProject) -> HashMap<PathBuf, Vec<Di
     let mut by_path: HashMap<PathBuf, Vec<Diagnostic>> = project
         .files()
         .iter()
-        .map(|f| (f.path.clone(), diagnostics_for_file(&f.file)))
+        .map(|f| (f.path.clone(), Vec::new()))
         .collect();
 
-    for issue in project.include_issues() {
-        let source = project
-            .files()
-            .iter()
-            .find(|f| f.path == issue.path)
-            .map(|f| f.file.document().source());
+    let sources: HashMap<&std::path::Path, &str> = project
+        .files()
+        .iter()
+        .map(|file| (file.path.as_path(), file.file.document().source()))
+        .collect();
 
-        let range = match source {
-            Some(source) => span_to_range(source, &issue.include.span),
-            // The including file itself is not in `project.files()` (should
-            // not normally happen); fall back to a zero-width range at the
-            // document start rather than dropping the diagnostic.
-            None => lsp_types::Range::new(
-                lsp_types::Position::new(0, 0),
-                lsp_types::Position::new(0, 0),
-            ),
+    for diagnostic in project.diagnostics() {
+        let Some(source) = sources.get(diagnostic.path.as_path()) else {
+            debug_assert!(false, "project diagnostic has no analyzed source file");
+            continue;
         };
 
         by_path
-            .entry(issue.path.clone())
+            .entry(diagnostic.path.clone())
             .or_default()
-            .push(Diagnostic {
-                range,
-                severity: Some(DiagnosticSeverity::WARNING),
-                source: Some("pactole-include".to_string()),
-                message: issue.message.clone(),
-                ..Default::default()
-            });
+            .push(to_lsp_diagnostic(&diagnostic, source));
     }
 
     by_path
@@ -110,20 +101,40 @@ mod tests {
     #[test]
     fn valid_source_yields_no_diagnostics() {
         let file = analyze_file("2026-09-03 open Assets:Checking\n");
-        assert!(diagnostics_for_file(&file).is_empty());
+        assert!(standalone_diagnostics(&file, Path::new("/journal.pactole")).is_empty());
     }
 
     #[test]
     fn invalid_syntax_yields_an_error_diagnostic() {
         let file = analyze_file("2026-09-03 open\n");
-        let diagnostics = diagnostics_for_file(&file);
+        let diagnostics = standalone_diagnostics(&file, Path::new("/journal.pactole"));
         assert!(!diagnostics.is_empty());
         assert_eq!(diagnostics[0].severity, Some(DiagnosticSeverity::ERROR));
+        assert_eq!(
+            diagnostics[0].code,
+            Some(lsp_types::NumberOrString::String(
+                "syntax-error".to_string()
+            ))
+        );
         assert_eq!(diagnostics[0].source.as_deref(), Some("pactole-syntax"));
     }
 
     #[test]
-    fn missing_include_is_reported_as_a_warning_on_the_including_file() {
+    fn standalone_and_project_diagnostics_have_the_same_lsp_shape() {
+        let path = Path::new("/journal/main.pactole");
+        let source = "2026-01-01 open\n";
+        let standalone = standalone_diagnostics(&analyze_file(source), path);
+
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(path.to_path_buf(), source);
+        let project = analyze_file_with_loader(path, &loader).unwrap();
+        let project_diagnostics = project_diagnostics(&project);
+
+        assert_eq!(standalone, project_diagnostics[path]);
+    }
+
+    #[test]
+    fn missing_include_is_reported_as_an_error_on_the_including_file() {
         let mut loader = InMemorySourceLoader::new();
         loader.insert("/journal/main.pactole", "include \"missing.pactole\"\n");
 
@@ -133,7 +144,13 @@ mod tests {
 
         let main_diags = &by_path[Path::new("/journal/main.pactole")];
         assert_eq!(main_diags.len(), 1);
-        assert_eq!(main_diags[0].severity, Some(DiagnosticSeverity::WARNING));
+        assert_eq!(main_diags[0].severity, Some(DiagnosticSeverity::ERROR));
+        assert_eq!(
+            main_diags[0].code,
+            Some(lsp_types::NumberOrString::String(
+                "include-not-found".to_string()
+            ))
+        );
         assert_eq!(main_diags[0].source.as_deref(), Some("pactole-include"));
     }
 
@@ -153,5 +170,38 @@ mod tests {
         assert!(by_path.contains_key(Path::new("/journal/main.pactole")));
         assert!(by_path.contains_key(Path::new("/journal/other.pactole")));
         assert!(by_path[Path::new("/journal/other.pactole")].is_empty());
+    }
+
+    #[test]
+    fn business_diagnostic_is_published_on_the_originating_file() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 open Assets:Checking\n\
+             2026-01-01 open Expenses:Food\n\
+             2026-01-01 commodity EUR\n\
+             include \"transactions.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/transactions.pactole",
+            "2026-01-02 * \"Unknown\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let by_path = project_diagnostics(&project);
+        let diagnostics = &by_path[Path::new("/journal/transactions.pactole")];
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Some(lsp_types::NumberOrString::String(
+                "payee-not-declared".to_string()
+            ))
+        );
+        assert_eq!(diagnostics[0].source.as_deref(), Some("pactole-business"));
+        assert_eq!(diagnostics[0].range.start, lsp_types::Position::new(0, 13));
     }
 }
