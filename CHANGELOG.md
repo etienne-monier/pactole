@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- OFX import decodes source bytes according to the encoding declared by the
+  document (OFX header `ENCODING`/`CHARSET` fields or XML declaration), falling
+  back to UTF-8 and then windows-1252, so statements in legacy code pages such
+  as windows-1252 import their accented text correctly.
+- OFX import reads the banking transactions of investment statements
+  (`INVSTMTMSGSRSV1`).
+
+### Fixed
+
+- OFX statements whose `BANKACCTFROM` carries an `ACCTKEY` no longer import an
+  empty transaction list.
+- OFX SGML statements keep non-ASCII text (payee, narration) intact instead of
+  corrupting multi-byte UTF-8 characters.
+- OFX import fails with an explicit error when a statement clearly contains
+  transactions but none can be read, instead of importing nothing silently.
+- `pactole import-ofx --into` detects already-imported FITIDs through the
+  `include` directives of the target journal, so re-importing into a split
+  journal no longer duplicates transactions.
 
 ## [0.2.0] - 2026-10-16
 

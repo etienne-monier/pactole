@@ -77,8 +77,10 @@ pub(crate) fn run(
         }
     }
 
-    let source = match fs::read_to_string(&file) {
-        Ok(source) => source,
+    // OFX sources are not necessarily UTF-8: decode the raw bytes according
+    // to the encoding the document declares.
+    let source = match fs::read(&file) {
+        Ok(bytes) => pactole_import::decode_ofx_source(&bytes),
         Err(err) => {
             eprintln!("error: cannot read {}: {err}", file.display());
             return ExitCode::FAILURE;

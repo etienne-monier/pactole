@@ -160,6 +160,7 @@ pactole/
       - `pactole init [ledger]`: Initialize a starter ledger and OFX configuration.
      - `pactole import-ofx <file> [--config <path>] [--into <path>] [--write]`: Import an OFX/QFX
        statement (SGML 1.x or XML 2.x) into canonical `.pactole` transactions, via
+       `pactole_import::decode_ofx_source` (source bytes → UTF-8) +
        `pactole_import::import_ofx` + `pactole_storage_fs::format_transactions`. Configuration
        (bank account, default counter account, optional fallback currency, `[[rules]]`) is read
        from `~/.config/pactole/import-ofx.toml` by default (overridable with `--config`). Without
@@ -225,11 +226,11 @@ pactole/
      via `Box<dyn Error + Sync + Send>` in `server.rs`.
 
 7. **`pactole-import`**:
-   - **Edge adapter, zero I/O, depends only on `pactole-core`** (plus `chrono`, `rust_decimal`,
-     `serde`): translates a foreign input format into pure domain models. It knows nothing about
-     tree-sitter, `pactole-storage-fs`, the `.pactole` text format, or the configuration file
-     format, so it is reusable by any front-end (the `pactole` CLI today, a future
-     `pactole-storage-db`, the LSP tomorrow).
+   - **Edge adapter, zero I/O, depends only on `pactole-core`** (plus `chrono`, `encoding_rs`,
+     `rust_decimal`, `serde`): translates a foreign input format into pure domain models. It
+     knows nothing about tree-sitter, `pactole-storage-fs`, the `.pactole` text format, or the
+     configuration file format, so it is reusable by any front-end (the `pactole` CLI today, a
+     future `pactole-storage-db`, the LSP tomorrow).
    - **Key modules**:
      - `record.rs`: `ImportRecord`, a format-neutral intermediate representation (date, signed
        amount, currency, payee, memo, transaction type, check number, reference, FITID).
@@ -238,6 +239,12 @@ pactole/
        (investment statements contribute their `INVBANKTRAN` banking transactions only). A
        document that plainly contains `<STMTTRN>` elements but yields no record fails with
        `ImportError::TransactionsDropped` instead of importing nothing silently.
+     - `encoding.rs`: `decode_ofx_source(&[u8]) -> String`, tolerant decoding of raw OFX source
+       bytes into UTF-8 (it never fails). It honours the declared encoding — the
+       `<?xml … encoding="…"?>` declaration, the `ENCODING:`/`CHARSET:` lines of an OFX 1.x
+       header (Windows code pages 1250–1258, 874, the CJK code pages 932/936/949/950, Mac
+       Roman), or a byte order mark — and otherwise falls back to strict UTF-8 and then
+       windows-1252, so mislabeled bank exports still decode instead of being rejected.
      - `config.rs`: `ImportConfig`, `Rule`, `Direction` — serde types describing the bank
        account, the default counter account, the optional fallback currency and the
        categorization rules. These types fix no file format; the caller chooses TOML.
@@ -246,8 +253,9 @@ pactole/
        account; a rule may also override the payee).
      - `error.rs`: `ImportError`.
    - **Public API**: `import_ofx(source, &config, &HashSet<String>) -> Result<ImportOutcome,
-     ImportError>`, plus `ImportConfig`, `Rule`, `Direction`, `ImportRecord`, `ImportOutcome`,
-     `ImportWarning`, `ImportError`. `import_ofx` skips any source transaction whose FITID is
+     ImportError>`, `decode_ofx_source(&[u8]) -> String`, plus `ImportConfig`, `Rule`,
+     `Direction`, `ImportRecord`, `ImportOutcome`, `ImportWarning`, `ImportError`. `import_ofx`
+     skips any source transaction whose FITID is
      already in `known_fitids` (reported in `ImportOutcome::skipped`), and stores each produced
      transaction's FITID as `fitid` metadata so a later run can rebuild `known_fitids`.
    - **Deliberate two-step pipeline** (format parser → `ImportRecord`, then shared rule engine →

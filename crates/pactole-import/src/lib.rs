@@ -2,10 +2,11 @@
 //!
 //! This crate is the boundary adapter between a foreign input format (OFX,
 //! and later CSV, QIF, ...) and the pure Pactole domain
-//! ([`pactole_core`]). It performs no I/O: callers read the source text
-//! themselves and pass it in as a string, which keeps the crate usable by any
-//! front-end (the `pactole` CLI today, a future database-backed storage and
-//! the language server tomorrow) and trivially unit-testable.
+//! ([`pactole_core`]). It performs no I/O: callers read the source bytes
+//! themselves, pass them through [`decode_ofx_source`] when they may not be
+//! UTF-8, and hand over the resulting string, which keeps the crate usable
+//! by any front-end (the `pactole` CLI today, a future database-backed
+//! storage and the language server tomorrow) and trivially unit-testable.
 //!
 //! The pipeline is deliberately split into two steps so that future importers
 //! can reuse the rule engine:
@@ -22,6 +23,7 @@
 //! re-import can skip transactions already present.
 
 mod config;
+mod encoding;
 mod error;
 mod ofx;
 mod record;
@@ -32,6 +34,7 @@ use std::collections::HashSet;
 use pactole_core::Transaction;
 
 pub use crate::config::{Direction, ImportConfig, Rule};
+pub use crate::encoding::decode_ofx_source;
 pub use crate::error::ImportError;
 pub use crate::record::ImportRecord;
 

@@ -8,6 +8,7 @@ use rust_decimal::Decimal;
 const XML: &str = include_str!("fixtures/statement_xml.ofx");
 const SGML: &str = include_str!("fixtures/statement_sgml.ofx");
 const SGML_ACCTKEY: &str = include_str!("fixtures/statement_sgml_acctkey.ofx");
+const SGML_CP1252: &[u8] = include_bytes!("fixtures/statement_cp1252.ofx");
 const INVESTMENT: &str = include_str!("fixtures/statement_investment.ofx");
 
 fn base_config() -> ImportConfig {
@@ -98,6 +99,32 @@ fn imports_a_sgml_bank_statement_carrying_acctkey() {
     assert_eq!(
         transaction.postings[0].amount.as_ref().unwrap().number,
         dec("10.00")
+    );
+}
+
+#[test]
+fn decodes_and_imports_a_windows_1252_statement() {
+    // The fixture is not valid UTF-8: its payee and narration carry raw
+    // windows-1252 bytes, as declared by the header (`CHARSET:1252`).
+    let source = pactole_import::decode_ofx_source(SGML_CP1252);
+    let outcome = pactole_import::import_ofx(&source, &base_config(), &no_fitids()).unwrap();
+
+    assert_eq!(outcome.transactions.len(), 1);
+
+    let transaction = &outcome.transactions[0];
+    assert_eq!(
+        transaction.date,
+        NaiveDate::from_ymd_opt(2026, 10, 10).expect("date")
+    );
+    assert_eq!(transaction.payee.as_deref(), Some("CAFÉ LÉON"));
+    assert_eq!(
+        transaction.narration.as_deref(),
+        Some("Croissants à la boulangerie")
+    );
+    assert_eq!(fitid(transaction), Some("CP1252-1"));
+    assert_eq!(
+        transaction.postings[0].amount.as_ref().unwrap().number,
+        dec("12.50")
     );
 }
 

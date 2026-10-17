@@ -570,8 +570,25 @@ payee_contains = \"carrefour\"\n\
 counter_account = \"Depenses:Alimentation\"\n\
 payee = \"Carrefour\"\n";
 
+/// Legacy SGML statement whose payee and narration carry raw windows-1252
+/// bytes (`\xC9` = É, `\xE0` = à), as declared by its `CHARSET:1252` header.
+const IMPORT_CP1252_FIXTURE: &[u8] = b"OFXHEADER:100\n\
+DATA:OFXSGML\n\
+VERSION:102\n\
+SECURITY:NONE\n\
+ENCODING:USASCII\n\
+CHARSET:1252\n\
+COMPRESSION:NONE\n\
+OLDFILEUID:NONE\n\
+NEWFILEUID:NONE\n\
+\n\
+<OFX>\n\
+<SIGNONMSGSRSV1><SONRS><STATUS><CODE>0<SEVERITY>INFO<DTSERVER>20261016120000<LANGUAGE>FRA</SONRS></SIGNONMSGSRSV1>\n\
+<BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO<STMTRS><CURDEF>EUR<BANKACCTFROM><BANKID>123456789<ACCTID>00012345678<ACCTTYPE>CHECKING<BANKTRANLIST><DTSTART>20261001<DTEND>20261016<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261010<TRNAMT>-12.50<FITID>CP1252-CLI<NAME>CAF\xC9 L\xC9ON<MEMO>Croissants \xE0 la boulangerie</STMTTRN></BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1>\n\
+</OFX>\n";
+
 /// Write a uniquely named temporary file and return its path.
-fn write_import_temp(name: &str, content: &str) -> std::path::PathBuf {
+fn write_import_temp(name: &str, content: impl AsRef<[u8]>) -> std::path::PathBuf {
     let dir = std::env::temp_dir();
     let path = dir.join(format!(
         "pactole-import-{}-{}-{name}",
@@ -680,7 +697,7 @@ fn import_ofx_skips_transactions_already_in_an_included_file() {
     );
     let into = write_import_temp(
         "journal.pactole",
-        &format!(
+        format!(
             "include \"{}\"\n",
             included.file_name().unwrap().to_str().unwrap()
         ),
@@ -716,6 +733,40 @@ fn import_ofx_skips_transactions_already_in_an_included_file() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("imported 1 transaction(s), skipped 1"));
+}
+
+#[test]
+fn import_ofx_decodes_windows_1252_sources() {
+    // The statement is not valid UTF-8; reading it as a string would fail
+    // before the parser ever sees it.
+    let ofx = write_import_temp("statement-cp1252.ofx", IMPORT_CP1252_FIXTURE);
+    let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            rules.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&rules).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("2026-10-10 * \"CAFÉ LÉON\" \"Croissants à la boulangerie\""),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("Depenses:A-Classer 12.50 EUR"));
 }
 
 #[test]

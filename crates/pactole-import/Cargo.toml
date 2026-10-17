@@ -13,10 +13,12 @@ categories = ["finance", "parser-implementations"]
 
 [dependencies]
 chrono = "0.4.45"
+encoding_rs = "0.8"
 # Pending upstream release: ofx-rs 0.2.0 pins quick-xml below the RustSec-fixed
-# version, and its SGML normalizer drops BANKTRANLIST when BANKACCTFROM carries
-# ACCTKEY (both fixed on this fork, upstream PR pending).
-ofx-rs = { version = "0.2.0", git = "https://github.com/etienne-monier/ofx-rs.git", rev = "6803cfc1deb4957d40b82168aee631542a21f524" }
+# version, its SGML normalizer drops BANKTRANLIST when BANKACCTFROM carries
+# ACCTKEY, and it mangles non-ASCII text (all three fixed on this fork, upstream
+# PR pending).
+ofx-rs = { version = "0.2.0", git = "https://github.com/etienne-monier/ofx-rs.git", rev = "ec8e9dc620ceb9d7e4aa56bcac19b03bba057dc2" }
 pactole-core = { version = "0.2.0", path = "../pactole-core" }
 rust_decimal = "1.43.0"
 serde = { version = "1.0", features = ["derive"] }
