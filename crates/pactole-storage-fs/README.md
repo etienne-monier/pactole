@@ -44,6 +44,13 @@ Re-exported from `src/lib.rs`:
     `AnalyzedFile { path, file }`) and a list of `IncludeIssue`s for
     inclusion problems (unresolvable path, cycle, unloadable target) —
     never a global failure, unless `entry_path` itself cannot be loaded.
+  - `analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)`:
+    the configurable variant, reclassifying the payee check as a warning when
+    `[validation] payee = "warn"`; `validated_journal()` then approves a
+    project whose only diagnostics are warnings.
+- **Configuration-dependent formatting**: `format_with_options(source, &FormatOptions)`
+  and `FormatOptions` (re-exported from `pactole-config`) let callers apply
+  the resolved `[format]` settings.
 - **Source loading** (`loader.rs`):
   - `SourceLoader`: minimal trait `fn load(&self, path: &Path) -> Result<String, SourceLoadError>`.
   - `FsSourceLoader`: reads real files from the filesystem.
@@ -55,7 +62,8 @@ Re-exported from `src/lib.rs`:
 ## Dependencies / boundaries
 
 - `pactole-core` (domain models), `pactole-syntax` (tolerant parsing,
-  spans, diagnostics), `tree-sitter` (raw CST nodes for AST → model
+  spans, diagnostics), `pactole-config` (`ValidationOptions`,
+  `FormatOptions`), `tree-sitter` (raw CST nodes for AST → model
   conversion and formatting), `chrono`, `rust_decimal`, `thiserror`.
   `toml` appears in `Cargo.toml` as a declared dependency but is
   currently used by no module of this crate; it is reserved for future

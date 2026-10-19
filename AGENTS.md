@@ -18,13 +18,14 @@ Users record financial transactions in human-readable, git-friendly `.pactole` f
 
 ## 2. Workspace & Architecture
 
-Pactole is structured as a Cargo workspace, currently with seven crates. A future
+Pactole is structured as a Cargo workspace, currently with eight crates. A future
 database-backed storage crate is anticipated but not yet created; see "Planned Crates" below.
 
 ```text
 pactole/
 ├── crates/
 │   ├── tree-sitter-pactole/   # Tree-sitter grammar, C parser, and Rust bindings
+│   ├── pactole-config/        # Layered pactole.toml schema and resolution (leaf crate)
 │   ├── pactole-core/          # Pure domain models, validation, and reports
 │   ├── pactole-syntax/        # Tolerant CST analysis, spans, and syntax diagnostics
 │   ├── pactole-storage-fs/    # Tree-sitter-based parser, includes, and canonical formatter
@@ -141,6 +142,16 @@ pactole/
          detected via a stack of in-progress paths and reported as an include diagnostic, not lowered.
        - `analyze_file(&str) -> ParsedFile` is kept exactly as-is (single-file, no include
          resolution) for backward compatibility; `analyze_file_with_loader` is strictly additive.
+       - `analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)` is the
+         configurable variant: it reclassifies the one configurable business check
+         (`PayeeNotDeclared`) as a warning when `[validation] payee = "warn"`, while every other
+         business issue stays an error. `validated_journal()` then succeeds as long as no
+         error-severity diagnostic remains; warnings alone do not block it. The
+         `analyze_file_with_loader` form uses `ValidationOptions::default()` (everything an
+         error), so existing callers behave exactly as before.
+       - Configuration types (`ValidationOptions`, `ValidationLevel`, `FormatOptions`) come from
+         `pactole-config`; `pactole-storage-fs` re-exports `FormatOptions` to keep its formatting
+         API self-contained.
        - Include diagnostics are exposed through `AnalyzedProject::diagnostics()` and
          `structural_diagnostics()` as positioned `Diagnostic` values; the internal include issue
          representation is not part of the public API.
@@ -151,25 +162,34 @@ pactole/
 
 6. **`pactole-cli`**:
    - Command-line application binary named `pactole` (using `clap` derive).
+   - **Root flags** (before the subcommand):
+      - `--config <path>`: use this `pactole.toml` and skip global/project layer discovery.
+      - `--validation <warn|error>`: override the `[validation] payee` level.
    - Subcommands:
       - `pactole parse <file>`: Parse file and debug-print journal entries.
-      - `pactole fmt <file> [--write]`: Format `.pactole` file canonically (supports `-` for stdin).
+      - `pactole fmt <file> [--write]`: Format `.pactole` file canonically (supports `-` for stdin),
+        using the resolved `[format]` options.
       - `pactole completions <shell>`: Generate shell completion scripts.
-      - `pactole check <file>`: Syntax parsing + business validation.
+      - `pactole check <file> [--strict]`: Syntax parsing + business validation, using the resolved
+        `[validation]` options (`--strict` turns warnings into a failure).
       - `pactole register <file> [filters]`: Register report with running balances.
-      - `pactole init [ledger]`: Initialize a starter ledger and OFX configuration.
-     - `pactole import-ofx <file> [--config <path>] [--into <path>] [--account <account>] [--write]`:
+      - `pactole init [ledger] [--global]`: Initialize a starter ledger and, next to it (or in the
+        user configuration directory with `--global`), a `pactole.toml`.
+     - `pactole import-ofx <file> [--into <path>] [--account <account>] [--write]`:
        Import an OFX/QFX
        statement (SGML 1.x or XML 2.x) into canonical `.pactole` transactions, via
        `pactole_import::decode_ofx_source` (source bytes → UTF-8) +
        `pactole_import::import_ofx` + `pactole_storage_fs::format_transactions`. Configuration
-       (bank account, optional `[accounts]` ACCTID → Pactole account mapping, default counter
-       account, optional fallback currency, `[[rules]]`) is read
-       from `~/.config/pactole/import-ofx.toml` by default (overridable with `--config`).
+       (bank account, optional `[import.accounts]` ACCTID → Pactole account mapping, default
+       counter account, optional fallback currency, `[[import.rules]]`) is read from the
+       resolved `pactole.toml`; the command fails with a clear message when no `[import]`
+       section is configured anywhere.
        `--account` overrides the configured bank account and mapping for that run. Without
        `--into`, transactions are printed to stdout; with `--into <file>`, FITIDs already present
        in that file (and in the files it `include`s) are skipped (idempotence), and with `--write`
        the generated transactions are appended to it.
+   - Configuration is resolved by `pactole-config`: global `pactole.toml`, then the project
+     `pactole.toml` next to the journal (or `--into` for `import-ofx`), then the root flags.
    - Integration tests in `crates/pactole-cli/tests/cli.rs`.
 
 5. **`pactole-lsp`**:
@@ -195,15 +215,18 @@ pactole/
        `pactole_storage_fs::ParsedFile`) and `project_diagnostics` (per-file diagnostics, plus
        include issues attached to the file containing the offending `include`, for an
        `AnalyzedProject`).
-     - `config.rs`: `Config`, resolved once from `initializationOptions` at `initialize` time.
-       Currently supports a single optional key, `journal_file` (path to the root `.pactole`
-       file, resolved against the workspace root — from `workspace_folders`, then `rootUri`, then
-       `rootPath` — when given as relative; when no workspace root is known at all, resolved
-       against the server process's current working directory instead of being silently left
-       relative, so it does not later fail to resolve and silently drop every diagnostic for the
-       whole include graph). **Does not read `~/.config/pactole`** or any other user-global
-       configuration; this is an explicit, documented limitation of this first version, not an
-       oversight.
+     - `config.rs`: `Config`, resolved once at `initialize` time from `initializationOptions`
+       and from the layered `pactole.toml` files. Supports `journal_file` (path to the root
+       `.pactole` file, resolved against the workspace root — from `workspace_folders`, then
+       `rootUri`, then `rootPath` — when given as relative; when no workspace root is known at
+       all, resolved against the server process's current working directory instead of being
+       silently left relative, so it does not later fail to resolve and silently drop every
+       diagnostic for the whole include graph) and `validation` (a `"warn"`/`"error"` string or a
+       `{ "payee": ... }` table). Validation settings follow the same layering as the CLI: the
+       global `pactole.toml` (via `pactole_config::config_dir`), then the project `pactole.toml`
+       (next to `journal_file`, or at the workspace root when none is configured), then
+       `initializationOptions`. Unreadable or invalid configuration files, and the
+       not-yet-supported `off` level, are logged and ignored rather than failing `initialize`.
      - `server.rs`: the stdio `Connection`, main loop, and notification handlers. Publishes
        `textDocument/publishDiagnostics`:
        - When `journal_file` is configured and loads successfully, diagnostics are computed for
@@ -222,18 +245,20 @@ pactole/
       first version. Unhandled requests are answered with a `MethodNotFound` error rather than
       silently ignored.
    - **Depends on `pactole-storage-fs`/`pactole-syntax` only through their existing public API**
-     (`analyze_file`, `analyze_file_with_loader`, `FsSourceLoader`, `SourceLoader`,
+     (`analyze_file`, `analyze_file_with_loader`,
+     `analyze_file_with_loader_with_options`, `FsSourceLoader`, `SourceLoader`,
       `SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `SyntaxDiagnostic`,
-     `Span`/`Point`); it does not add or change anything in those crates.
+     `Span`/`Point`), plus `pactole-config` for layered configuration; it does not add or
+     change anything in those crates.
    - Has no dependency on `thiserror`: it has no error enums of its own, only propagating errors
      via `Box<dyn Error + Sync + Send>` in `server.rs`.
 
 7. **`pactole-import`**:
-   - **Edge adapter, zero I/O, depends only on `pactole-core`** (plus `chrono`, `encoding_rs`,
-     `rust_decimal`, `serde`): translates a foreign input format into pure domain models. It
-     knows nothing about tree-sitter, `pactole-storage-fs`, the `.pactole` text format, or the
-     configuration file format, so it is reusable by any front-end (the `pactole` CLI today, a
-     future `pactole-storage-db`, the LSP tomorrow).
+   - **Edge adapter, zero I/O, depends only on `pactole-core` and `pactole-config`** (plus
+     `chrono`, `encoding_rs`, `rust_decimal`): translates a foreign input format into pure domain
+     models. It knows nothing about tree-sitter, `pactole-storage-fs`, the `.pactole` text
+     format, or where its configuration comes from, so it is reusable by any front-end (the
+     `pactole` CLI today, a future `pactole-storage-db`, the LSP tomorrow).
    - **Key modules**:
      - `record.rs`: `ImportRecord`, a format-neutral intermediate representation (date, signed
        amount, currency, payee, memo, transaction type, check number, reference, FITID, source
@@ -249,10 +274,8 @@ pactole/
        header (Windows code pages 1250–1258, 874, the CJK code pages 932/936/949/950, Mac
        Roman), or a byte order mark — and otherwise falls back to strict UTF-8 and then
        windows-1252, so mislabeled bank exports still decode instead of being rejected.
-     - `config.rs`: `ImportConfig`, `Rule`, `Direction` — serde types describing the bank
-       account, the optional `[accounts]` source-account → Pactole-account mapping, the default
-       counter account, the optional fallback currency and the
-       categorization rules. These types fix no file format; the caller chooses TOML.
+     - `ImportConfig`, `Rule`, `Direction` are **defined in `pactole-config`** (the `[import]`
+       section of `pactole.toml`) and re-exported here for convenience.
      - `rules.rs`: shared rule engine lowering an `ImportRecord` into a balanced
        `pactole_core::Transaction` (first matching rule wins, otherwise the default counter
        account; a rule may also override the payee). The bank-side account is resolved per
@@ -271,6 +294,31 @@ pactole/
      duplicating it. Only OFX is implemented for now.
    - **Serialization stays out of this crate**: turning the produced `Transaction`s into
      `.pactole` text is `pactole_storage_fs::format_transactions`, called by the CLI.
+
+8. **`pactole-config`**:
+   - **Leaf crate**: depends on no other Pactole crate (only `serde`, `toml`, `thiserror`), and
+     owns the whole `pactole.toml` schema plus its layering rules. Every other crate that needs
+     configuration depends on it.
+   - **Layers** (lowest to highest precedence): global
+     `$XDG_CONFIG_HOME/pactole/pactole.toml`, else `%APPDATA%\pactole\` on Windows, else
+     `~/.config/pactole/pactole.toml`; then the project `pactole.toml` (next to the journal); then
+     in-memory overrides (CLI root flags, LSP `initializationOptions`). An explicit
+     `--config <path>` replaces discovery with that single file. No parent-directory walk-up.
+   - **Merge semantics**: per key. Tables merge per entry (`[import.accounts]` unions);
+     `[[import.rules]]` is replaced in block by the highest layer defining it. Unknown keys are
+     rejected per section (`deny_unknown_fields`), so typos fail loudly.
+   - **Schema**:
+     - `[validation] payee`: `"warn"` or `"error"` (default `"error"`, preserving historical
+       behavior). The future `"off"` level is rejected with an explicit message until the grammar
+       makes the payee optional.
+     - `[format] posting_width`: amount alignment column (default 50).
+     - `[import]`: `bank_account`, `currency`, `default_counter_account`, `[import.accounts]`,
+       `[[import.rules]]` — the OFX import settings; `ImportConfig`/`Rule`/`Direction` are
+       defined here and re-exported by `pactole-import`.
+   - **Public API**: `Config` (resolved), `Config::resolve(&[Source], &Overrides)` (pure, no I/O),
+     `Config::load(explicit, project, &Overrides)` (I/O), `ConfigError`, `Overrides`,
+     `ValidationLevel`/`ValidationOptions`, `FormatOptions`, `ImportConfig`/`Rule`/`Direction`,
+     `config_dir()`, `default_config_path()`.
 
 ### Planned Crates (not yet created)
 
@@ -389,7 +437,7 @@ If modifying `crates/tree-sitter-pactole/grammar.js`:
 
 ## 5. Coding Guidelines & Best Practices
 
-- **Strict Architecture Boundaries**: Never import storage or parser code into `pactole-core`. `pactole-syntax` must never depend on `pactole-core` or perform I/O; it stays purely syntactic (CST, spans, diagnostics). `pactole-storage-fs`'s existing strict API and the canonical formatter remain unchanged and stay in `pactole-storage-fs`. `pactole-import` depends only on `pactole-core`, performs no I/O, and knows nothing of tree-sitter, `pactole-storage-fs`, the `.pactole` text format, or the config file format. `pactole-lsp` only consumes `pactole-storage-fs`/`pactole-syntax` through their existing public API and does not read `~/.config/pactole`.
+- **Strict Architecture Boundaries**: Never import storage or parser code into `pactole-core`. `pactole-syntax` must never depend on `pactole-core` or perform I/O; it stays purely syntactic (CST, spans, diagnostics). `pactole-storage-fs`'s existing strict API and the canonical formatter remain unchanged and stay in `pactole-storage-fs`. `pactole-import` depends only on `pactole-core` and `pactole-config`, performs no I/O, and knows nothing of tree-sitter, `pactole-storage-fs`, the `.pactole` text format, or the config file format. `pactole-config` is a leaf crate: it depends on no other Pactole crate and owns the whole `pactole.toml` schema and layering rules. `pactole-lsp` consumes `pactole-storage-fs`/`pactole-syntax` through their existing public API and uses `pactole-config` for layered configuration.
 - **Financial Precision**: Never use `f32` or `f64` for money amounts. Always use `rust_decimal::Decimal`.
 - **Error Handling**:
   - Prefer structured errors via `thiserror` enums (`ModelError`, `ValidationError`, `PactoleFsStorageError`).

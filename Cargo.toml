@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/pactole-cli",
+  "crates/pactole-config",
   "crates/pactole-core",
   "crates/pactole-import",
   "crates/pactole-lsp",

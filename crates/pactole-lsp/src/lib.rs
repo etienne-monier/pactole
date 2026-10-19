@@ -11,6 +11,11 @@
 //! previous analysis are cleared for any file no longer covered by the
 //! latest one.
 //!
+//! Validation settings come from the same layered `pactole.toml` files as the
+//! CLI (global configuration directory, then the project file next to
+//! `journal_file` or at the workspace root), overridden by the
+//! `initializationOptions` `validation` key (see [`config`]).
+//!
 //! Completion, code actions and hover are supported for editor assistance;
 //! formatting is intentionally left to the `pactole fmt` command. Navigation,
 //! incremental synchronization and formatting over LSP are not supported yet.

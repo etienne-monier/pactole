@@ -6,9 +6,9 @@ use pactole_core::{
 };
 
 use crate::ImportWarning;
-use crate::config::{Direction, ImportConfig, Rule};
 use crate::error::ImportError;
 use crate::record::ImportRecord;
+use pactole_config::{Direction, ImportConfig, Rule};
 
 /// Payee used when a transaction has neither a rule-provided payee nor a
 /// source payee. A transaction's payee is mandatory in Pactole, so a
@@ -84,9 +84,9 @@ pub(crate) fn lower(
             Some(account_id) => match mapped_accounts.get(account_id) {
                 Some(account) => account.clone(),
                 None => {
-                    // With no `[accounts]` table at all, `bank_account` is
-                    // the intended primary account: stay silent rather than
-                    // warn on every import of a classic single-account
+                    // With no `[import.accounts]` table at all, `bank_account`
+                    // is the intended primary account: stay silent rather
+                    // than warn on every import of a classic single-account
                     // configuration.
                     if !config.accounts.is_empty() && warned_accounts.insert(account_id.to_string())
                     {

@@ -679,10 +679,18 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "pactole-config",
  "pactole-core",
  "pactole-import",
  "pactole-storage-fs",
+]
+
+[[package]]
+name = "pactole-config"
+version = "0.2.0"
+dependencies = [
  "serde",
+ "thiserror",
  "toml",
 ]
 
@@ -702,11 +710,10 @@ dependencies = [
  "chrono",
  "encoding_rs",
  "ofx-rs",
+ "pactole-config",
  "pactole-core",
  "rust_decimal",
- "serde",
  "thiserror",
- "toml",
 ]
 
 [[package]]
@@ -718,6 +725,7 @@ dependencies = [
  "log",
  "lsp-server",
  "lsp-types",
+ "pactole-config",
  "pactole-core",
  "pactole-storage-fs",
  "pactole-syntax",
@@ -730,6 +738,7 @@ name = "pactole-storage-fs"
 version = "0.2.0"
 dependencies = [
  "chrono",
+ "pactole-config",
  "pactole-core",
  "pactole-syntax",
  "rust_decimal",

@@ -35,16 +35,18 @@ If you do not have Rust installed, follow the official instructions at
 
 ## 2. Initialize your ledger
 
-Create a starter ledger and the default OFX import configuration:
+Create a starter ledger and its project configuration:
 
 ```sh
 pactole init ledger.pactole
 ```
 
-The command creates `ledger.pactole` and, if it is missing,
-`~/.config/pactole/import-ofx.toml`. It never overwrites an existing file. The
-starter ledger contains declarations for `Assets:Checking`,
-`Expenses:ToReview` and `EUR`, but no fictitious transaction.
+The command creates `ledger.pactole` and, if it is missing, a `pactole.toml`
+next to it (pass `--global` to write the configuration into the user
+configuration directory, `~/.config/pactole/pactole.toml`, instead). It never
+overwrites an existing file. The starter ledger contains declarations for
+`Assets:Checking`, `Expenses:ToReview` and `EUR`, but no fictitious
+transaction.
 
 ## 3. Write your first transaction
 

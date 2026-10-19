@@ -8,6 +8,7 @@ mod init;
 mod parse;
 mod register;
 
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
@@ -16,17 +17,41 @@ use clap_complete::generate;
 use crate::commands::{Cli, Command};
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let Cli {
+        config: explicit_config,
+        validation,
+        command,
+    } = Cli::parse();
 
-    match cli.command {
+    match command {
         Command::Parse { file } => parse::run(file),
-        Command::Fmt { file, write } => format::run(file, write),
+        Command::Fmt { file, write } => {
+            let project_dir = file_project_dir(&file);
+            match config::load(
+                explicit_config.as_deref(),
+                validation,
+                project_dir.as_deref(),
+            ) {
+                Ok(config) => format::run(file, write, &config.format),
+                Err(error) => config::failure(error),
+            }
+        }
         Command::Completions { shell } => {
             let mut command = Cli::command();
             generate(shell, &mut command, "pactole", &mut std::io::stdout());
             ExitCode::SUCCESS
         }
-        Command::Check { file, strict } => check::run(file, strict),
+        Command::Check { file, strict } => {
+            let project_dir = parent_dir(&file);
+            match config::load(
+                explicit_config.as_deref(),
+                validation,
+                project_dir.as_deref(),
+            ) {
+                Ok(config) => check::run(file, strict, &config.validation),
+                Err(error) => config::failure(error),
+            }
+        }
         Command::Register {
             file,
             account,
@@ -36,34 +61,82 @@ fn main() -> ExitCode {
             narration,
             tag,
             status,
-        } => register::run(file, account, from, to, payee, narration, tag, status),
+        } => {
+            let project_dir = parent_dir(&file);
+            match config::load(
+                explicit_config.as_deref(),
+                validation,
+                project_dir.as_deref(),
+            ) {
+                Ok(config) => register::run(
+                    file,
+                    account,
+                    from,
+                    to,
+                    payee,
+                    narration,
+                    tag,
+                    status,
+                    &config.validation,
+                ),
+                Err(error) => config::failure(error),
+            }
+        }
         Command::ImportOfx {
             file,
-            config,
             into,
             account,
             write,
-        } => import_ofx::run(file, config, into, account, write),
+        } => {
+            let project_dir = into
+                .as_deref()
+                .and_then(parent_dir)
+                .or_else(|| std::env::current_dir().ok());
+            match config::load(
+                explicit_config.as_deref(),
+                validation,
+                project_dir.as_deref(),
+            ) {
+                Ok(config) => import_ofx::run(file, into, account, write, &config),
+                Err(error) => config::failure(error),
+            }
+        }
         Command::Init {
             ledger,
-            config,
             account,
             currency,
             counter_account,
             date,
             stdout,
+            global,
             no_config,
             no_ledger,
         } => init::run(init::Options {
             ledger,
-            config,
             account,
             currency,
             counter_account,
             date,
             stdout,
+            global,
             no_config,
             no_ledger,
         }),
+    }
+}
+
+/// Directory of the journal a command operates on, used to locate the
+/// project `pactole.toml` layer.
+fn parent_dir(path: &Path) -> Option<PathBuf> {
+    Some(path.parent().unwrap_or(Path::new("")).to_path_buf())
+}
+
+/// Directory of the journal being formatted, or the current directory when
+/// formatting stdin (`-`).
+fn file_project_dir(file: &str) -> Option<PathBuf> {
+    if file == "-" {
+        std::env::current_dir().ok()
+    } else {
+        parent_dir(Path::new(file))
     }
 }

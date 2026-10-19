@@ -14,7 +14,7 @@ vue architecture.
 
 ## 1. Vue d'ensemble
 
-Pactole est un espace de travail Cargo (`resolver = "3"`) composé de sept
+Pactole est un espace de travail Cargo (`resolver = "3"`) composé de huit
 crates :
 
 ```text
@@ -35,6 +35,10 @@ pactole-cli  pactole-lsp
    │
    ▼
 pactole-import        (adaptateur d'entrée : formats externes → domaine)
+
+pactole-config        (schéma `pactole.toml` + résolution en couches ; crate
+                       feuille consommée par pactole-storage-fs,
+                       pactole-import, pactole-cli et pactole-lsp)
 ```
 
 `pactole-core` ne dépend d'aucune autre crate du dépôt : c'est le domaine
@@ -42,11 +46,13 @@ pur (aucune E/S, aucun tree-sitter). `pactole-syntax` ne dépend que de
 `tree-sitter-pactole` et ignore tout de `pactole-core`. `pactole-storage-fs`
 est le seul point de jonction entre le monde syntaxique (tree-sitter /
 `pactole-syntax`) et le monde domaine (`pactole-core`). `pactole-import` est
-un adaptateur d'entrée symétrique : il dépend uniquement de `pactole-core`
-(pas de tree-sitter, pas d'E/S) et traduit un format externe (aujourd'hui
-OFX) en modèles de domaine. `pactole-cli` et `pactole-lsp` sont les deux
-points d'entrée binaires ; `pactole-cli` consomme en plus `pactole-import`
-pour sa sous-commande d'import (voir §3, §6 et §2.7).
+un adaptateur d'entrée symétrique : il dépend uniquement de `pactole-core` et
+`pactole-config` (pas de tree-sitter, pas d'E/S) et traduit un format externe
+(aujourd'hui OFX) en modèles de domaine. `pactole-config` est une crate
+feuille : elle ne dépend d'aucune autre crate Pactole et centralise le format
+`pactole.toml` et ses règles de fusion. `pactole-cli` et `pactole-lsp` sont
+les deux points d'entrée binaires ; `pactole-cli` consomme en plus
+`pactole-import` pour sa sous-commande d'import (voir §3, §6 et §2.7).
 
 ## 2. Frontières entre crates
 
@@ -129,6 +135,19 @@ historique inchangée) et le flux **tolérant/positionné**
   `InMemorySourceLoader`, `SourceLoadError`) sur "d'où vient le texte
   source", indépendante du système de fichiers réel.
 
+`analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)`
+est la variante configurable : elle reclasse le seul contrôle métier
+configurable (`PayeeNotDeclared`) en avertissement quand
+`[validation] payee = "warn"`, tandis que tous les autres problèmes métier
+restent des erreurs. `validated_journal()` réussit alors tant qu'aucun
+diagnostic de sévérité « erreur » ne subsiste : les avertissements seuls ne
+bloquent pas. La forme `analyze_file_with_loader` utilise
+`ValidationOptions::default()` (tout en erreur), donc le comportement des
+appelants existants est inchangé. Les types de configuration
+(`ValidationOptions`, `FormatOptions`) proviennent de `pactole-config` ;
+`pactole-storage-fs` réexporte `FormatOptions` pour garder son API de
+formatage autonome.
+
 `parser.rs` et `printer.rs` réutilisent `pactole_syntax::parse_document` /
 `ParsedDocument::into_result`, pour ne pas dupliquer l'initialisation du
 parseur tree-sitter ni la détection `ERROR`/`MISSING`. Le formateur
@@ -142,24 +161,27 @@ canonique reste dans cette crate (il n'est ni déplacé ni dupliqué dans
 Serveur LSP minimal en stdio (`lsp-server` + `lsp-types`), binaire
 `pactole-lsp`. Ne consomme `pactole-storage-fs`/`pactole-syntax` que via
 leur API publique existante (`analyze_file`, `analyze_file_with_loader`,
-`FsSourceLoader`, `SourceLoader`, `SourceLoadError`, `ParsedFile`,
-`AnalyzedProject`, `IncludeIssue`, `SyntaxDiagnostic`, `Span`/`Point`) :
-il n'ajoute ni ne modifie rien dans ces crates. Détaillé au §5.
+`analyze_file_with_loader_with_options`, `FsSourceLoader`, `SourceLoader`,
+`SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `IncludeIssue`,
+`SyntaxDiagnostic`, `Span`/`Point`) et utilise `pactole-config` pour la
+configuration en couches : il n'ajoute ni ne modifie rien dans ces crates.
+Détaillé au §5.
 
 ### 2.6 `pactole-cli`
 
 Binaire `pactole` (via `clap` derive), consommant `pactole-core` et
 `pactole-storage-fs` par leur API stricte
-(`PactoleFileStorage`/`validate_journal`/`register`/`format`) et
-`pactole-import` pour l'import de relevés externes. Détaillé au §6.
+(`PactoleFileStorage`/`validate_journal`/`register`/`format`),
+`pactole-import` pour l'import de relevés externes et `pactole-config` pour
+résoudre `pactole.toml`. Détaillé au §6.
 
 ### 2.7 `pactole-import`
 
 Adaptateur d'entrée (edge adapter), symétrique de `pactole-storage-fs` :
 il traduit un format externe vers le domaine pur. Il ne dépend que de
-`pactole-core` (plus `chrono`/`rust_decimal`/`serde`), effectue **aucune
-E/S** (le texte source lui est fourni sous forme de `&str`) et ne connaît
-ni tree-sitter, ni `pactole-storage-fs`, ni le format de fichier de
+`pactole-core` et `pactole-config` (plus `chrono`/`rust_decimal`), effectue
+**aucune E/S** (le texte source lui est fourni sous forme de `&str`) et ne
+connaît ni tree-sitter, ni `pactole-storage-fs`, ni le format de fichier de
 configuration. Ce positionnement le rend réutilisable par n'importe quel
 front-end : la CLI aujourd'hui, un futur `pactole-storage-db` (qui y
 trouvera de quoi alimenter une base) et le LSP demain. Contient :
@@ -168,14 +190,14 @@ trouvera de quoi alimenter une base) et le LSP demain. Contient :
   du format (date, montant signé, devise, payee, mémo, type, FITID...).
 - `ofx.rs` : parseur OFX (1.x SGML et 2.x XML, via la crate `ofx-rs`) qui
   produit des `ImportRecord`s à partir d'un texte OFX.
-- `config.rs` : `ImportConfig`/`Rule`/`Direction`, types sérialisables
-  (serde) décrivant le compte banque, le compte de contrepartie par défaut,
-  la devise de repli et les règles de catégorisation. Ces types ne fixent
-  aucun format de fichier : c'est l'appelant (la CLI) qui choisit TOML.
 - `rules.rs` : moteur de règles partagé qui abaisse un `ImportRecord` en
   `pactole_core::Transaction` équilibrée (règle : premier motif gagnant,
   repli sur le compte par défaut).
 - `error.rs` : `ImportError`.
+
+`ImportConfig`, `Rule` et `Direction` sont désormais **définis dans
+`pactole-config`** (section `[import]` de `pactole.toml`) et simplement
+réexportés ici pour la commodité des appelants.
 
 Le point d'entrée public, `import_ofx(source, &config, known_fitids)`,
 applique l'idempotence : toute transaction source dont le `FITID` figure
@@ -189,6 +211,14 @@ puis moteur de règles → `Transaction`) afin que de futurs importeurs
 La sérialisation `.pactole` des transactions produites reste dans
 `pactole-storage-fs` (`format_transactions`, voir §2.4), pas dans cette
 crate : `pactole-import` ignore tout du format de sortie textuel.
+
+### 2.8 `pactole-config`
+
+Crate feuille : ne dépend d'aucune autre crate Pactole (uniquement `serde`,
+`toml` et `thiserror`). Elle centralise le schéma complet de `pactole.toml`
+(`[validation]`, `[format]`, `[import]`) et sa résolution en couches, que
+tous les front-ends partagent. Voir §8 pour le détail du format et des
+priorités.
 
 ## 3. Flux strict vs flux tolérant
 
@@ -307,19 +337,23 @@ Modules :
   abaissement pour un `ParsedFile`) et `project_diagnostics` (diagnostics
   par fichier, plus les `IncludeIssue` rattachées au fichier contenant
   l'`include` fautif, pour un `AnalyzedProject`).
-- `config.rs` : `Config`, résolue une seule fois à partir des
-  `initializationOptions` lors de l'`initialize`. Supporte pour l'instant
-  une unique clé optionnelle, `journal_file` (chemin vers le fichier
-  `.pactole` racine, résolu contre la racine du workspace — depuis
-  `workspace_folders`, puis `rootUri`, puis `rootPath` — s'il est donné
-  relatif ; si aucune racine de workspace n'est connue du tout, résolu
-  contre le répertoire de travail courant du process serveur plutôt que
-  laissé relatif tel quel, pour ne pas échouer silencieusement à se
-  résoudre plus tard et faire disparaître silencieusement tous les
-  diagnostics de tout le graphe d'`include`). **Ne lit pas
-  `~/.config/pactole`** ni aucune autre configuration globale utilisateur
-  : c'est une limitation explicite et documentée de cette première
-  version, pas un oubli.
+- `config.rs` : `Config`, résolue une seule fois à l'`initialize` à partir
+  des `initializationOptions` et des fichiers `pactole.toml` en couches.
+  Supporte `journal_file` (chemin vers le fichier `.pactole` racine, résolu
+  contre la racine du workspace — depuis `workspace_folders`, puis
+  `rootUri`, puis `rootPath` — s'il est donné relatif ; si aucune racine de
+  workspace n'est connue du tout, résolu contre le répertoire de travail
+  courant du process serveur plutôt que laissé relatif tel quel, pour ne
+  pas échouer silencieusement à se résoudre plus tard et faire disparaître
+  silencieusement tous les diagnostics de tout le graphe d'`include`), et
+  `validation` (une chaîne `"warn"`/`"error"`, ou une table
+  `{ "payee": ... }`). La validation suit la même stratification que la CLI :
+  le `pactole.toml` global (via `pactole_config::config_dir`), puis le
+  `pactole.toml` du projet (à côté de `journal_file`, ou à la racine du
+  workspace quand aucun `journal_file` n'est configuré), puis
+  `initializationOptions`. Un fichier de configuration illisible ou
+  invalide, ainsi que le niveau `off` pas encore supporté, sont journalisés
+  et ignorés plutôt que de faire échouer `initialize`.
 - `server.rs` : la `Connection` stdio, la boucle principale, et les
   handlers de notifications. Publie `textDocument/publishDiagnostics` :
   - quand `journal_file` est configuré et se charge avec succès, les
@@ -337,11 +371,11 @@ Modules :
     diagnostics vide, pour que les diagnostics ne restent jamais périmés
     une fois qu'un fichier sort de l'ensemble analysé.
 
-Explicitement hors du périmètre de cette première version : complétion,
-survol (hover), navigation, formatage via LSP (utiliser `pactole fmt` pour
-le formatage), synchronisation incrémentale, et toute lecture de
-`~/.config/pactole`. Les requêtes non gérées reçoivent une erreur
-`MethodNotFound` plutôt que d'être silencieusement ignorées.
+Explicitement hors du périmètre de cette première version : navigation,
+formatage via LSP (utiliser `pactole fmt` pour le formatage) et
+synchronisation incrémentale. La complétion, le survol (hover) et les
+actions de code sont, eux, supportés. Les requêtes non gérées reçoivent une
+erreur `MethodNotFound` plutôt que d'être silencieusement ignorées.
 
 Journalisation (`log`/`env_logger`) : silencieuse par défaut, activable à la
 demande via `RUST_LOG` (ex. `RUST_LOG=pactole_lsp=debug`) ; écrite
@@ -351,7 +385,14 @@ rester sans risque à activer sur des journaux potentiellement sensibles.
 
 ## 6. `pactole-cli`
 
-Binaire `pactole` (`clap` derive), sous-commandes actuelles :
+Binaire `pactole` (`clap` derive). Drapeaux **racine** (avant la
+sous-commande) :
+
+- `--config <path>` : utilise ce `pactole.toml` comme unique couche et
+  court-circuite la découverte global/projet ;
+- `--validation <warn|error>` : surcharge le niveau `[validation] payee`.
+
+Sous-commandes actuelles :
 
 - `pactole parse <file>` : parse le fichier et affiche (`Debug`) les
   entrées du journal résultant. Surtout utile pour déboguer la
@@ -359,29 +400,35 @@ Binaire `pactole` (`clap` derive), sous-commandes actuelles :
 - `pactole fmt <file> [--write]` : reformate un fichier `.pactole` dans sa
   forme canonique (stdout par défaut, `--write` pour écrire sur place ;
   `-` accepté comme nom de fichier pour lire depuis stdin, toujours écrit
-  sur stdout dans ce cas).
-- `pactole check <file>` : parsing syntaxique **puis** validation métier
-  (`pactole_core::validate_journal`).
+  sur stdout dans ce cas), en utilisant les options `[format]` résolues.
+- `pactole completions <shell>` : génère un script de complétion.
+- `pactole check <file> [--strict]` : parsing syntaxique **puis** validation
+  métier (`pactole_core::validate_journal`), avec les niveaux `[validation]`
+  résolus ; `--strict` transforme les avertissements en échec.
 - `pactole register <file> [filtres]` : rapport "register" avec solde
   courant, filtrable par `--account` (avec sous-comptes), `--from`/`--to`,
   `--payee`, `--narration`, `--tag`, `--status`.
-- `pactole import-ofx <file> [--config <path>] [--into <path>] [--account <compte>] [--write]` :
+- `pactole init [ledger] [--global]` : crée un journal de départ et, s'il
+  manque, un `pactole.toml` à côté du journal (ou dans le répertoire de
+  configuration utilisateur avec `--global`). Les fichiers existants ne
+  sont jamais écrasés.
+- `pactole import-ofx <file> [--into <path>] [--account <compte>] [--write]` :
   importe un relevé OFX/QFX (SGML 1.x ou XML 2.x) et produit des directives
   de transaction `.pactole` canoniques (via
   `pactole_import::import_ofx` puis
   `pactole_storage_fs::format_transactions`). Le compte banque, la table de
-  correspondance `[accounts]` (identifiant de compte du relevé → compte
-  Pactole), le compte de contrepartie par défaut et les règles de
-  catégorisation proviennent
-  d'un fichier de configuration, par défaut
-  `~/.config/pactole/import-ofx.toml` (voir §8). `--account` surcharge le
-  compte bancaire configuré (et la table `[accounts]`) pour la seule exécution.
-  Sans `--into`, les
-  transactions sont imprimées sur stdout. Avec `--into <fichier>`, les
-  `FITID` déjà présents dans ce fichier sont sautés (idempotence), et avec
-  `--write` les transactions générées y sont ajoutées (append) au lieu
-  d'être imprimées. Un compte de relevé absent de la table `[accounts]` est
-  reposté sur `bank_account` avec un avertissement sur stderr.
+  correspondance `[import.accounts]` (identifiant de compte du relevé →
+  compte Pactole), le compte de contrepartie par défaut et les règles
+  `[[import.rules]]` proviennent de la section `[import]` du `pactole.toml`
+  résolu (voir §8) ; la commande échoue avec un message clair quand aucune
+  section `[import]` n'est configurée. `--account` surcharge le compte
+  bancaire configuré (et la table `[import.accounts]`) pour la seule
+  exécution. Sans `--into`, les transactions sont imprimées sur stdout. Avec
+  `--into <fichier>`, les `FITID` déjà présents dans ce fichier sont sautés
+  (idempotence), et avec `--write` les transactions générées y sont ajoutées
+  (append) au lieu d'être imprimées. Un compte de relevé absent de la table
+  `[import.accounts]` est reposté sur `bank_account` avec un avertissement
+  sur stderr.
 
 Tests d'intégration bout en bout dans
 `crates/pactole-cli/tests/cli.rs`.
@@ -397,7 +444,9 @@ clés portés par `pactole-core::validation` :
   d'une directive, avant toute posting ; une métadonnée de posting est
   indentée sous cette posting.
 - Toute transaction requiert un payee obligatoire ; en validation
-  (`check`), ce payee doit être déclaré via une directive `payee`.
+  (`check`), ce payee doit être déclaré via une directive `payee`
+  (contrôle configurable : `[validation] payee = "warn"` le rétrograde en
+  avertissement).
 - Les postings d'une transaction doivent s'équilibrer à zéro par
   commodité ; au plus une posting peut omettre son montant (montant
   déduit).
@@ -407,21 +456,48 @@ clés portés par `pactole-core::validation` :
 
 ## 8. Configuration actuelle
 
-- **CLI** (`pactole-cli`) : la plupart des sous-commandes (`parse`, `fmt`,
-  `check`, `register`) ne prennent que des arguments de ligne de commande.
-  Seule `import-ofx` lit un fichier de configuration, par défaut
-  `~/.config/pactole/import-ofx.toml` (surchargeable par `--config`),
-  contenant le compte banque, la table de correspondance optionnelle
-  `[accounts]` (identifiant de compte du relevé OFX → compte Pactole), le
-  compte de contrepartie par défaut, la
-  devise de repli optionnelle et les `[[rules]]` de catégorisation. Le
-  répertoire est résolu via `$XDG_CONFIG_HOME/pactole` si
-  `XDG_CONFIG_HOME` est défini, sinon `$HOME/.config/pactole`.
-- **LSP** (`pactole-lsp`) : une seule clé optionnelle,
-  `journal_file`, lue depuis les `initializationOptions` du client LSP à
-  l'`initialize` (voir §5, `config.rs`). Aucune configuration n'est lue
-  depuis `~/.config/pactole` ni aucun autre fichier de configuration
-  global utilisateur.
+Un seul fichier **`pactole.toml`**, résolu par `pactole-config` (§2.8) et
+partagé par la CLI et le LSP. Les couches vont de la moins prioritaire à la
+plus prioritaire :
+
+1. le fichier global `~/.config/pactole/pactole.toml` (ou
+   `$XDG_CONFIG_HOME/pactole/pactole.toml` si `XDG_CONFIG_HOME` est défini ;
+   `%APPDATA%\pactole\` sous Windows) ;
+2. le fichier projet `pactole.toml` — à côté du journal traité côté CLI,
+   à côté de `journal_file` (ou à la racine du workspace si aucun) côté LSP ;
+3. les surcharges en mémoire — drapeaux racine `--config`/`--validation` de
+   la CLI, `initializationOptions` du LSP. `--config <path>` remplace la
+   découverte par ce fichier unique (erreur si illisible).
+
+La fusion se fait **par clé** (une clé absente d'une couche supérieure
+conserve la valeur de la couche inférieure) ; `[import.accounts]` fusionne
+par clé, `[[import.rules]]` est remplacé en bloc par la couche la plus
+prioritaire qui les définit, et les clés inconnues sont rejetées par
+section (`deny_unknown_fields`), donc les fautes de frappe échouent
+bruyamment.
+
+Schéma :
+
+- `[validation] payee` : `"warn"` ou `"error"` (défaut `error`, comportement
+  historique conservé). `warn` rétrograde en avertissement le seul contrôle
+  configurable (payee non déclaré) ; les autres contrôles métier restent des
+  erreurs. Le niveau futur `off` est rejeté avec un message explicite (voir
+  §10).
+- `[format] posting_width` : colonne d'alignement des montants (défaut 50).
+- `[import]` : `bank_account`, `currency`,
+  `default_counter_account`, `[import.accounts]`, `[[import.rules]]` — les
+  réglages de `pactole import-ofx`.
+
+Chaque commande distingue avertissements et erreurs : `pactole check
+--strict` transforme les avertissements en échec, et `--validation` permet
+de surcharger le niveau sans éditer de fichier.
+
+- **LSP** (`pactole-lsp`) : en plus des couches ci-dessus, `journal_file`
+  reste une clé d'`initializationOptions` propre, et `validation` peut y être
+  surchargé sous forme de chaîne (`"warn"`) ou de table
+  (`{ "payee": "warn" }`). Un fichier de configuration illisible/invalide ou
+  un niveau non supporté est journalisé et ignoré, jamais bloquant (voir
+  §5).
 - **Grammaire tree-sitter** : `tree-sitter.json` déclare les métadonnées
   du langage (`scope: source.pactole`, extension `.pactole`) pour les
   outils de l'écosystème tree-sitter (voir aussi `HELIX.md`).
@@ -443,13 +519,14 @@ clés portés par `pactole-core::validation` :
   `pactole-storage-fs::analysis`/`loader` : chaque appel refait tout le
   travail depuis zéro. Un futur `pactole-lsp` devra construire toute
   logique d'invalidation par-dessus, pas dans cette crate.
-- `pactole-lsp` ne lit pas `~/.config/pactole` : c'est une limitation
-  documentée de la première version, pas un manque accidentel.
+- `pactole-lsp` lit désormais la configuration stratifiée `pactole.toml`
+  (voir §8) comme la CLI, au même titre que ses `initializationOptions`.
 - `pactole-import` ne fait aucune E/S et ne connaît ni tree-sitter ni le
-  format de fichier de configuration : c'est la CLI qui lit le TOML et le
-  texte OFX, puis appelle `import_ofx`. Cette frontière garde l'importeur
-  réutilisable par un futur `pactole-storage-db` (alimenter une base au
-  lieu d'écrire un fichier) sans le coupler au système de fichiers.
+  format de fichier de configuration : c'est `pactole-config` qui lit le
+  TOML et la CLI qui fournit un `ImportConfig` à `import_ofx`. Cette
+  frontière garde l'importeur réutilisable par un futur
+  `pactole-storage-db` (alimenter une base au lieu d'écrire un fichier)
+  sans le coupler au système de fichiers.
 - `format_transactions` (sérialisation domaine → texte `.pactole`) est un
   sérialiseur de sortie best-effort : la grammaire n'autorisant ni `"`
   ni saut de ligne dans une chaîne, ces caractères y sont remplacés par
@@ -468,38 +545,27 @@ clés portés par `pactole-core::validation` :
 Ce qui reste explicitement à faire, par ordre approximatif de valeur/
 complexité croissante :
 
-1. **Configuration globale utilisateur** : `pactole-cli import-ofx` lit
-   déjà `~/.config/pactole/import-ofx.toml` (voir §8), mais il n'existe
-   pas encore de configuration globale partagée ni de lecture de
-   `~/.config/pactole` par `pactole-lsp` (aujourd'hui totalement absente
-   côté LSP).
+1. **Niveau de validation `off`** : `pactole-config` accepte aujourd'hui
+   uniquement `warn` et `error` (voir §8). Passer à `off` demande de rendre
+   le payee optionnel dans la grammaire (régénérer le parseur, mettre à jour
+   le corpus, `GRAMMAR.md` et `ValidationError::PayeeMissing`), puis
+   d'accepter `off` côté configuration, CLI et LSP.
 2. **Autres importeurs** (CSV, QIF...) : `pactole-import` est structuré
    pour cela (parseur de format → `ImportRecord`, puis moteur de règles
    partagé → `Transaction`), mais seul OFX est implémenté. Ajouter un
    importeur consiste à écrire un nouveau module produisant des
    `ImportRecord`s et à exposer un point d'entrée analogue à
    `import_ofx`.
-3. **Diagnostics métier positionnés** : aujourd'hui,
-   `pactole-storage-fs::analysis` ne produit que des diagnostics
-   syntaxiques et d'abaissement (échec de conversion CST → modèle) ; les
-   invariants métier de `pactole-core::validation` (équilibrage,
-   cycle de vie des comptes, payees non déclarés, etc.) ne sont vérifiés
-   que dans le flux strict (`pactole check`) et n'ont pas d'équivalent
-   positionné/tolérant exploitable par `pactole-lsp`. Il faudra faire
-   remonter des diagnostics de validation avec un `Span` par fichier,
-   potentiellement via une nouvelle passe dans `pactole-storage-fs` ou
-   `pactole-core`.
-4. **Complétion, hover, navigation ("go to definition"/"find
-   references")** dans `pactole-lsp` : explicitement hors périmètre de la
-   version actuelle (aucune requête LSP n'est traitée, toutes reçoivent
-   `MethodNotFound`).
-5. **Formatage via LSP** (`textDocument/formatting`) : aujourd'hui,
+3. **Navigation LSP** ("go to definition"/"find references") : la
+   complétion, le survol et les actions de code existent déjà, mais la
+   navigation est encore absente.
+4. **Formatage via LSP** (`textDocument/formatting`) : aujourd'hui,
    formater nécessite la CLI (`pactole fmt`) ; `pactole-lsp` ne l'expose
    pas.
-6. **Synchronisation incrémentale** (`TextDocumentSyncKind::INCREMENTAL`)
+5. **Synchronisation incrémentale** (`TextDocumentSyncKind::INCREMENTAL`)
    si la synchronisation complète actuelle s'avère limitante sur de gros
    journaux.
-7. **`pactole-storage-db`** (nom provisoire) : future crate de stockage
+6. **`pactole-storage-db`** (nom provisoire) : future crate de stockage
    adossée à une base de données, implémentant
    `pactole_core::traits::ReadableStorage` (et possiblement un pendant
    accessible en écriture) à la place du système de fichiers, en miroir

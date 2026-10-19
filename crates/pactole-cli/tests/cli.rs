@@ -561,31 +561,34 @@ const IMPORT_OFX_FIXTURE: &str = "<?OFX OFXHEADER=\"200\" VERSION=\"220\" SECURI
 </BANKMSGSRSV1>\n\
 </OFX>\n";
 
-const IMPORT_RULES_FIXTURE: &str = "bank_account = \"Actifs:Banque\"\n\
+const IMPORT_RULES_FIXTURE: &str = "[import]\n\
+bank_account = \"Actifs:Banque\"\n\
 currency = \"EUR\"\n\
 default_counter_account = \"Depenses:A-Classer\"\n\
 \n\
-[[rules]]\n\
+[[import.rules]]\n\
 payee_contains = \"carrefour\"\n\
 counter_account = \"Depenses:Alimentation\"\n\
 payee = \"Carrefour\"\n";
 
-/// Import configuration whose `[accounts]` table maps the fixture's
+/// Import configuration whose `[import.accounts]` table maps the fixture's
 /// statement account (`ACCTID 00012345678`) to a dedicated Pactole account.
-const IMPORT_ACCOUNTS_FIXTURE: &str = "bank_account = \"Actifs:Banque\"\n\
+const IMPORT_ACCOUNTS_FIXTURE: &str = "[import]\n\
+bank_account = \"Actifs:Banque\"\n\
 currency = \"EUR\"\n\
 default_counter_account = \"Depenses:A-Classer\"\n\
 \n\
-[accounts]\n\
+[import.accounts]\n\
 \"00012345678\" = \"Actifs:Courant\"\n";
 
-/// Import configuration whose `[accounts]` table only maps an account the
+/// Import configuration whose `[import.accounts]` table only maps an account the
 /// fixture's statement does not use, leaving it unmapped.
-const IMPORT_UNMAPPED_FIXTURE: &str = "bank_account = \"Actifs:Banque\"\n\
+const IMPORT_UNMAPPED_FIXTURE: &str = "[import]\n\
+bank_account = \"Actifs:Banque\"\n\
 currency = \"EUR\"\n\
 default_counter_account = \"Depenses:A-Classer\"\n\
 \n\
-[accounts]\n\
+[import.accounts]\n\
 \"99999999999\" = \"Actifs:Epargne\"\n";
 
 /// Legacy SGML statement whose payee and narration carry raw windows-1252
@@ -624,10 +627,10 @@ fn import_ofx_prints_transactions_to_stdout() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             rules.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
         ])
         .output()
         .expect("failed to run pactole-cli");
@@ -667,10 +670,10 @@ fn import_ofx_maps_the_statement_account_through_the_configuration() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             config.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
         ])
         .output()
         .expect("failed to run pactole-cli");
@@ -702,10 +705,10 @@ fn import_ofx_warns_and_falls_back_for_an_unmapped_statement_account() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             config.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
         ])
         .output()
         .expect("failed to run pactole-cli");
@@ -739,10 +742,10 @@ fn import_ofx_account_flag_overrides_the_configuration() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             config.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
             "--account",
             "Actifs:Epargne",
         ])
@@ -775,10 +778,10 @@ fn import_ofx_account_flag_reports_an_invalid_account() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             rules.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
             "--account",
             "not an account",
         ])
@@ -807,10 +810,10 @@ fn import_ofx_skips_transactions_already_in_the_target_file() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             rules.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
             "--into",
             into.to_str().unwrap(),
         ])
@@ -856,10 +859,10 @@ fn import_ofx_skips_transactions_already_in_an_included_file() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             rules.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
             "--into",
             into.to_str().unwrap(),
         ])
@@ -895,10 +898,10 @@ fn import_ofx_decodes_windows_1252_sources() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             rules.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
         ])
         .output()
         .expect("failed to run pactole-cli");
@@ -934,10 +937,10 @@ fn import_ofx_write_appends_to_the_target_file() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             rules.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
             "--into",
             into.to_str().unwrap(),
             "--write",
@@ -977,10 +980,10 @@ fn import_ofx_reports_missing_configuration() {
 
     let output = pactole_cmd()
         .args([
-            "import-ofx",
-            ofx.to_str().unwrap(),
             "--config",
             missing.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
         ])
         .output()
         .expect("failed to run pactole-cli");
@@ -1006,25 +1009,27 @@ fn import_ofx_write_requires_into() {
     assert!(!output.status.success());
 }
 
-#[test]
-fn init_creates_a_valid_ledger_and_import_configuration() {
-    let dir = std::env::temp_dir();
-    let suffix = format!(
-        "{}-{}",
+fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "pactole-{}-{}-{name}",
         std::process::id(),
         std::thread::current().name().unwrap_or("main")
-    );
-    let ledger = dir.join(format!("pactole-init-{suffix}.pactole"));
-    let config = dir.join(format!("pactole-init-{suffix}.toml"));
-    std::fs::remove_file(&ledger).ok();
-    std::fs::remove_file(&config).ok();
+    ));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn init_creates_a_valid_ledger_and_project_configuration() {
+    let dir = unique_temp_dir("init");
+    let ledger = dir.join("ledger.pactole");
+    let config = dir.join("pactole.toml");
 
     let output = pactole_cmd()
         .args([
             "init",
             ledger.to_str().unwrap(),
-            "--config",
-            config.to_str().unwrap(),
             "--account",
             "Assets:Bank",
             "--currency",
@@ -1050,6 +1055,14 @@ fn init_creates_a_valid_ledger_and_import_configuration() {
     assert!(ledger_source.contains("2026-01-01 open Assets:Bank"));
     assert!(ledger_source.contains("2026-01-01 open Expenses:Review"));
 
+    // The configuration is created next to the ledger and satisfies its own
+    // schema (unknown or missing keys would make `check` fail).
+    let config_source = std::fs::read_to_string(&config).unwrap();
+    assert!(config_source.contains("[import]"));
+    assert!(config_source.contains("bank_account = \"Assets:Bank\""));
+    assert!(config_source.contains("currency = \"USD\""));
+    assert!(config_source.contains("default_counter_account = \"Expenses:Review\""));
+
     let check = pactole_cmd()
         .args(["check", ledger.to_str().unwrap()])
         .output()
@@ -1061,35 +1074,43 @@ fn init_creates_a_valid_ledger_and_import_configuration() {
     );
     assert_eq!(String::from_utf8_lossy(&check.stdout), "OK\n");
 
-    let config_source = std::fs::read_to_string(&config).unwrap();
-    assert!(config_source.contains("bank_account = \"Assets:Bank\""));
-    assert!(config_source.contains("currency = \"USD\""));
-    assert!(config_source.contains("default_counter_account = \"Expenses:Review\""));
+    std::fs::remove_dir_all(&dir).ok();
+}
 
-    std::fs::remove_file(&ledger).ok();
-    std::fs::remove_file(&config).ok();
+#[test]
+fn init_global_writes_into_the_configuration_directory() {
+    let dir = unique_temp_dir("init-global");
+    let ledger = dir.join("ledger.pactole");
+    let xdg = dir.join("xdg");
+
+    let output = pactole_cmd()
+        .env("XDG_CONFIG_HOME", &xdg)
+        .args(["init", ledger.to_str().unwrap(), "--global", "--no-ledger"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(xdg.join("pactole").join("pactole.toml").is_file());
+    assert!(!dir.join("pactole.toml").exists());
+
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn init_does_not_overwrite_existing_files() {
-    let dir = std::env::temp_dir();
-    let suffix = format!(
-        "{}-{}",
-        std::process::id(),
-        std::thread::current().name().unwrap_or("main")
-    );
-    let ledger = dir.join(format!("pactole-init-existing-{suffix}.pactole"));
-    let config = dir.join(format!("pactole-init-existing-{suffix}.toml"));
+    let dir = unique_temp_dir("init-existing");
+    let ledger = dir.join("ledger.pactole");
+    let config = dir.join("pactole.toml");
     std::fs::write(&ledger, "; user ledger\n").unwrap();
     std::fs::write(&config, "# user configuration\n").unwrap();
 
     let output = pactole_cmd()
-        .args([
-            "init",
-            ledger.to_str().unwrap(),
-            "--config",
-            config.to_str().unwrap(),
-        ])
+        .args(["init", ledger.to_str().unwrap()])
         .output()
         .expect("failed to run pactole-cli");
 
@@ -1106,6 +1127,133 @@ fn init_does_not_overwrite_existing_files() {
         "# user configuration\n"
     );
 
-    std::fs::remove_file(&ledger).ok();
-    std::fs::remove_file(&config).ok();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A journal whose payee is not declared, valid only under `payee = "warn"`.
+const UNDECLARED_PAYEE_JOURNAL: &str = "2024-01-01 open Assets:Checking\n\
+2024-01-01 open Expenses:Food\n\
+2024-01-01 commodity EUR\n\
+2024-01-05 * \"Unknown\"\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n\
+\u{20}\u{20}Expenses:Food 10 EUR\n";
+
+#[test]
+fn check_fails_on_an_undeclared_payee_by_default() {
+    let dir = unique_temp_dir("check-payee-default");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, UNDECLARED_PAYEE_JOURNAL).unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("error: [payee-not-declared]"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn check_accepts_an_undeclared_payee_when_warned_but_strict_rejects_it() {
+    let dir = unique_temp_dir("check-payee-warn");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, UNDECLARED_PAYEE_JOURNAL).unwrap();
+
+    let output = pactole_cmd()
+        .args(["--validation", "warn", "check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("warning: [payee-not-declared]"));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "OK\n");
+
+    let strict = pactole_cmd()
+        .args([
+            "--validation",
+            "warn",
+            "check",
+            ledger.to_str().unwrap(),
+            "--strict",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(!strict.status.success());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn check_reads_the_project_configuration_next_to_the_journal() {
+    let dir = unique_temp_dir("check-project-config");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, UNDECLARED_PAYEE_JOURNAL).unwrap();
+    std::fs::write(dir.join("pactole.toml"), "[validation]\npayee = \"warn\"\n").unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("warning: [payee-not-declared]"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn the_project_configuration_overrides_the_global_one() {
+    let dir = unique_temp_dir("check-layered-config");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, UNDECLARED_PAYEE_JOURNAL).unwrap();
+
+    // Global says `warn`, project says `error`: the project wins.
+    let xdg = dir.join("xdg");
+    std::fs::create_dir_all(xdg.join("pactole")).unwrap();
+    std::fs::write(
+        xdg.join("pactole").join("pactole.toml"),
+        "[validation]\npayee = \"warn\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pactole.toml"),
+        "[validation]\npayee = \"error\"\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .env("XDG_CONFIG_HOME", &xdg)
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(!output.status.success());
+
+    // Removing the project layer falls back to the global `warn`.
+    std::fs::remove_file(dir.join("pactole.toml")).unwrap();
+
+    let output = pactole_cmd()
+        .env("XDG_CONFIG_HOME", &xdg)
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
 }

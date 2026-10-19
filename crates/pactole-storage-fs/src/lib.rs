@@ -20,7 +20,7 @@ mod printer;
 pub use crate::analysis::{
     AnalyzedFile, AnalyzedProject, Diagnostic, DiagnosticSeverity, DiagnosticSource, EntrySpans,
     LoweringDiagnostic, ParsedEntry, ParsedFile, ParsedInclude, PostingSpans, analyze_file,
-    analyze_file_with_loader,
+    analyze_file_with_loader, analyze_file_with_loader_with_options,
 };
 pub use crate::errors::PactoleFsStorageError;
 pub use crate::loader::{FsSourceLoader, InMemorySourceLoader, SourceLoadError, SourceLoader};

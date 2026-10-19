@@ -63,6 +63,11 @@ Before a transaction is accepted by `pactole check`, the following must hold:
   the account's `open` restriction if one was given.
 - Its payee must be declared somewhere in the journal with a `payee` directive.
 
+The payee rule is configurable: set `[validation] payee = "warn"` in
+`pactole.toml` (it defaults to `"error"`) or run
+`pactole --validation warn check ...` to report undeclared payees as warnings
+instead. `--strict` still fails on them.
+
 ```pactole
 2026-01-01 commodity EUR
 2026-01-01 open Assets:Checking

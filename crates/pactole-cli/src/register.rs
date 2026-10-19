@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use chrono::NaiveDate;
+use pactole_config::ValidationOptions;
 use pactole_core::{RegisterFilter, TransactionStatus};
 use pactole_storage_fs::FsSourceLoader;
 
@@ -17,8 +18,13 @@ pub(crate) fn run(
     narration: Option<String>,
     tag: Option<String>,
     status: Option<StatusArg>,
+    validation: &ValidationOptions,
 ) -> ExitCode {
-    let project = match pactole_storage_fs::analyze_file_with_loader(&file, &FsSourceLoader) {
+    let project = match pactole_storage_fs::analyze_file_with_loader_with_options(
+        &file,
+        &FsSourceLoader,
+        validation,
+    ) {
         Ok(project) => project,
         Err(err) => return failure(err),
     };

@@ -15,9 +15,10 @@ sync, acceptable for typically small, hand-edited `.pactole` files.
 
 It only consumes `pactole-storage-fs`/`pactole-syntax` through their
 existing public API (`analyze_file`, `analyze_file_with_loader`,
-`FsSourceLoader`, `SourceLoader`, `SourceLoadError`, `ParsedFile`,
-`AnalyzedProject`, `IncludeIssue`, `SyntaxDiagnostic`, `Span`/`Point`):
-it neither adds nor modifies anything in these crates.
+`analyze_file_with_loader_with_options`, `FsSourceLoader`, `SourceLoader`,
+`SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `IncludeIssue`,
+`SyntaxDiagnostic`, `Span`/`Point`) and uses `pactole-config` for layered
+configuration: it neither adds nor modifies anything in these crates.
 
 ## Current features
 
@@ -36,12 +37,16 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   diagnostics for a `ParsedFile`) and `project_diagnostics` (per-file
   diagnostics, plus `IncludeIssue`s attached to the file containing the
   offending `include`, for an `AnalyzedProject`).
-- `config.rs`: `Config`, resolved once from the `initializationOptions`
-  received at `initialize`. Only one optional key is supported:
+- `config.rs`: `Config`, resolved once at `initialize` from the
+  `initializationOptions` and the layered `pactole.toml` files. Supports
   `journal_file` (path of the root `.pactole` file, resolved against the
-  workspace root, or against the server's current working directory if
-  no root is known). **Does not read `~/.config/pactole`**: an explicit,
-  documented limitation of this first version.
+  workspace root, or against the server's current working directory if no
+  root is known) and `validation` (a `"warn"`/`"error"` string or a
+  `{ "payee": ... }` table). Validation settings follow the CLI layering:
+  user-level `pactole.toml`, then project `pactole.toml` (next to
+  `journal_file`, or at the workspace root when none is configured), then
+  `initializationOptions`. Broken configuration files and the unsupported
+  `off` level are logged and ignored rather than failing `initialize`.
 - `server.rs`: the stdio `Connection`, the main loop, and the
   notification handlers. When `journal_file` is configured and loads,
   diagnostics are computed for every file reachable via `include` (via
@@ -58,9 +63,9 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
 
 ## Explicitly out of scope (first version)
 
-Navigation, formatting via LSP (use `pactole fmt`), incremental sync, reading
-`~/.config/pactole`. Any unhandled request
-receives a `MethodNotFound` error rather than being silently ignored.
+Navigation, formatting via LSP (use `pactole fmt`) and incremental sync. Any
+unhandled request receives a `MethodNotFound` error rather than being silently
+ignored.
 See the roadmap in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §10
 for the planned status of these items.
 
@@ -73,10 +78,23 @@ Pass `journal_file` in the `initializationOptions` of the LSP
 { "journal_file": "main.pactole" }
 ```
 
+Validation levels can be overridden the same way, globally or per check:
+
+```json
+{ "journal_file": "main.pactole", "validation": "warn" }
+```
+
+```json
+{ "journal_file": "main.pactole", "validation": { "payee": "warn" } }
+```
+
+Without an override, the server reads the same layered `pactole.toml` as the
+CLI (user-level file, then project file).
+
 ## Dependencies / boundaries
 
 - `chrono` (the local date), `lsp-server`, `lsp-types` (LSP protocol), `serde`/`serde_json` (JSON
-  deserialization), `pactole-storage-fs`, `pactole-syntax`.
+  deserialization), `pactole-storage-fs`, `pactole-syntax`, `pactole-config`.
 - `log` + `env_logger` for debug traces (see below).
 - No `thiserror` dependency: no error types of its own, only error
   propagation via `Box<dyn Error + Sync + Send>` in `server.rs`.
@@ -105,8 +123,10 @@ Levels used:
   and diagnostics published in multi-file mode, number of diagnostics in
   standalone mode).
 - `warn`: fallback from multi-file analysis to standalone analysis of
-  the current document (`journal_file` configured but unreadable), and
-  clearing of all published diagnostics when no analysis is available.
+  the current document (`journal_file` configured but unreadable), an
+  unreadable or invalid `pactole.toml` (or an unsupported `validation`
+  level) whose settings are then ignored, and clearing of all published
+  diagnostics when no analysis is available.
 - `trace`: origin of each file loaded during `include` resolution (open
   in-memory buffer or filesystem), via `DocumentsSourceLoader`.
 
@@ -119,13 +139,14 @@ cargo test -p pactole-lsp
 cargo clippy -p pactole-lsp --all-targets
 ```
 
-Unit tests cover notably `config.rs` (`journal_file` resolution) and
-`server.rs` (computing the URIs to clear between two diagnostics
-publications).
+Unit tests cover notably `config.rs` (`journal_file` resolution and layered
+validation settings) and `server.rs` (computing the URIs to clear between two
+diagnostics publications).
 
 ## See also
 
 - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §5 — full
-  description of the current LSP, its limits, and the roadmap (global
-  config, positioned business diagnostics, completion/hover/navigation,
+  description of the current LSP, its limits, and the roadmap (navigation,
   LSP formatting, incremental sync).
+- [`../../README.md`](../../README.md#configuration) — the shared
+  `pactole.toml` format and layering rules.

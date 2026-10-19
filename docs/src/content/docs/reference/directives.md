@@ -71,8 +71,10 @@ payee "name"
 ```
 
 Declares a payee as known. Every transaction's payee must match a declaration
-somewhere in the journal. The directive carries no date and may appear after its
-first use.
+somewhere in the journal — an error by default, downgradable to a warning with
+`[validation] payee = "warn"` (see
+[the CLI reference](/reference/cli/#global-options)). The directive carries no
+date and may appear after its first use.
 
 ```pactole
 payee "Whole Foods"
@@ -142,7 +144,9 @@ See [Split a journal with includes](/how-to/split-a-journal-with-includes/).
    closed.
 3. **Declared commodities** — every commodity used must be declared, and allowed
    by any restriction set on the account's `open`.
-4. **Declared payees** — every transaction's payee must be declared.
+4. **Declared payees** — every transaction's payee must be declared (the only
+   configurable invariant: `[validation] payee = "warn"` reports it as a
+   warning instead).
 5. **Balanced transactions** — the postings of each transaction sum to zero per
    commodity.
 6. **Balance assertions** — each `balance` assertion must match the account's

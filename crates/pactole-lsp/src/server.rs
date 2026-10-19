@@ -17,7 +17,7 @@ use lsp_types::{
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
-use pactole_storage_fs::analyze_file_with_loader;
+use pactole_storage_fs::analyze_file_with_loader_with_options;
 
 use crate::config::{Config, workspace_root_from_initialize_params};
 use crate::diagnostics::{project_diagnostics, standalone_diagnostics};
@@ -32,14 +32,16 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
     let initialize_params: InitializeParams = serde_json::from_value(initialize_params)?;
 
     let workspace_root = workspace_root_from_initialize_params(&initialize_params);
-    let config = Config::from_initialization_options(
+    let mut config = Config::from_initialization_options(
         initialize_params.initialization_options.as_ref(),
         workspace_root.as_deref(),
     );
+    config.load_layered(workspace_root.as_deref());
     log::info!(
-        "initialized: workspace_root={:?} journal_file={:?}",
+        "initialized: workspace_root={:?} journal_file={:?} payee_level={}",
         workspace_root,
-        config.journal_file
+        config.journal_file,
+        config.validation.payee.as_str()
     );
 
     main_loop(connection, config)?;
@@ -282,7 +284,7 @@ fn collect_diagnostics(
 ) -> HashMap<Url, Vec<Diagnostic>> {
     if let Some(journal_file) = &config.journal_file {
         let loader = DocumentsSourceLoader::new(documents);
-        match analyze_file_with_loader(journal_file, &loader) {
+        match analyze_file_with_loader_with_options(journal_file, &loader, &config.validation) {
             Ok(project) => {
                 let mut publications = HashMap::new();
                 for (path, diagnostics) in project_diagnostics(&project) {

@@ -1,10 +1,15 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use pactole_config::ValidationOptions;
 use pactole_storage_fs::{FsSourceLoader, SourceLoadError};
 
-pub(crate) fn run(file: PathBuf, strict: bool) -> ExitCode {
-    let project = match pactole_storage_fs::analyze_file_with_loader(&file, &FsSourceLoader) {
+pub(crate) fn run(file: PathBuf, strict: bool, validation: &ValidationOptions) -> ExitCode {
+    let project = match pactole_storage_fs::analyze_file_with_loader_with_options(
+        &file,
+        &FsSourceLoader,
+        validation,
+    ) {
         Ok(project) => project,
         Err(error) => return failure(&file, error),
     };

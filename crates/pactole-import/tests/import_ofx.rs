@@ -134,7 +134,7 @@ fn falls_back_to_the_bank_account_once_per_unmapped_statement_account() {
 
 #[test]
 fn stays_silent_without_any_account_mapping() {
-    // With no `[accounts]` table at all, `bank_account` is the primary
+    // With no `[import.accounts]` table at all, `bank_account` is the primary
     // account rather than a fallback: every transaction goes there and no
     // unmapped-account warning is emitted.
     let outcome = pactole_import::import_ofx(TWO_ACCOUNTS, &base_config(), &no_fitids()).unwrap();
@@ -393,39 +393,4 @@ fn reports_an_error_on_an_invalid_configured_account() {
     let error = pactole_import::import_ofx(XML, &config, &no_fitids()).unwrap_err();
 
     assert!(matches!(error, ImportError::InvalidAccount { .. }));
-}
-
-#[test]
-fn deserializes_a_toml_configuration() {
-    let source = r#"
-bank_account = "Actifs:Banque"
-currency = "EUR"
-default_counter_account = "Depenses:A-Classer"
-
-[accounts]
-"00012345678" = "Actifs:Courant"
-"00098765432" = "Actifs:Epargne"
-
-[[rules]]
-payee_contains = "carrefour"
-direction = "debit"
-counter_account = "Depenses:Alimentation"
-payee = "Carrefour"
-"#;
-
-    let config: ImportConfig = toml::from_str(source).unwrap();
-
-    assert_eq!(config.bank_account, "Actifs:Banque");
-    assert_eq!(config.currency.as_deref(), Some("EUR"));
-    assert_eq!(
-        config.accounts.get("00012345678").map(String::as_str),
-        Some("Actifs:Courant")
-    );
-    assert_eq!(
-        config.accounts.get("00098765432").map(String::as_str),
-        Some("Actifs:Epargne")
-    );
-    assert_eq!(config.rules.len(), 1);
-    assert_eq!(config.rules[0].direction, Some(Direction::Debit));
-    assert_eq!(config.rules[0].counter_account, "Depenses:Alimentation");
 }

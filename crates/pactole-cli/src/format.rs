@@ -2,14 +2,9 @@ use std::fs;
 use std::io::Read;
 use std::process::ExitCode;
 
-use crate::config::format_options;
+use pactole_config::FormatOptions;
 
-pub(crate) fn run(file: String, write: bool) -> ExitCode {
-    let options = match format_options() {
-        Ok(options) => options,
-        Err(err) => return failure(err),
-    };
-
+pub(crate) fn run(file: String, write: bool, options: &FormatOptions) -> ExitCode {
     let source = if file == "-" {
         let mut buf = String::new();
         if let Err(err) = std::io::stdin().read_to_string(&mut buf) {
@@ -23,7 +18,7 @@ pub(crate) fn run(file: String, write: bool) -> ExitCode {
         }
     };
 
-    let formatted = match pactole_storage_fs::format_with_options(&source, &options) {
+    let formatted = match pactole_storage_fs::format_with_options(&source, options) {
         Ok(formatted) => formatted,
         Err(err) => return failure(err),
     };

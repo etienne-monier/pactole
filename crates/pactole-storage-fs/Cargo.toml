@@ -13,6 +13,7 @@ categories = ["parser-implementations", "finance"]
 
 [dependencies]
 chrono = "0.4.45"
+pactole-config = { version = "0.2.0", path = "../pactole-config" }
 pactole-core = { version = "0.2.0", path = "../pactole-core" }
 pactole-syntax = { version = "0.2.0", path = "../pactole-syntax" }
 rust_decimal = "1.43.0"

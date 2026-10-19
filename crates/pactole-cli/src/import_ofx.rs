@@ -6,62 +6,29 @@ use std::process::ExitCode;
 use pactole_core::Entry;
 use pactole_storage_fs::FsSourceLoader;
 
-use crate::config::{default_import_config_path, format_options};
+use pactole_config::Config;
 
 pub(crate) fn run(
     file: PathBuf,
-    config: Option<PathBuf>,
     into: Option<PathBuf>,
     account: Option<String>,
     write: bool,
+    config: &Config,
 ) -> ExitCode {
-    let format_options = match format_options() {
-        Ok(options) => options,
-        Err(err) => {
-            eprintln!("error: {err}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    let config_path = match config.or_else(default_import_config_path) {
-        Some(path) => path,
-        None => {
-            eprintln!(
-                "error: cannot determine the Pactole configuration directory \
-                 (set XDG_CONFIG_HOME or HOME, or pass --config)"
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-
-    let config_source = match fs::read_to_string(&config_path) {
-        Ok(source) => source,
-        Err(err) => {
-            eprintln!(
-                "error: cannot read configuration {}: {err}",
-                config_path.display()
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-
-    let mut config: pactole_import::ImportConfig = match toml::from_str(&config_source) {
-        Ok(config) => config,
-        Err(err) => {
-            eprintln!(
-                "error: cannot parse configuration {}: {err}",
-                config_path.display()
-            );
-            return ExitCode::FAILURE;
-        }
+    let Some(mut import_config) = config.import.clone() else {
+        eprintln!(
+            "error: no `[import]` section configured; add one to `pactole.toml` \
+             (see `pactole init`)"
+        );
+        return ExitCode::FAILURE;
     };
 
     // `--account` overrides the configured bank account for this run: every
     // imported transaction is posted to it, whatever the statement accounts
-    // are, so the `[accounts]` mapping is dropped accordingly.
+    // are, so the `[import.accounts]` mapping is dropped accordingly.
     if let Some(account) = account {
-        config.bank_account = account;
-        config.accounts.clear();
+        import_config.bank_account = account;
+        import_config.accounts.clear();
     }
 
     let mut known_fitids = HashSet::new();
@@ -96,7 +63,7 @@ pub(crate) fn run(
         }
     };
 
-    let outcome = match pactole_import::import_ofx(&source, &config, &known_fitids) {
+    let outcome = match pactole_import::import_ofx(&source, &import_config, &known_fitids) {
         Ok(outcome) => outcome,
         Err(err) => {
             eprintln!("error: {err}");
@@ -105,13 +72,11 @@ pub(crate) fn run(
     };
 
     for warning in &outcome.warnings {
-        eprintln!("warning: {}", describe_warning(warning, &config));
+        eprintln!("warning: {}", describe_warning(warning, &import_config));
     }
 
-    let generated = pactole_storage_fs::format_transactions_with_options(
-        &outcome.transactions,
-        &format_options,
-    );
+    let generated =
+        pactole_storage_fs::format_transactions_with_options(&outcome.transactions, &config.format);
 
     if write {
         let path = into.as_deref().unwrap_or_else(|| Path::new(""));
@@ -171,7 +136,7 @@ fn describe_warning(
             None => "a transaction has no payee; using the `Unknown` placeholder".to_string(),
         },
         pactole_import::ImportWarning::UnmappedAccount { account_id } => format!(
-            "statement account `{account_id}` has no `[accounts]` mapping; using `{}` \
+            "statement account `{account_id}` has no `[import.accounts]` mapping; using `{}` \
              (`bank_account`)",
             config.bank_account
         ),

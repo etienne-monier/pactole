@@ -13,6 +13,7 @@
 
 use std::path::{Path, PathBuf};
 
+use pactole_config::{ValidationLevel, ValidationOptions};
 use pactole_core::{Entry, Journal, ValidationError, validate_journal_all};
 use pactole_syntax::{ParsedDocument, Span, SyntaxDiagnostic, parse_document};
 use tree_sitter::Node;
@@ -157,6 +158,22 @@ impl BusinessDiagnosticKind {
             Self::TransactionNotBalanced => "transaction-not-balanced",
             Self::CommodityNotAllowed => "commodity-not-allowed",
             Self::BalanceAssertionFailed => "balance-assertion-failed",
+        }
+    }
+
+    /// Severity of this diagnostic under the given validation options.
+    ///
+    /// Every business issue is an error by default; `PayeeNotDeclared` is
+    /// the one configurable check (the `[validation] payee` setting of
+    /// `pactole.toml`), reported as a warning under
+    /// [`ValidationLevel::Warning`]. All other kinds stay errors whatever the
+    /// configuration says.
+    fn severity(self, options: &ValidationOptions) -> DiagnosticSeverity {
+        match self {
+            Self::PayeeNotDeclared if options.payee == ValidationLevel::Warning => {
+                DiagnosticSeverity::Warning
+            }
+            _ => DiagnosticSeverity::Error,
         }
     }
 }
@@ -465,6 +482,7 @@ pub struct AnalyzedProject {
     business_diagnostics: Vec<BusinessDiagnostic>,
     source_order: Vec<EntryRef>,
     validated_journal: Option<Journal>,
+    validation: ValidationOptions,
 }
 
 impl AnalyzedProject {
@@ -500,12 +518,18 @@ impl AnalyzedProject {
 
     /// Returns the chronologically validated journal, including inferred
     /// transaction amounts, or every diagnostic preventing validation.
+    ///
+    /// Warnings (e.g. an undeclared payee when the `[validation] payee`
+    /// level is `warn`) do not prevent validation; only error-severity
+    /// diagnostics do.
     pub fn validated_journal(&self) -> Result<Journal, Vec<Diagnostic>> {
         let structural = self.structural_diagnostics();
         if structural.iter().any(Diagnostic::is_error) {
             return Err(structural);
         }
-        if !self.business_diagnostics.is_empty() {
+        if self.business_diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind.severity(&self.validation) == DiagnosticSeverity::Error
+        }) {
             return Err(self.diagnostics());
         }
         self.validated_journal
@@ -537,7 +561,7 @@ impl AnalyzedProject {
                 .map(|diagnostic| Diagnostic {
                     path: diagnostic.path.clone(),
                     span: diagnostic.span,
-                    severity: DiagnosticSeverity::Error,
+                    severity: diagnostic.kind.severity(&self.validation),
                     source: DiagnosticSource::Business,
                     code: Some(diagnostic.kind.code().to_string()),
                     message: diagnostic.message.clone(),
@@ -649,6 +673,27 @@ pub fn analyze_file_with_loader(
     entry_path: &Path,
     loader: &dyn SourceLoader,
 ) -> Result<AnalyzedProject, SourceLoadError> {
+    analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions::default())
+}
+
+/// Analyzes a project rooted at `entry_path` using explicit validation
+/// options.
+///
+/// This is the same analysis as [`analyze_file_with_loader`], with the
+/// severity of configurable business checks (currently only the undeclared
+/// payee check) driven by `validation`. The default options reproduce
+/// [`analyze_file_with_loader`] exactly.
+///
+/// # Errors
+///
+/// Like [`analyze_file_with_loader`], only a failure to load `entry_path`
+/// itself is returned as an error; problems in included files are reported
+/// as include diagnostics.
+pub fn analyze_file_with_loader_with_options(
+    entry_path: &Path,
+    loader: &dyn SourceLoader,
+    validation: &ValidationOptions,
+) -> Result<AnalyzedProject, SourceLoadError> {
     let mut files = Vec::new();
     let mut include_issues = Vec::new();
     let mut source_order = Vec::new();
@@ -667,7 +712,7 @@ pub fn analyze_file_with_loader(
     )?;
 
     let (business_diagnostics, validated_journal) =
-        validate_project(&files, &include_issues, &source_order);
+        validate_project(&files, &include_issues, &source_order, validation);
 
     Ok(AnalyzedProject {
         files,
@@ -675,6 +720,7 @@ pub fn analyze_file_with_loader(
         business_diagnostics,
         source_order,
         validated_journal,
+        validation: *validation,
     })
 }
 
@@ -772,6 +818,7 @@ fn validate_project(
     files: &[AnalyzedFile],
     include_issues: &[IncludeIssue],
     source_order: &[EntryRef],
+    validation: &ValidationOptions,
 ) -> (Vec<BusinessDiagnostic>, Option<Journal>) {
     // Do not report business errors from a partial lowering. The source
     // structure may be incomplete and would otherwise produce misleading
@@ -816,10 +863,15 @@ fn validate_project(
         })
         .collect();
 
-    let validated_journal = if diagnostics.is_empty() {
-        Some(report.journal)
-    } else {
+    // Warnings do not prevent a validated journal: only error-severity
+    // business diagnostics do.
+    let validated_journal = if diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.kind.severity(validation) == DiagnosticSeverity::Error)
+    {
         None
+    } else {
+        Some(report.journal)
     };
 
     (diagnostics, validated_journal)
@@ -1088,6 +1140,91 @@ mod tests {
         );
         assert_eq!(diagnostics[0].span.start.row, 0);
         assert_eq!(diagnostics[0].kind.code(), "payee-not-declared");
+    }
+
+    fn undeclared_payee_project() -> (InMemorySourceLoader, &'static str) {
+        let source = "2026-01-01 open Assets:Checking\n\
+                      2026-01-01 open Expenses:Food\n\
+                      2026-01-01 commodity EUR\n\
+                      2026-01-02 * \"Unknown\"\n\
+                      \u{20}\u{20}Assets:Checking -10 EUR\n\
+                      \u{20}\u{20}Expenses:Food 10 EUR\n";
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+        (loader, source)
+    }
+
+    #[test]
+    fn error_level_makes_an_undeclared_payee_blocking() {
+        let (loader, _) = undeclared_payee_project();
+
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &ValidationOptions::default(),
+        )
+        .unwrap();
+
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+            .expect("missing payee diagnostic");
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
+        assert!(project.validated_journal().is_err());
+    }
+
+    #[test]
+    fn warn_level_reports_an_undeclared_payee_as_a_warning_and_still_validates() {
+        let (loader, _) = undeclared_payee_project();
+        let validation = ValidationOptions {
+            payee: ValidationLevel::Warning,
+        };
+
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &validation,
+        )
+        .unwrap();
+
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+            .expect("missing payee diagnostic");
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        assert!(project.has_warnings());
+        assert!(!project.has_errors());
+        assert!(project.validated_journal().is_ok());
+    }
+
+    #[test]
+    fn warn_level_does_not_downgrade_other_business_errors() {
+        let source = "2026-01-01 commodity EUR\n\
+                      2026-01-02 * \"Unknown\"\n\
+                      \u{20}\u{20}Assets:Missing 10 EUR\n\
+                      \u{20}\u{20}Assets:Checking -10 EUR\n";
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &ValidationOptions {
+                payee: ValidationLevel::Warning,
+            },
+        )
+        .unwrap();
+
+        let account = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code.as_deref() == Some("account-not-open"))
+            .expect("missing account diagnostic");
+        assert_eq!(account.severity, DiagnosticSeverity::Error);
+        assert!(project.has_errors());
+        assert!(project.validated_journal().is_err());
     }
 
     #[test]

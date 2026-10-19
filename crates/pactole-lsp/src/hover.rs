@@ -194,11 +194,21 @@ pub fn handle_hover(
 
     let project = if let Some(journal_file) = &config.journal_file {
         let loader = DocumentsSourceLoader::new(documents);
-        pactole_storage_fs::analyze_file_with_loader(journal_file, &loader).ok()
+        pactole_storage_fs::analyze_file_with_loader_with_options(
+            journal_file,
+            &loader,
+            &config.validation,
+        )
+        .ok()
     } else {
         let loader = DocumentsSourceLoader::new(documents);
         if let Some(p) = current_doc_path.as_deref() {
-            pactole_storage_fs::analyze_file_with_loader(p, &loader).ok()
+            pactole_storage_fs::analyze_file_with_loader_with_options(
+                p,
+                &loader,
+                &config.validation,
+            )
+            .ok()
         } else {
             None
         }

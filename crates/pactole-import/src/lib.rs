@@ -22,7 +22,6 @@
 //! carry their source identifier (the OFX `FITID`) as `fitid` metadata, so a
 //! re-import can skip transactions already present.
 
-mod config;
 mod encoding;
 mod error;
 mod ofx;
@@ -33,10 +32,10 @@ use std::collections::HashSet;
 
 use pactole_core::Transaction;
 
-pub use crate::config::{Direction, ImportConfig, Rule};
 pub use crate::encoding::decode_ofx_source;
 pub use crate::error::ImportError;
 pub use crate::record::ImportRecord;
+pub use pactole_config::{Direction, ImportConfig, Rule};
 
 /// A non-fatal issue encountered while importing; the affected transaction is
 /// still produced.

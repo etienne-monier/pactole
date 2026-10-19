@@ -13,6 +13,27 @@ On success a command exits with status `0`. Errors are printed on stderr and
 cause a non-zero status. Commands that support warnings may still exit with
 status `0` unless `--strict` is passed.
 
+## Global options
+
+Two options are accepted **before** the subcommand:
+
+| Option | Description |
+|---|---|
+| `--config <PATH>` | Use this `pactole.toml` as the only configuration file, skipping global and project discovery |
+| `--validation <LEVEL>` | Override the `[validation]` levels from the configuration: `warn` or `error` |
+
+```sh
+pactole --config ./pactole.toml check ledger.pactole
+pactole --validation warn check ledger.pactole
+```
+
+Without `--config`, Pactole reads the user-level `pactole.toml`
+(`~/.config/pactole/pactole.toml`, or
+`$XDG_CONFIG_HOME/pactole/pactole.toml`), then the project `pactole.toml`
+next to the journal being processed, merging them key by key. Every setting
+(`[validation]`, `[format]`, `[import]`) lives in that single file; unknown
+keys are rejected so typos fail loudly.
+
 ## `pactole parse`
 
 ```text
@@ -84,6 +105,17 @@ Parses the file like `parse`, then validates the resulting journal (see the
 `OK` on success. Warnings are printed on stderr but do not fail the command by
 default; `--strict` treats warnings as errors.
 
+A configurable check such as the mandatory payee declaration can be
+downgraded to a warning in `pactole.toml`:
+
+```toml
+[validation]
+payee = "warn"
+```
+
+or for a single run with `pactole --validation warn check ...`. Every other
+business check remains an error.
+
 Errors include syntax errors, lowering errors, business validation errors and
 includes whose content could not be loaded. Include cycles are warnings because
 all files involved have still been loaded and validated.
@@ -103,20 +135,20 @@ pactole check --strict ledger.pactole
 pactole init [LEDGER] [OPTIONS]
 ```
 
-Initializes a starter ledger and, when it does not already exist, the OFX import
-configuration. The default ledger path is `ledger.pactole`. Existing files are
-never overwritten.
+Initializes a starter ledger and, when it does not already exist, the project
+`pactole.toml` configuration. The default ledger path is `ledger.pactole`.
+Existing files are never overwritten.
 
 | Option | Description |
 |---|---|
 | `[LEDGER]` | Ledger path; defaults to `ledger.pactole` |
-| `--config <PATH>` | OFX configuration path; defaults to the user configuration directory |
 | `--account <ACCOUNT>` | Bank account; defaults to `Assets:Checking` |
 | `--currency <COMMODITY>` | Initial commodity; defaults to `EUR` |
 | `--counter-account <ACCOUNT>` | Default import counter-account; defaults to `Expenses:ToReview` |
 | `--date <DATE>` | Date for declarations; defaults to today |
+| `--global` | Write `pactole.toml` into the user configuration directory instead of next to the ledger |
 | `--stdout` | Print the generated ledger instead of creating its file |
-| `--no-config` | Do not initialize the OFX configuration |
+| `--no-config` | Do not initialize `pactole.toml` |
 | `--no-ledger` | Do not initialize the ledger |
 
 For example:
@@ -124,13 +156,13 @@ For example:
 ```sh
 pactole init
 pactole init finances.pactole --account Assets:Bank --currency USD
-pactole init --config ./import-ofx.toml --counter-account Expenses:Review
+pactole init --global
 ```
 
 The generated ledger contains the initial commodity and account declarations,
 but no fictitious transaction. It is immediately suitable for `pactole check`.
-The generated OFX configuration contains commented examples for categorization
-rules.
+The generated configuration contains commented examples for the OFX import
+settings and categorization rules.
 
 ## `pactole register`
 
@@ -167,7 +199,7 @@ pactole register ledger.pactole --tag food
 ## `pactole import-ofx`
 
 ```text
-pactole import-ofx <FILE> [--config <PATH>] [--into <PATH>] [--account <ACCOUNT>] [--write]
+pactole import-ofx <FILE> [--into <PATH>] [--account <ACCOUNT>] [--write]
 ```
 
 Imports an OFX or QFX bank statement into canonical `.pactole` transaction
@@ -176,19 +208,35 @@ directives. Both OFX 1.x SGML and OFX 2.x XML are supported.
 | Option | Description |
 |---|---|
 | `<FILE>` | OFX or QFX statement to import |
-| `--config <PATH>` | TOML configuration containing the bank account, the optional `[accounts]` mapping and the categorization rules |
 | `--into <PATH>` | Existing `.pactole` file whose `fitid` metadata is used for deduplication |
-| `--account <ACCOUNT>` | Post every imported transaction to this account, overriding `bank_account` and the `[accounts]` mapping for this run |
+| `--account <ACCOUNT>` | Post every imported transaction to this account, overriding `import.bank_account` and the `[import.accounts]` mapping for this run |
 | `--write` | Append new transactions to `--into` instead of printing them; requires `--into` |
 
-Without `--config`, Pactole reads:
+The bank account and categorization rules come from the `[import]` section of
+the resolved `pactole.toml` (see [Global options](#global-options)); use the
+global `--config` flag to point at a specific file:
 
-```text
-~/.config/pactole/import-ofx.toml
+```sh
+pactole --config ./pactole.toml import-ofx statement.ofx
 ```
 
-When `XDG_CONFIG_HOME` is set, it reads
-`$XDG_CONFIG_HOME/pactole/import-ofx.toml` instead.
+```toml
+[import]
+bank_account = "Actifs:Banque"
+currency = "EUR"
+default_counter_account = "Depenses:A-Classer"
+
+[import.accounts]
+"00012345678" = "Actifs:Courant"
+
+[[import.rules]]
+payee_contains = "carrefour"
+counter_account = "Depenses:Alimentation"
+payee = "Carrefour"
+```
+
+The command fails with a clear message when no `[import]` section is
+configured.
 
 Without `--into`, generated transactions are printed to stdout. With `--into`,
 source transactions whose OFX `FITID` is already stored as `fitid` metadata in
@@ -196,7 +244,7 @@ the target file are skipped. The command reports the imported and skipped counts
 on stderr.
 
 Each transaction is posted to the account mapped from its statement's `ACCTID`
-in the `[accounts]` table, to `--account` when given, and to `bank_account`
+in `[import.accounts]`, to `--account` when given, and to `bank_account`
 otherwise (with a warning when a mapping table exists but does not cover the
 statement account).
 

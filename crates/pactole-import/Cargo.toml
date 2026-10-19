@@ -19,10 +19,7 @@ encoding_rs = "0.8"
 # ACCTKEY, and it mangles non-ASCII text (all three fixed on this fork, upstream
 # PR pending).
 ofx-rs = { version = "0.2.0", git = "https://github.com/etienne-monier/ofx-rs.git", rev = "ec8e9dc620ceb9d7e4aa56bcac19b03bba057dc2" }
+pactole-config = { version = "0.2.0", path = "../pactole-config" }
 pactole-core = { version = "0.2.0", path = "../pactole-core" }
 rust_decimal = "1.43.0"
-serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0.20"
-
-[dev-dependencies]
-toml = "1.1.5"

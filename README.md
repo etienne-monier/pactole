@@ -47,16 +47,18 @@ for editor configuration and current limitations.
 
 ## Usage
 
-Initialize a starter ledger and the default OFX import configuration:
+Initialize a starter ledger and the project configuration:
 
 ```sh
 pactole init ledger.pactole
 ```
 
-The command creates `ledger.pactole` and, if missing,
-`~/.config/pactole/import-ofx.toml`. Existing files are never overwritten. Use
-options such as `--account`, `--currency` and `--counter-account` to customize
-the generated declarations.
+The command creates `ledger.pactole` and, if missing, a `pactole.toml`
+next to it. Existing files are never overwritten. Use options such as
+`--account`, `--currency` and `--counter-account` to customize the
+generated declarations, or `--global` to write `pactole.toml` into the
+user configuration directory (`~/.config/pactole/pactole.toml`, or
+`$XDG_CONFIG_HOME/pactole/pactole.toml`) instead.
 
 A Pactole ledger is a plain `.pactole` text file made of directives
 (`open`, `commodity`, `payee`, `balance`, `transaction`...). See
@@ -92,6 +94,12 @@ every transaction balances):
 pactole check path/to/file.pactole
 ```
 
+Every check is reported as an error by default. A configurable check such
+as the mandatory payee declaration can be downgraded to a warning in
+`pactole.toml` (`[validation] payee = "warn"`), or for one run with
+`pactole --validation warn check ...`; `--strict` then still turns
+warnings into a failure.
+
 Generate shell completion scripts to stdout:
 
 ```sh
@@ -116,10 +124,10 @@ cat path/to/file.pactole | pactole fmt -
 ```
 
 Posting amounts and commodities are right-aligned to 50 columns by default.
-Override the width in `~/.config/pactole/format.toml` (or
-`$XDG_CONFIG_HOME/pactole/format.toml`):
+Override the width in the `[format]` section of `pactole.toml`:
 
 ```toml
+[format]
 posting_width = 50
 ```
 
@@ -142,43 +150,44 @@ pactole register path/to/file.pactole --tag vacances
 
 `pactole import-ofx` turns an OFX/QFX statement (OFX 1.x SGML or OFX 2.x
 XML, as exported by most banks) into canonical `.pactole` transactions,
-with the bank account and the categorization rules resolved from a
-configuration file:
+with the bank account and the categorization rules resolved from the
+`[import]` section of `pactole.toml`:
 
 ```sh
 pactole import-ofx statement.ofx
 ```
 
-By default the configuration is read from
-`~/.config/pactole/import-ofx.toml` (or `$XDG_CONFIG_HOME/pactole/import-ofx.toml`
-when `XDG_CONFIG_HOME` is set); override it with `--config`:
+The configuration is the resolved `pactole.toml` (see
+[Configuration](#configuration)); override it for one run with the global
+`--config` flag (`pactole --config ./pactole.toml import-ofx statement.ofx`):
 
 ```toml
+[import]
 bank_account = "Actifs:Banque"
 currency = "EUR"
 default_counter_account = "Depenses:A-Classer"
 
-[accounts]
+[import.accounts]
 "00012345678" = "Actifs:Courant"
 "00098765432" = "Actifs:Epargne"
 
-[[rules]]
+[[import.rules]]
 payee_contains = "carrefour"
 counter_account = "Depenses:Alimentation"
 payee = "Carrefour"
 
-[[rules]]
+[[import.rules]]
 memo_contains = "salaire"
 direction = "credit"
 counter_account = "Revenus:Salaire"
 ```
 
-For statements covering several physical accounts, the optional `[accounts]`
-table maps each statement account identifier (the OFX `ACCTID`) to its Pactole
-account; `bank_account` remains the fallback for accounts it does not cover
-(warning emitted). `pactole import-ofx --account Actifs:Epargne` instead posts
-every imported transaction to a single account for that run, whatever the
-configuration says:
+For statements covering several physical accounts, the optional
+`[import.accounts]` table maps each statement account identifier (the OFX
+`ACCTID`) to its Pactole account; `bank_account` remains the fallback for
+accounts it does not cover (warning emitted). `pactole import-ofx --account
+Actifs:Epargne` instead posts every imported transaction to a single account
+for that run, whatever the configuration says:
 
 ```sh
 pactole import-ofx statement.ofx --account Actifs:Epargne
@@ -196,5 +205,32 @@ pactole import-ofx statement.ofx --into ledger.pactole --write
 Generated transactions are a fragment (no `open`/`commodity`/`payee`
 declarations), so `pactole check` on them alone is expected to fail until
 they are merged into a full journal.
+
+## Configuration
+
+Every command reads a single `pactole.toml`, resolved from lowest to
+highest precedence:
+
+1. the global file `~/.config/pactole/pactole.toml` (or
+   `$XDG_CONFIG_HOME/pactole/pactole.toml`);
+2. the project file `pactole.toml` next to the journal being operated on;
+3. in-memory flags: `--config <path>` (a single explicit file replacing
+   discovery) and `--validation warn|error`.
+
+Layers merge per key, so a project file only needs to override what it
+changes. Unknown keys are rejected, so typos fail loudly:
+
+```toml
+[validation]
+payee = "error" # "warn" or "error"
+
+[format]
+posting_width = 50
+
+[import]
+bank_account = "Actifs:Banque"
+currency = "EUR"
+default_counter_account = "Depenses:A-Classer"
+```
 
 More commands (querying balances, reports, etc.) are coming.

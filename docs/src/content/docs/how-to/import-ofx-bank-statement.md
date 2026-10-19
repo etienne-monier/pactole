@@ -12,20 +12,25 @@ so that repeating an import is safe.
 
 ## 1. Prepare an import configuration
 
-Create `~/.config/pactole/import-ofx.toml`. When `XDG_CONFIG_HOME` is set, the
-equivalent path is `$XDG_CONFIG_HOME/pactole/import-ofx.toml`.
+The importer reads the `[import]` section of `pactole.toml`. `pactole init`
+already creates one next to your ledger; otherwise create a
+`pactole.toml` next to the journal you import into (or in the user
+configuration directory, `~/.config/pactole/pactole.toml`, for a global
+default).
 
 Start with a minimal configuration:
 
 ```toml
+[import]
 bank_account = "Assets:Checking"
 currency = "EUR"
 default_counter_account = "Expenses:ToReview"
 ```
 
 - `bank_account` is the Pactole account represented by the bank statement.
-  It is the fallback for statement accounts not covered by the `[accounts]`
-  mapping (see [Importing several accounts](#importing-several-accounts)).
+  It is the fallback for statement accounts not covered by the
+  `[import.accounts]` mapping (see
+  [Importing several accounts](#importing-several-accounts)).
 - `currency` is used when an OFX transaction does not provide its own currency.
 - `default_counter_account` receives transactions that match no rule. It is a
   useful holding account for transactions that need to be categorized later.
@@ -36,17 +41,17 @@ Rules select the counter account for an imported transaction. They are evaluated
 in order and the **first matching rule wins**:
 
 ```toml
-[[rules]]
+[[import.rules]]
 payee_contains = "carrefour"
 counter_account = "Expenses:Groceries"
 payee = "Carrefour"
 
-[[rules]]
+[[import.rules]]
 memo_contains = "salary"
 direction = "credit"
 counter_account = "Income:Salary"
 
-[[rules]]
+[[import.rules]]
 direction = "debit"
 counter_account = "Expenses:ToReview"
 ```
@@ -73,10 +78,10 @@ printed to stdout:
 pactole import-ofx statement.ofx
 ```
 
-Use `--config` when the configuration is somewhere else:
+Use the global `--config` flag when the configuration is somewhere else:
 
 ```sh
-pactole import-ofx statement.qfx --config ./import-ofx.toml
+pactole --config ./pactole.toml import-ofx statement.qfx
 ```
 
 The generated output contains cleared transactions with two postings: the
@@ -111,7 +116,6 @@ To append the new transactions directly to the target file, add `--write`:
 
 ```sh
 pactole import-ofx statement.ofx \
-  --config ~/.config/pactole/import-ofx.toml \
   --into ledger.pactole \
   --write
 ```
@@ -124,12 +128,13 @@ stderr.
 
 An OFX export identifies its account by the statement's `ACCTID`. When one
 configuration serves several bank accounts, map each `ACCTID` to its Pactole
-account in an `[accounts]` table:
+account in an `[import.accounts]` table:
 
 ```toml
+[import]
 bank_account = "Assets:Checking"
 
-[accounts]
+[import.accounts]
 "00012345678" = "Assets:Checking"
 "00098765432" = "Assets:Savings"
 ```
@@ -137,9 +142,9 @@ bank_account = "Assets:Checking"
 Each generated transaction is then posted to the account mapped from the
 `ACCTID` of the statement it comes from. A statement account absent from the
 table falls back to `bank_account`, with a warning on stderr naming the
-unmapped account (reported once per account per import). When no `[accounts]`
-table is configured at all, `bank_account` is simply the account for every
-statement.
+unmapped account (reported once per account per import). When no
+`[import.accounts]` table is configured at all, `bank_account` is simply the
+account for every statement.
 
 To post one statement to a single account without touching the
 configuration, pass `--account`:
@@ -148,8 +153,8 @@ configuration, pass `--account`:
 pactole import-ofx savings.ofx --account Assets:Savings
 ```
 
-`--account` overrides both `bank_account` and the `[accounts]` mapping for
-that run.
+`--account` overrides both `bank_account` and the `[import.accounts]` mapping
+for that run.
 
 ## Validate the result
 
@@ -174,18 +179,20 @@ with a canonical `payee`.
 
 ## Troubleshooting
 
-### Configuration not found
+### No `[import]` section
 
-Pass an explicit configuration path:
+The command fails when the resolved `pactole.toml` defines no `[import]`
+section. Create one (see [step 1](#1-prepare-an-import-configuration)), or
+point at an explicit configuration file with the global `--config` flag:
 
 ```sh
-pactole import-ofx statement.ofx --config ./import-ofx.toml
+pactole --config ./pactole.toml import-ofx statement.ofx
 ```
 
 ### Invalid account or currency
 
-`bank_account`, the `[accounts]` mapping, `default_counter_account`, rule
-counter accounts and `currency` must use Pactole's account and commodity
+`bank_account`, the `[import.accounts]` mapping, `default_counter_account`,
+rule counter accounts and `currency` must use Pactole's account and commodity
 syntax. The command reports an error before writing anything when one of these
 values is invalid.
 

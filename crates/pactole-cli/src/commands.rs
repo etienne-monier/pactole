@@ -11,6 +11,15 @@ use clap::{Parser, Subcommand};
     about = "Tools around the Pactole ledger format"
 )]
 pub(crate) struct Cli {
+    /// Path to an explicit `pactole.toml`, replacing the global and project
+    /// configuration files.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) config: Option<PathBuf>,
+
+    /// Override the `payee` validation level from `pactole.toml`.
+    #[arg(long, value_enum, value_name = "LEVEL")]
+    pub(crate) validation: Option<ValidationArg>,
+
     #[command(subcommand)]
     pub(crate) command: Command,
 }
@@ -91,17 +100,13 @@ pub(crate) enum Command {
         /// Path to the OFX/QFX file to import.
         file: PathBuf,
 
-        /// Path to the import configuration file.
-        #[arg(long, value_name = "PATH")]
-        config: Option<PathBuf>,
-
         /// Path to an existing `.pactole` file used for deduplication.
         #[arg(long, value_name = "PATH")]
         into: Option<PathBuf>,
 
         /// Post every imported transaction to this Pactole account,
-        /// overriding `bank_account` and the `[accounts]` mapping from the
-        /// configuration for this run.
+        /// overriding `import.bank_account` and the `[import.accounts]`
+        /// mapping for this run.
         #[arg(long, value_name = "ACCOUNT")]
         account: Option<String>,
 
@@ -110,15 +115,11 @@ pub(crate) enum Command {
         write: bool,
     },
 
-    /// Initialize a ledger and, when missing, the OFX import configuration.
+    /// Initialize a ledger and, when missing, the `pactole.toml` configuration.
     Init {
         /// Path to the ledger file to create.
         #[arg(default_value = "ledger.pactole")]
         ledger: PathBuf,
-
-        /// Path to the OFX import configuration file.
-        #[arg(long, value_name = "PATH")]
-        config: Option<PathBuf>,
 
         /// Main bank account.
         #[arg(long, default_value = "Assets:Checking")]
@@ -140,7 +141,12 @@ pub(crate) enum Command {
         #[arg(long)]
         stdout: bool,
 
-        /// Do not create the OFX import configuration.
+        /// Write `pactole.toml` into the user configuration directory
+        /// instead of next to the ledger.
+        #[arg(long)]
+        global: bool,
+
+        /// Do not create `pactole.toml`.
         #[arg(long)]
         no_config: bool,
 
@@ -148,6 +154,24 @@ pub(crate) enum Command {
         #[arg(long)]
         no_ledger: bool,
     },
+}
+
+/// CLI-facing mirror of [`pactole_config::ValidationLevel`].
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum ValidationArg {
+    /// Report configurable checks as warnings instead of errors.
+    Warn,
+    /// Report configurable checks as errors (the default).
+    Error,
+}
+
+impl From<ValidationArg> for pactole_config::ValidationLevel {
+    fn from(value: ValidationArg) -> Self {
+        match value {
+            ValidationArg::Warn => pactole_config::ValidationLevel::Warning,
+            ValidationArg::Error => pactole_config::ValidationLevel::Error,
+        }
+    }
 }
 
 /// CLI-facing mirror of [`pactole_core::TransactionStatus`].

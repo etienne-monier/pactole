@@ -56,19 +56,10 @@ pub fn format(source: &str) -> Result<String, PactoleFsStorageError> {
     format_with_options(source, &FormatOptions::default())
 }
 
-/// Options controlling canonical `.pactole` formatting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FormatOptions {
-    /// Target width of a posting line. Amounts (including their commodity) are
-    /// right-aligned to this column when possible.
-    pub posting_width: usize,
-}
-
-impl Default for FormatOptions {
-    fn default() -> Self {
-        Self { posting_width: 50 }
-    }
-}
+// `FormatOptions` lives in `pactole-config` (the whole `pactole.toml` schema
+// is owned by that crate); it is re-exported here to keep this crate's
+// formatting API self-contained.
+pub use pactole_config::FormatOptions;
 
 /// Reformat a `.pactole` source string using explicit formatting options.
 pub fn format_with_options(

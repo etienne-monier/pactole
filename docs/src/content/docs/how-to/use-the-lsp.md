@@ -46,6 +46,31 @@ Without `journal_file`, the server analyzes only the document currently open in
 the editor. This is also the fallback used when the configured journal cannot
 be loaded.
 
+Validation settings come from the same layered `pactole.toml` as the CLI: the
+user-level `pactole.toml` (`~/.config/pactole/pactole.toml`), then the
+project `pactole.toml` (next to `journal_file`, or at the workspace root when
+no `journal_file` is set). They can be overridden from
+`initializationOptions`, either globally or per check:
+
+```json
+{
+  "journal_file": "main.pactole",
+  "validation": "warn"
+}
+```
+
+```json
+{
+  "journal_file": "main.pactole",
+  "validation": { "payee": "warn" }
+}
+```
+
+With `warn`, an undeclared payee is reported as a warning instead of an error,
+so a journal being migrated from another tool stays green in the editor. A
+broken or unreadable configuration file is logged and ignored rather than
+failing initialization.
+
 See [Diagnostics and project analysis](/reference/diagnostics/) for the
 standalone/project distinction, partial analysis behavior and include
 diagnostic codes.
@@ -87,8 +112,7 @@ The language server does not currently provide:
 - navigation or references;
 - automatic insertion without selecting a completion or code action;
 - formatting through LSP (use [`pactole fmt`](/reference/cli/) instead);
-- incremental synchronization;
-- configuration from `~/.config/pactole`.
+- incremental synchronization.
 
 To enable server logs, set `RUST_LOG` before starting your editor, for example:
 

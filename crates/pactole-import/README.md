@@ -7,12 +7,12 @@ domain models.
 
 `pactole-import` is the input-side counterpart to `pactole-storage-fs`:
 an edge adapter that translates a foreign format into the pure Pactole
-domain. It depends only on `pactole-core` and performs **no I/O** — the
-caller reads the source text and passes it in as a `&str`. It knows
-nothing about tree-sitter, the `.pactole` text format, `pactole-storage-fs`,
-or the configuration file format, which keeps it reusable by any
-front-end (the `pactole` CLI today, a future database-backed storage
-crate, the language server tomorrow).
+domain. It depends only on `pactole-core` and `pactole-config` and
+performs **no I/O** — the caller reads the source text and passes it in
+as a `&str`. It knows nothing about tree-sitter, the `.pactole` text
+format, `pactole-storage-fs`, or where its configuration comes from,
+which keeps it reusable by any front-end (the `pactole` CLI today, a
+future database-backed storage crate, the language server tomorrow).
 
 The pipeline is deliberately split in two steps so future importers can
 reuse the rule engine:
@@ -32,12 +32,12 @@ Re-exported from `src/lib.rs`:
   `FITID` is already in `known_fitids` (counted in `ImportOutcome::skipped`),
   and lowers the rest into transactions. Every produced transaction carries
   its `FITID` as `fitid` metadata, so a later run can rebuild the known set.
-- **`ImportConfig`, `Rule`, `Direction`** (`config.rs`): serde types
-  describing the bank account, the optional `[accounts]` source-account
-  mapping, the default counter account, an optional
-  fallback currency, and the ordered categorization rules (first match
-  wins; a rule may also override the payee). These types fix no file
-  format: the caller chooses one (the CLI uses TOML).
+- **`ImportConfig`, `Rule`, `Direction`** (defined in `pactole-config`, the
+  `[import]` section of `pactole.toml`, and re-exported here): describe the
+  bank account, the optional `[import.accounts]` source-account mapping, the
+  default counter account, an optional fallback currency, and the ordered
+  categorization rules (first match wins; a rule may also override the
+  payee).
 - **`ImportRecord`** (`record.rs`): the format-neutral intermediate
   representation, including the source account identifier (OFX `ACCTID`)
   when the format provides one.
@@ -52,9 +52,9 @@ identifier), falling back to `ImportConfig::bank_account`.
 
 ## Dependencies / boundaries
 
-- `pactole-core` (domain models), `ofx-rs` (OFX parsing), `chrono`,
-  `rust_decimal` (never `f32`/`f64` for amounts), `serde`
-  (configuration types), `thiserror` (structured errors).
+- `pactole-core` (domain models), `pactole-config` (import settings),
+  `ofx-rs` (OFX parsing), `chrono`, `rust_decimal` (never `f32`/`f64` for
+  amounts), `thiserror` (structured errors).
 - No dependency on `pactole-storage-fs`, `pactole-syntax`, or tree-sitter.
 - Serializing the produced transactions to `.pactole` text is **not** done
   here: that is `pactole_storage_fs::format_transactions`.
@@ -74,4 +74,4 @@ Integration tests live in `tests/import_ofx.rs`, with OFX fixtures under
 - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — the role of
   `pactole-import` in the overall architecture and its boundaries.
 - [`../../README.md`](../../README.md) — the `pactole import-ofx`
-  command and its `~/.config/pactole/import-ofx.toml` configuration.
+  command and its `[import]` section in `pactole.toml`.

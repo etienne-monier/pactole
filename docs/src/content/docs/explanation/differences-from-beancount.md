@@ -30,7 +30,9 @@ is optional). Pactole reverses this:
 Pactole also adds a `payee "name"` *declaration* directive, borrowed from
 Ledger-cli, which has no equivalent in Beancount. Every transaction's payee must
 be declared somewhere in the journal, so typos like `"Whole Foods"` vs.
-`"Wholefoods"` are rejected.
+`"Wholefoods"` are rejected. For a soft migration, `[validation] payee =
+"warn"` in `pactole.toml` (or `pactole --validation warn check ...`) reports
+undeclared payees as warnings instead of errors.
 
 ## Status flags
 

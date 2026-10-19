@@ -9,17 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Unified `pactole.toml` configuration, resolved by the new
+  `pactole-config` crate: a global layer
+  (`~/.config/pactole/pactole.toml`, or `$XDG_CONFIG_HOME/pactole/`), a
+  project layer (next to the journal), and in-memory overrides (the CLI's
+  root `--config`/`--validation` flags, the LSP's `initializationOptions`).
+  It carries `[validation]`, `[format]` and `[import]` sections; unknown keys
+  are rejected so typos fail loudly.
+- Configurable validation severity: `[validation] payee = "warn"`, or the
+  `pactole --validation warn` root flag, reports transactions with an
+  undeclared payee as warnings instead of errors (soft migration from
+  Beancount), while every other business check stays an error. `pactole check
+  --strict` still fails on warnings. The future `off` level is rejected with
+  an explicit message until the grammar makes the payee optional.
+- `pactole init` now creates a project `pactole.toml` next to the ledger
+  (`--global` writes it into the user configuration directory instead).
+- The language server reads the same layered configuration files as the CLI
+  and accepts a `validation` `initializationOptions` key (a
+  `"warn"`/`"error"` string or a `{ "payee": ... }` table); broken
+  configuration files are logged and ignored instead of failing `initialize`.
 - OFX import supports several bank accounts: map each statement account
-  identifier (OFX `ACCTID`) to its Pactole account in a `[accounts]` table of
-  `import-ofx.toml`, or override everything for one run with
-  `pactole import-ofx --account <ACCOUNT>`. A statement account absent from the
-  mapping falls back to `bank_account` with a warning.
+  identifier (OFX `ACCTID`) to its Pactole account in an `[import.accounts]`
+  table of `pactole.toml`, or override everything for one run with
+  `pactole import-ofx --account <ACCOUNT>`. A statement account absent from
+  the mapping falls back to `bank_account` with a warning.
 - OFX import decodes source bytes according to the encoding declared by the
   document (OFX header `ENCODING`/`CHARSET` fields or XML declaration), falling
   back to UTF-8 and then windows-1252, so statements in legacy code pages such
   as windows-1252 import their accented text correctly.
 - OFX import reads the banking transactions of investment statements
   (`INVSTMTMSGSRSV1`).
+
+### Changed
+
+- OFX import rules are now written as `[[import.rules]]` inside `pactole.toml`
+  instead of `[[rules]]` in a dedicated file.
+
+### Removed
+
+- The standalone `format.toml` and `import-ofx.toml` configuration files:
+  all configuration moved to the single `pactole.toml`, with no fallback.
 
 ### Fixed
 
