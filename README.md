@@ -158,6 +158,10 @@ bank_account = "Actifs:Banque"
 currency = "EUR"
 default_counter_account = "Depenses:A-Classer"
 
+[accounts]
+"00012345678" = "Actifs:Courant"
+"00098765432" = "Actifs:Epargne"
+
 [[rules]]
 payee_contains = "carrefour"
 counter_account = "Depenses:Alimentation"
@@ -167,6 +171,17 @@ payee = "Carrefour"
 memo_contains = "salaire"
 direction = "credit"
 counter_account = "Revenus:Salaire"
+```
+
+For statements covering several physical accounts, the optional `[accounts]`
+table maps each statement account identifier (the OFX `ACCTID`) to its Pactole
+account; `bank_account` remains the fallback for accounts it does not cover
+(warning emitted). `pactole import-ofx --account Actifs:Epargne` instead posts
+every imported transaction to a single account for that run, whatever the
+configuration says:
+
+```sh
+pactole import-ofx statement.ofx --account Actifs:Epargne
 ```
 
 Each transaction records its OFX `FITID` as `fitid` metadata, which makes

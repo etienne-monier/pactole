@@ -12,6 +12,7 @@ pub(crate) fn run(
     file: PathBuf,
     config: Option<PathBuf>,
     into: Option<PathBuf>,
+    account: Option<String>,
     write: bool,
 ) -> ExitCode {
     let format_options = match format_options() {
@@ -44,7 +45,7 @@ pub(crate) fn run(
         }
     };
 
-    let config: pactole_import::ImportConfig = match toml::from_str(&config_source) {
+    let mut config: pactole_import::ImportConfig = match toml::from_str(&config_source) {
         Ok(config) => config,
         Err(err) => {
             eprintln!(
@@ -54,6 +55,14 @@ pub(crate) fn run(
             return ExitCode::FAILURE;
         }
     };
+
+    // `--account` overrides the configured bank account for this run: every
+    // imported transaction is posted to it, whatever the statement accounts
+    // are, so the `[accounts]` mapping is dropped accordingly.
+    if let Some(account) = account {
+        config.bank_account = account;
+        config.accounts.clear();
+    }
 
     let mut known_fitids = HashSet::new();
     let mut existing = None;
@@ -96,7 +105,7 @@ pub(crate) fn run(
     };
 
     for warning in &outcome.warnings {
-        eprintln!("warning: {}", describe_warning(warning));
+        eprintln!("warning: {}", describe_warning(warning, &config));
     }
 
     let generated = pactole_storage_fs::format_transactions_with_options(
@@ -150,7 +159,10 @@ fn collect_fitids(path: &Path) -> Result<HashSet<String>, pactole_storage_fs::So
         .collect())
 }
 
-fn describe_warning(warning: &pactole_import::ImportWarning) -> String {
+fn describe_warning(
+    warning: &pactole_import::ImportWarning,
+    config: &pactole_import::ImportConfig,
+) -> String {
     match warning {
         pactole_import::ImportWarning::MissingPayee { fitid } => match fitid {
             Some(fitid) => {
@@ -158,5 +170,10 @@ fn describe_warning(warning: &pactole_import::ImportWarning) -> String {
             }
             None => "a transaction has no payee; using the `Unknown` placeholder".to_string(),
         },
+        pactole_import::ImportWarning::UnmappedAccount { account_id } => format!(
+            "statement account `{account_id}` has no `[accounts]` mapping; using `{}` \
+             (`bank_account`)",
+            config.bank_account
+        ),
     }
 }

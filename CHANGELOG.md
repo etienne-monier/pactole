@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OFX import supports several bank accounts: map each statement account
+  identifier (OFX `ACCTID`) to its Pactole account in a `[accounts]` table of
+  `import-ofx.toml`, or override everything for one run with
+  `pactole import-ofx --account <ACCOUNT>`. A statement account absent from the
+  mapping falls back to `bank_account` with a warning.
 - OFX import decodes source bytes according to the encoding declared by the
   document (OFX header `ENCODING`/`CHARSET` fields or XML declaration), falling
   back to UTF-8 and then windows-1252, so statements in legacy code pages such

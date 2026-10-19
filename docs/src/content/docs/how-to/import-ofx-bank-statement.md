@@ -24,6 +24,8 @@ default_counter_account = "Expenses:ToReview"
 ```
 
 - `bank_account` is the Pactole account represented by the bank statement.
+  It is the fallback for statement accounts not covered by the `[accounts]`
+  mapping (see [Importing several accounts](#importing-several-accounts)).
 - `currency` is used when an OFX transaction does not provide its own currency.
 - `default_counter_account` receives transactions that match no rule. It is a
   useful holding account for transactions that need to be categorized later.
@@ -118,6 +120,37 @@ pactole import-ofx statement.ofx \
 printed to stdout; the target file is updated and the import summary remains on
 stderr.
 
+## Importing several accounts
+
+An OFX export identifies its account by the statement's `ACCTID`. When one
+configuration serves several bank accounts, map each `ACCTID` to its Pactole
+account in an `[accounts]` table:
+
+```toml
+bank_account = "Assets:Checking"
+
+[accounts]
+"00012345678" = "Assets:Checking"
+"00098765432" = "Assets:Savings"
+```
+
+Each generated transaction is then posted to the account mapped from the
+`ACCTID` of the statement it comes from. A statement account absent from the
+table falls back to `bank_account`, with a warning on stderr naming the
+unmapped account (reported once per account per import). When no `[accounts]`
+table is configured at all, `bank_account` is simply the account for every
+statement.
+
+To post one statement to a single account without touching the
+configuration, pass `--account`:
+
+```sh
+pactole import-ofx savings.ofx --account Assets:Savings
+```
+
+`--account` overrides both `bank_account` and the `[accounts]` mapping for
+that run.
+
 ## Validate the result
 
 The importer generates transaction directives only. It does not generate
@@ -151,9 +184,10 @@ pactole import-ofx statement.ofx --config ./import-ofx.toml
 
 ### Invalid account or currency
 
-`bank_account`, `default_counter_account`, rule counter accounts and `currency`
-must use Pactole's account and commodity syntax. The command reports an error
-before writing anything when one of these values is invalid.
+`bank_account`, the `[accounts]` mapping, `default_counter_account`, rule
+counter accounts and `currency` must use Pactole's account and commodity
+syntax. The command reports an error before writing anything when one of these
+values is invalid.
 
 ### Transactions are unexpectedly uncategorized
 

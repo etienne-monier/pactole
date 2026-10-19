@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use chrono::NaiveDate;
 use pactole_core::{Transaction, TransactionStatus};
@@ -6,6 +6,7 @@ use pactole_import::{Direction, ImportConfig, ImportError, ImportWarning, Rule};
 use rust_decimal::Decimal;
 
 const XML: &str = include_str!("fixtures/statement_xml.ofx");
+const TWO_ACCOUNTS: &str = include_str!("fixtures/statement_two_accounts.ofx");
 const SGML: &str = include_str!("fixtures/statement_sgml.ofx");
 const SGML_ACCTKEY: &str = include_str!("fixtures/statement_sgml_acctkey.ofx");
 const SGML_CP1252: &[u8] = include_bytes!("fixtures/statement_cp1252.ofx");
@@ -14,6 +15,7 @@ const INVESTMENT: &str = include_str!("fixtures/statement_investment.ofx");
 fn base_config() -> ImportConfig {
     ImportConfig {
         bank_account: "Actifs:Banque".to_string(),
+        accounts: BTreeMap::new(),
         currency: None,
         default_counter_account: "Depenses:A-Classer".to_string(),
         rules: Vec::new(),
@@ -64,6 +66,96 @@ fn imports_an_xml_bank_statement() {
         credit.postings[1].amount.as_ref().unwrap().number,
         dec("2000.00")
     );
+}
+
+#[test]
+fn maps_each_statement_account_to_its_configured_pactole_account() {
+    let config = ImportConfig {
+        accounts: BTreeMap::from([
+            ("00011111111".to_string(), "Actifs:Courant".to_string()),
+            ("00022222222".to_string(), "Actifs:Epargne".to_string()),
+        ]),
+        ..base_config()
+    };
+
+    let outcome = pactole_import::import_ofx(TWO_ACCOUNTS, &config, &no_fitids()).unwrap();
+
+    // No transaction fell back: no unmapped-account warning.
+    assert!(outcome.warnings.is_empty());
+    assert_eq!(outcome.transactions.len(), 3);
+
+    // Both statements are collected in document order, each transaction
+    // posted to the account mapped from its statement's ACCTID.
+    assert_eq!(
+        outcome.transactions[0].postings[1].account.as_str(),
+        "Actifs:Courant"
+    );
+    assert_eq!(
+        outcome.transactions[1].postings[1].account.as_str(),
+        "Actifs:Courant"
+    );
+    assert_eq!(
+        outcome.transactions[2].postings[1].account.as_str(),
+        "Actifs:Epargne"
+    );
+}
+
+#[test]
+fn falls_back_to_the_bank_account_once_per_unmapped_statement_account() {
+    // Only the savings account is mapped: the two checking transactions
+    // fall back to `bank_account`, warned about once (not per transaction).
+    let config = ImportConfig {
+        accounts: BTreeMap::from([("00022222222".to_string(), "Actifs:Epargne".to_string())]),
+        ..base_config()
+    };
+
+    let outcome = pactole_import::import_ofx(TWO_ACCOUNTS, &config, &no_fitids()).unwrap();
+
+    assert_eq!(
+        outcome.warnings,
+        vec![ImportWarning::UnmappedAccount {
+            account_id: "00011111111".to_string(),
+        }]
+    );
+
+    assert_eq!(
+        outcome.transactions[0].postings[1].account.as_str(),
+        "Actifs:Banque"
+    );
+    assert_eq!(
+        outcome.transactions[1].postings[1].account.as_str(),
+        "Actifs:Banque"
+    );
+    assert_eq!(
+        outcome.transactions[2].postings[1].account.as_str(),
+        "Actifs:Epargne"
+    );
+}
+
+#[test]
+fn stays_silent_without_any_account_mapping() {
+    // With no `[accounts]` table at all, `bank_account` is the primary
+    // account rather than a fallback: every transaction goes there and no
+    // unmapped-account warning is emitted.
+    let outcome = pactole_import::import_ofx(TWO_ACCOUNTS, &base_config(), &no_fitids()).unwrap();
+
+    assert!(outcome.warnings.is_empty());
+    assert_eq!(outcome.transactions.len(), 3);
+    for transaction in &outcome.transactions {
+        assert_eq!(transaction.postings[1].account.as_str(), "Actifs:Banque");
+    }
+}
+
+#[test]
+fn reports_an_error_on_an_invalid_account_in_the_mapping() {
+    let config = ImportConfig {
+        accounts: BTreeMap::from([("00011111111".to_string(), "not-an-account".to_string())]),
+        ..base_config()
+    };
+
+    let error = pactole_import::import_ofx(TWO_ACCOUNTS, &config, &no_fitids()).unwrap_err();
+
+    assert!(matches!(error, ImportError::InvalidAccount { .. }));
 }
 
 #[test]
@@ -310,6 +402,10 @@ bank_account = "Actifs:Banque"
 currency = "EUR"
 default_counter_account = "Depenses:A-Classer"
 
+[accounts]
+"00012345678" = "Actifs:Courant"
+"00098765432" = "Actifs:Epargne"
+
 [[rules]]
 payee_contains = "carrefour"
 direction = "debit"
@@ -321,6 +417,14 @@ payee = "Carrefour"
 
     assert_eq!(config.bank_account, "Actifs:Banque");
     assert_eq!(config.currency.as_deref(), Some("EUR"));
+    assert_eq!(
+        config.accounts.get("00012345678").map(String::as_str),
+        Some("Actifs:Courant")
+    );
+    assert_eq!(
+        config.accounts.get("00098765432").map(String::as_str),
+        Some("Actifs:Epargne")
+    );
     assert_eq!(config.rules.len(), 1);
     assert_eq!(config.rules[0].direction, Some(Direction::Debit));
     assert_eq!(config.rules[0].counter_account, "Depenses:Alimentation");

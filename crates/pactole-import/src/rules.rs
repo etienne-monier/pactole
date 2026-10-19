@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, HashSet};
+
 use pactole_core::{
     AccountName, Amount, CommodityName, Metadata, MetadataKey, Posting, Transaction,
     TransactionStatus,
@@ -22,12 +24,17 @@ pub(crate) fn lower(
     records: Vec<ImportRecord>,
     config: &ImportConfig,
 ) -> Result<(Vec<Transaction>, Vec<ImportWarning>), ImportError> {
+    // ---------------------------------------------
+    // Validate the configuration (account names ok)
+    // ---------------------------------------------
+    // Get bank account from config or return error
     let bank_account =
         AccountName::new(&config.bank_account).map_err(|source| ImportError::InvalidAccount {
             account: config.bank_account.clone(),
             source,
         })?;
 
+    // Get default counter account from config or return error
     let default_counter_account =
         AccountName::new(&config.default_counter_account).map_err(|source| {
             ImportError::InvalidAccount {
@@ -49,21 +56,64 @@ pub(crate) fn lower(
         rule_accounts.push(account);
     }
 
+    // Same up-front validation for the source-account -> Pactole-account
+    // mapping: an invalid mapped account fails the whole import before any
+    // transaction is lowered.
+    let mut mapped_accounts = BTreeMap::new();
+    for (source_account, account) in &config.accounts {
+        let resolved = AccountName::new(account).map_err(|source| ImportError::InvalidAccount {
+            account: account.clone(),
+            source,
+        })?;
+        mapped_accounts.insert(source_account.clone(), resolved);
+    }
+
     let fitid_key = MetadataKey::new("fitid")?;
 
     let mut transactions = Vec::with_capacity(records.len());
     let mut warnings = Vec::new();
+    // Source account identifiers already reported as unmapped, so each one
+    // is warned about at most once per import.
+    let mut warned_accounts = HashSet::new();
 
     for record in records {
+        // Resolve the bank-side account for this record: the mapping
+        // configured for its source account, else the `bank_account`
+        // fallback (with a single warning per distinct source account).
+        let bank_account = match record.account_id.as_deref() {
+            Some(account_id) => match mapped_accounts.get(account_id) {
+                Some(account) => account.clone(),
+                None => {
+                    // With no `[accounts]` table at all, `bank_account` is
+                    // the intended primary account: stay silent rather than
+                    // warn on every import of a classic single-account
+                    // configuration.
+                    if !config.accounts.is_empty() && warned_accounts.insert(account_id.to_string())
+                    {
+                        warnings.push(ImportWarning::UnmappedAccount {
+                            account_id: account_id.to_string(),
+                        });
+                    }
+                    bank_account.clone()
+                }
+            },
+            None => bank_account.clone(),
+        };
+
+        // Locate a matching rule
         let rule_index = config
             .rules
             .iter()
             .position(|rule| matches_rule(rule, &record));
 
+        // Evaluate the counter account
+        // Rule counter account, or default from config
         let counter_account = rule_index
             .and_then(|index| rule_accounts.get(index).cloned())
             .unwrap_or_else(|| default_counter_account.clone());
 
+        // Evaluate the payee
+        // Rule payee, or raw payee, or fallback value (with warning)
         let rule_payee = rule_index
             .and_then(|index| config.rules.get(index))
             .and_then(|rule| rule.payee.clone());
@@ -79,6 +129,8 @@ pub(crate) fn lower(
             }
         };
 
+        // Evaluate commodity
+        // Transaction commodity, or default from config, or error
         let commodity = record
             .currency
             .as_deref()
@@ -90,6 +142,7 @@ pub(crate) fn lower(
                 source,
             })?;
 
+        // Evaluate transaction id if any
         let mut meta = Metadata::new();
         if let Some(fitid) = &record.fitid {
             meta.insert(fitid_key.clone(), fitid.clone());

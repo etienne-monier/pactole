@@ -33,17 +33,22 @@ Re-exported from `src/lib.rs`:
   and lowers the rest into transactions. Every produced transaction carries
   its `FITID` as `fitid` metadata, so a later run can rebuild the known set.
 - **`ImportConfig`, `Rule`, `Direction`** (`config.rs`): serde types
-  describing the bank account, the default counter account, an optional
+  describing the bank account, the optional `[accounts]` source-account
+  mapping, the default counter account, an optional
   fallback currency, and the ordered categorization rules (first match
   wins; a rule may also override the payee). These types fix no file
   format: the caller chooses one (the CLI uses TOML).
 - **`ImportRecord`** (`record.rs`): the format-neutral intermediate
-  representation.
-- **`ImportOutcome`**, **`ImportWarning`**, **`ImportError`**.
+  representation, including the source account identifier (OFX `ACCTID`)
+  when the format provides one.
+- **`ImportOutcome`**, **`ImportWarning`** (missing payee, unmapped source
+  account), **`ImportError`**.
 
 Produced transactions are `Cleared`, with two postings: the configured
 counter account (negated amount) and the bank account (the signed source
-amount), in the source currency.
+amount), in the source currency. The bank-side account is resolved per
+transaction from `ImportConfig::accounts` (keyed by the source account
+identifier), falling back to `ImportConfig::bank_account`.
 
 ## Dependencies / boundaries
 

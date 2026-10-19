@@ -570,6 +570,24 @@ payee_contains = \"carrefour\"\n\
 counter_account = \"Depenses:Alimentation\"\n\
 payee = \"Carrefour\"\n";
 
+/// Import configuration whose `[accounts]` table maps the fixture's
+/// statement account (`ACCTID 00012345678`) to a dedicated Pactole account.
+const IMPORT_ACCOUNTS_FIXTURE: &str = "bank_account = \"Actifs:Banque\"\n\
+currency = \"EUR\"\n\
+default_counter_account = \"Depenses:A-Classer\"\n\
+\n\
+[accounts]\n\
+\"00012345678\" = \"Actifs:Courant\"\n";
+
+/// Import configuration whose `[accounts]` table only maps an account the
+/// fixture's statement does not use, leaving it unmapped.
+const IMPORT_UNMAPPED_FIXTURE: &str = "bank_account = \"Actifs:Banque\"\n\
+currency = \"EUR\"\n\
+default_counter_account = \"Depenses:A-Classer\"\n\
+\n\
+[accounts]\n\
+\"99999999999\" = \"Actifs:Epargne\"\n";
+
 /// Legacy SGML statement whose payee and narration carry raw windows-1252
 /// bytes (`\xC9` = É, `\xE0` = à), as declared by its `CHARSET:1252` header.
 const IMPORT_CP1252_FIXTURE: &[u8] = b"OFXHEADER:100\n\
@@ -640,6 +658,139 @@ fn import_ofx_prints_transactions_to_stdout() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("imported 2 transaction(s), skipped 0"));
+}
+
+#[test]
+fn import_ofx_maps_the_statement_account_through_the_configuration() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let config = write_import_temp("accounts.toml", IMPORT_ACCOUNTS_FIXTURE);
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            config.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&config).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Both transactions are posted to the account mapped from the
+    // statement's ACCTID rather than to `bank_account`.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Actifs:Courant -45.30 EUR"));
+    assert!(stdout.contains("Actifs:Courant 2000.00 EUR"));
+    assert!(!stdout.contains("Actifs:Banque"));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("warning:"));
+}
+
+#[test]
+fn import_ofx_warns_and_falls_back_for_an_unmapped_statement_account() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let config = write_import_temp("unmapped.toml", IMPORT_UNMAPPED_FIXTURE);
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            config.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&config).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // The import still succeeds: transactions fall back to `bank_account`.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Actifs:Banque -45.30 EUR"));
+    assert!(stdout.contains("Actifs:Banque 2000.00 EUR"));
+
+    // A single warning names the unmapped statement account.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("warning:"));
+    assert!(stderr.contains("00012345678"));
+}
+
+#[test]
+fn import_ofx_account_flag_overrides_the_configuration() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    // The configuration maps the statement account to `Actifs:Courant`:
+    // `--account` must win over both the mapping and `bank_account`.
+    let config = write_import_temp("accounts.toml", IMPORT_ACCOUNTS_FIXTURE);
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            config.to_str().unwrap(),
+            "--account",
+            "Actifs:Epargne",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&config).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Actifs:Epargne -45.30 EUR"));
+    assert!(stdout.contains("Actifs:Epargne 2000.00 EUR"));
+    assert!(!stdout.contains("Actifs:Banque"));
+    assert!(!stdout.contains("Actifs:Courant"));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("warning:"));
+}
+
+#[test]
+fn import_ofx_account_flag_reports_an_invalid_account() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);
+
+    let output = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--config",
+            rules.to_str().unwrap(),
+            "--account",
+            "not an account",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&rules).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error: invalid account name"));
 }
 
 #[test]

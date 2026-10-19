@@ -365,18 +365,23 @@ Binaire `pactole` (`clap` derive), sous-commandes actuelles :
 - `pactole register <file> [filtres]` : rapport "register" avec solde
   courant, filtrable par `--account` (avec sous-comptes), `--from`/`--to`,
   `--payee`, `--narration`, `--tag`, `--status`.
-- `pactole import-ofx <file> [--config <path>] [--into <path>] [--write]` :
+- `pactole import-ofx <file> [--config <path>] [--into <path>] [--account <compte>] [--write]` :
   importe un relevé OFX/QFX (SGML 1.x ou XML 2.x) et produit des directives
   de transaction `.pactole` canoniques (via
   `pactole_import::import_ofx` puis
-  `pactole_storage_fs::format_transactions`). Le compte banque, le compte
-  de contrepartie par défaut et les règles de catégorisation proviennent
+  `pactole_storage_fs::format_transactions`). Le compte banque, la table de
+  correspondance `[accounts]` (identifiant de compte du relevé → compte
+  Pactole), le compte de contrepartie par défaut et les règles de
+  catégorisation proviennent
   d'un fichier de configuration, par défaut
-  `~/.config/pactole/import-ofx.toml` (voir §8). Sans `--into`, les
+  `~/.config/pactole/import-ofx.toml` (voir §8). `--account` surcharge le
+  compte bancaire configuré (et la table `[accounts]`) pour la seule exécution.
+  Sans `--into`, les
   transactions sont imprimées sur stdout. Avec `--into <fichier>`, les
   `FITID` déjà présents dans ce fichier sont sautés (idempotence), et avec
   `--write` les transactions générées y sont ajoutées (append) au lieu
-  d'être imprimées.
+  d'être imprimées. Un compte de relevé absent de la table `[accounts]` est
+  reposté sur `bank_account` avec un avertissement sur stderr.
 
 Tests d'intégration bout en bout dans
 `crates/pactole-cli/tests/cli.rs`.
@@ -406,7 +411,9 @@ clés portés par `pactole-core::validation` :
   `check`, `register`) ne prennent que des arguments de ligne de commande.
   Seule `import-ofx` lit un fichier de configuration, par défaut
   `~/.config/pactole/import-ofx.toml` (surchargeable par `--config`),
-  contenant le compte banque, le compte de contrepartie par défaut, la
+  contenant le compte banque, la table de correspondance optionnelle
+  `[accounts]` (identifiant de compte du relevé OFX → compte Pactole), le
+  compte de contrepartie par défaut, la
   devise de repli optionnelle et les `[[rules]]` de catégorisation. Le
   répertoire est résolu via `$XDG_CONFIG_HOME/pactole` si
   `XDG_CONFIG_HOME` est défini, sinon `$HOME/.config/pactole`.

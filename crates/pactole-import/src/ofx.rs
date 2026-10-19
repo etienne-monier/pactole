@@ -24,7 +24,13 @@ pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportErr
             if let Some(statement) = wrapper.response() {
                 found_statement = true;
                 let currency = statement.currency_default().as_str();
-                collect(statement.transaction_list(), currency, &mut records)?;
+                let account_id = statement.bank_account().account_id().as_str();
+                collect(
+                    statement.transaction_list(),
+                    currency,
+                    account_id,
+                    &mut records,
+                )?;
             }
         }
     }
@@ -34,7 +40,13 @@ pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportErr
             if let Some(statement) = wrapper.response() {
                 found_statement = true;
                 let currency = statement.currency_default().as_str();
-                collect(statement.transaction_list(), currency, &mut records)?;
+                let account_id = statement.credit_card_account().account_id().as_str();
+                collect(
+                    statement.transaction_list(),
+                    currency,
+                    account_id,
+                    &mut records,
+                )?;
             }
         }
     }
@@ -47,7 +59,13 @@ pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportErr
             if let Some(statement) = wrapper.response() {
                 found_statement = true;
                 let currency = statement.currency_default().as_str();
-                collect(statement.transaction_list(), currency, &mut records)?;
+                let account_id = statement.investment_account().account_id().as_str();
+                collect(
+                    statement.transaction_list(),
+                    currency,
+                    account_id,
+                    &mut records,
+                )?;
             }
         }
     }
@@ -76,7 +94,9 @@ fn contains_stmttrn_tag(source: &str) -> bool {
     let mut remaining = source;
 
     while let Some(start) = remaining.find("<!--") {
+        // Start of comment found in source
         if remaining.get(..start).is_some_and(has_stmttrn_element) {
+            // STMTTRN found before the comemnt
             return true;
         }
         match remaining
@@ -84,6 +104,7 @@ fn contains_stmttrn_tag(source: &str) -> bool {
             .and_then(|after| after.find("-->"))
         {
             Some(end) => {
+                // Foud end of comment. Update remaining and seek in next loop
                 remaining = remaining
                     .get(start + "<!--".len() + end + "-->".len()..)
                     .unwrap_or_default();
@@ -93,6 +114,8 @@ fn contains_stmttrn_tag(source: &str) -> bool {
         }
     }
 
+    // The source did not has comments
+    // or all comments read without STMTTRN element.
     has_stmttrn_element(remaining)
 }
 
@@ -102,9 +125,14 @@ fn has_stmttrn_element(text: &str) -> bool {
 }
 
 /// Extracts the transactions of one statement into [`ImportRecord`]s.
+///
+/// `account_id` is the identifier of the account the statement belongs to
+/// (OFX `ACCTID`), recorded on every produced record so the rules engine can
+/// map it onto the configured Pactole account.
 fn collect(
     list: Option<&TransactionList>,
     currency: &str,
+    account_id: &str,
     out: &mut Vec<ImportRecord>,
 ) -> Result<(), ImportError> {
     let Some(list) = list else {
@@ -126,6 +154,7 @@ fn collect(
                 .map(|value| value.as_str().to_string()),
             reference: transaction.reference_number().map(str::to_string),
             fitid: Some(transaction.fit_id().as_str().to_string()),
+            account_id: Some(account_id.to_string()),
         });
     }
 

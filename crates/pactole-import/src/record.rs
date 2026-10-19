@@ -42,4 +42,10 @@ pub struct ImportRecord {
     /// Source-provided unique transaction identifier, used for idempotent
     /// re-imports. For OFX this is the `FITID`.
     pub fitid: Option<String>,
+
+    /// Identifier of the source account the transaction belongs to, if the
+    /// format provides one (for OFX: the statement's `ACCTID`). Used to map
+    /// the transaction onto the configured Pactole account when a statement
+    /// source carries several accounts.
+    pub account_id: Option<String>,
 }

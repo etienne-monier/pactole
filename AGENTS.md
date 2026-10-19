@@ -158,12 +158,15 @@ pactole/
       - `pactole check <file>`: Syntax parsing + business validation.
       - `pactole register <file> [filters]`: Register report with running balances.
       - `pactole init [ledger]`: Initialize a starter ledger and OFX configuration.
-     - `pactole import-ofx <file> [--config <path>] [--into <path>] [--write]`: Import an OFX/QFX
+     - `pactole import-ofx <file> [--config <path>] [--into <path>] [--account <account>] [--write]`:
+       Import an OFX/QFX
        statement (SGML 1.x or XML 2.x) into canonical `.pactole` transactions, via
        `pactole_import::decode_ofx_source` (source bytes → UTF-8) +
        `pactole_import::import_ofx` + `pactole_storage_fs::format_transactions`. Configuration
-       (bank account, default counter account, optional fallback currency, `[[rules]]`) is read
-       from `~/.config/pactole/import-ofx.toml` by default (overridable with `--config`). Without
+       (bank account, optional `[accounts]` ACCTID → Pactole account mapping, default counter
+       account, optional fallback currency, `[[rules]]`) is read
+       from `~/.config/pactole/import-ofx.toml` by default (overridable with `--config`).
+       `--account` overrides the configured bank account and mapping for that run. Without
        `--into`, transactions are printed to stdout; with `--into <file>`, FITIDs already present
        in that file (and in the files it `include`s) are skipped (idempotence), and with `--write`
        the generated transactions are appended to it.
@@ -233,7 +236,8 @@ pactole/
      future `pactole-storage-db`, the LSP tomorrow).
    - **Key modules**:
      - `record.rs`: `ImportRecord`, a format-neutral intermediate representation (date, signed
-       amount, currency, payee, memo, transaction type, check number, reference, FITID).
+       amount, currency, payee, memo, transaction type, check number, reference, FITID, source
+       account identifier).
      - `ofx.rs`: OFX parser (1.x SGML and 2.x XML, via the `ofx-rs` crate) producing
        `ImportRecord`s from `BANKMSGSRSV1`, `CREDITCARDMSGSRSV1` and `INVSTMTMSGSRSV1`
        (investment statements contribute their `INVBANKTRAN` banking transactions only). A
@@ -246,11 +250,15 @@ pactole/
        Roman), or a byte order mark — and otherwise falls back to strict UTF-8 and then
        windows-1252, so mislabeled bank exports still decode instead of being rejected.
      - `config.rs`: `ImportConfig`, `Rule`, `Direction` — serde types describing the bank
-       account, the default counter account, the optional fallback currency and the
+       account, the optional `[accounts]` source-account → Pactole-account mapping, the default
+       counter account, the optional fallback currency and the
        categorization rules. These types fix no file format; the caller chooses TOML.
      - `rules.rs`: shared rule engine lowering an `ImportRecord` into a balanced
        `pactole_core::Transaction` (first matching rule wins, otherwise the default counter
-       account; a rule may also override the payee).
+       account; a rule may also override the payee). The bank-side account is resolved per
+       record from `ImportConfig::accounts` (keyed by the record's source account identifier),
+       falling back to `ImportConfig::bank_account` with an `ImportWarning::UnmappedAccount`
+       (emitted once per distinct unmapped identifier, only when a mapping table exists).
      - `error.rs`: `ImportError`.
    - **Public API**: `import_ofx(source, &config, &HashSet<String>) -> Result<ImportOutcome,
      ImportError>`, `decode_ofx_source(&[u8]) -> String`, plus `ImportConfig`, `Rule`,

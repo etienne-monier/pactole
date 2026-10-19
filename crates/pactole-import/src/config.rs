@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 /// Configuration for importing an external statement (currently OFX) into
@@ -11,9 +13,22 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub struct ImportConfig {
     /// The Pactole account corresponding to the statement being imported
-    /// (e.g. `Actifs:Banque`). Money movements are recorded against this
+    /// (e.g. `Assets:Bank`). Money movements are recorded against this
     /// account with the signed amount from the source.
+    ///
+    /// Used as the fallback for transactions whose source account is not
+    /// covered by [`ImportConfig::accounts`] (nor by a CLI override).
     pub bank_account: String,
+
+    /// Mapping of source account identifiers (for OFX: the statement's
+    /// `ACCTID`) to Pactole account names, for statements covering several
+    /// physical accounts. In TOML, a `[accounts]` table whose keys are the
+    /// source account identifiers.
+    ///
+    /// A transaction whose source account is absent from this table falls
+    /// back to [`ImportConfig::bank_account`] (with a warning).
+    #[serde(default)]
+    pub accounts: BTreeMap<String, String>,
 
     /// Fallback commodity (e.g. `EUR`) used when the source transaction
     /// carries no currency of its own.
@@ -21,7 +36,7 @@ pub struct ImportConfig {
     pub currency: Option<String>,
 
     /// Counter account used for transactions that no [`Rule`] matches (e.g.
-    /// `Depenses:A-Classer`). This posting is the "unknown category" side of
+    /// `Expenses:To-Be-Classified`). This posting is the "unknown category" side of
     /// the transaction, to be categorized later.
     pub default_counter_account: String,
 

@@ -48,6 +48,17 @@ pub enum ImportWarning {
         /// The source transaction identifier, when known.
         fitid: Option<String>,
     },
+
+    /// The transaction's source account (for OFX: the statement's `ACCTID`)
+    /// is not covered by `ImportConfig::accounts`, so
+    /// `ImportConfig::bank_account` was used as the fallback. Emitted at
+    /// most once per distinct source account identifier, and only when a
+    /// mapping table is configured: with no table at all, `bank_account` is
+    /// the intended primary account rather than a fallback.
+    UnmappedAccount {
+        /// The source account identifier that matched no configured mapping.
+        account_id: String,
+    },
 }
 
 /// The result of importing a source document.

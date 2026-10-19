@@ -167,7 +167,7 @@ pactole register ledger.pactole --tag food
 ## `pactole import-ofx`
 
 ```text
-pactole import-ofx <FILE> [--config <PATH>] [--into <PATH>] [--write]
+pactole import-ofx <FILE> [--config <PATH>] [--into <PATH>] [--account <ACCOUNT>] [--write]
 ```
 
 Imports an OFX or QFX bank statement into canonical `.pactole` transaction
@@ -176,8 +176,9 @@ directives. Both OFX 1.x SGML and OFX 2.x XML are supported.
 | Option | Description |
 |---|---|
 | `<FILE>` | OFX or QFX statement to import |
-| `--config <PATH>` | TOML configuration containing the bank account and categorization rules |
+| `--config <PATH>` | TOML configuration containing the bank account, the optional `[accounts]` mapping and the categorization rules |
 | `--into <PATH>` | Existing `.pactole` file whose `fitid` metadata is used for deduplication |
+| `--account <ACCOUNT>` | Post every imported transaction to this account, overriding `bank_account` and the `[accounts]` mapping for this run |
 | `--write` | Append new transactions to `--into` instead of printing them; requires `--into` |
 
 Without `--config`, Pactole reads:
@@ -193,6 +194,11 @@ Without `--into`, generated transactions are printed to stdout. With `--into`,
 source transactions whose OFX `FITID` is already stored as `fitid` metadata in
 the target file are skipped. The command reports the imported and skipped counts
 on stderr.
+
+Each transaction is posted to the account mapped from its statement's `ACCTID`
+in the `[accounts]` table, to `--account` when given, and to `bank_account`
+otherwise (with a warning when a mapping table exists but does not cover the
+statement account).
 
 The generated output is a journal fragment: it contains transactions, but does
 not declare accounts, commodities or payees. Add it to a complete journal before

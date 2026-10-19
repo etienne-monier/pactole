@@ -41,8 +41,9 @@ fn main() -> ExitCode {
             file,
             config,
             into,
+            account,
             write,
-        } => import_ofx::run(file, config, into, write),
+        } => import_ofx::run(file, config, into, account, write),
         Command::Init {
             ledger,
             config,

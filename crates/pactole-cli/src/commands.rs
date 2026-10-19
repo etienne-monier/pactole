@@ -99,6 +99,12 @@ pub(crate) enum Command {
         #[arg(long, value_name = "PATH")]
         into: Option<PathBuf>,
 
+        /// Post every imported transaction to this Pactole account,
+        /// overriding `bank_account` and the `[accounts]` mapping from the
+        /// configuration for this run.
+        #[arg(long, value_name = "ACCOUNT")]
+        account: Option<String>,
+
         /// Append generated transactions to `--into` instead of printing them.
         #[arg(long, requires = "into")]
         write: bool,

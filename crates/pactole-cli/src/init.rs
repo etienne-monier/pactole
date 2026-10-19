@@ -114,6 +114,13 @@ fn render_config(account: &str, currency: &str, counter_account: &str) -> String
          bank_account = \"{account}\"\n\
          currency = \"{currency}\"\n\
          default_counter_account = \"{counter_account}\"\n\n\
+         # For statements covering several accounts, map each statement\n\
+         # account identifier (OFX ACCTID) to its Pactole account:\n\
+         #\n\
+         # [accounts]\n\
+         # \"00012345678\" = \"Assets:Checking\"\n\
+         # \"00098765432\" = \"Assets:Savings\"\n\
+         #\n\
          # Add categorization rules below.\n\
          #\n\
          # [[rules]]\n\
