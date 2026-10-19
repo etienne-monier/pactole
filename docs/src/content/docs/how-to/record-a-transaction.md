@@ -20,7 +20,7 @@ A transaction is a header line followed by indented postings:
 The header has this shape:
 
 ```text
- DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] [TAGS/LINKS] [(reference)]
+ DATE[=EFFECTIVE_DATE] STATUS? ["payee"] ["narration"] [TAGS/LINKS] [(reference)]
 ```
 
 - **DATE** is the transaction date in ISO `YYYY-MM-DD` format.
@@ -28,8 +28,10 @@ The header has this shape:
   Ledger-cli.
 - **STATUS** is optional. When present, it is one of `*` (cleared), `!`
   (pending) or `?` (uncleared). When omitted, the transaction is uncleared.
-- **payee** is a quoted string and is **mandatory**.
-- **narration** is an optional second quoted string.
+- **payee** is an optional quoted string. A single leading string is always the
+  payee, never the narration.
+- **narration** is an optional second quoted string, which may only follow a
+  payee.
 - **TAGS/LINKS** are zero or more `#tag` and `^link` tokens, freely interleaved.
 - **reference** is optional free text between parentheses, e.g. `(CB-00123)`.
 
@@ -61,12 +63,14 @@ Before a transaction is accepted by `pactole check`, the following must hold:
   closed.
 - Every commodity it uses must be declared (see `commodity`), and be allowed by
   the account's `open` restriction if one was given.
-- Its payee must be declared somewhere in the journal with a `payee` directive.
+- It must carry a payee, and that payee must be declared somewhere in the
+  journal with a `payee` directive.
 
-The payee rule is configurable: set `[validation] payee = "warn"` in
-`pactole.toml` (it defaults to `"error"`) or run
-`pactole --validation warn check ...` to report undeclared payees as warnings
-instead. `--strict` still fails on them.
+The payee rules are configurable: set `[validation] payee` in `pactole.toml`
+(it defaults to `"error"`) to `"warn"` to report a missing or undeclared payee
+as a warning, or to `"off"` to disable both checks (a transaction may then omit
+its payee entirely). The same can be set for one run with `pactole --validation
+warn|off check ...`. `--strict` still fails on warnings.
 
 ```pactole
 2026-01-01 commodity EUR

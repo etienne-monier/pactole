@@ -73,8 +73,9 @@ Let's read this file top to bottom:
   use a commodity that was never declared.
 - `open Assets:Checking` and `open Expenses:Groceries` open the two accounts the
   transaction will touch. An account must be opened before it can be used.
-- `payee "Whole Foods"` declares the merchant as a known payee. Every
-  transaction's payee must be declared somewhere in the journal.
+- `payee "Whole Foods"` declares the merchant as a known payee. By default a
+  transaction must carry a payee, and that payee must be declared somewhere in
+  the journal.
 - The last block is a **transaction**. Its header starts with the date, then an
   optional status flag (`*` means "cleared"), then the payee and an optional
   narration. If the status is omitted, the transaction is uncleared. Its two

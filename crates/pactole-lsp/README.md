@@ -41,12 +41,12 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   `initializationOptions` and the layered `pactole.toml` files. Supports
   `journal_file` (path of the root `.pactole` file, resolved against the
   workspace root, or against the server's current working directory if no
-  root is known) and `validation` (a `"warn"`/`"error"` string or a
+  root is known) and `validation` (an `"off"`/`"warn"`/`"error"` string or a
   `{ "payee": ... }` table). Validation settings follow the CLI layering:
   user-level `pactole.toml`, then project `pactole.toml` (next to
   `journal_file`, or at the workspace root when none is configured), then
-  `initializationOptions`. Broken configuration files and the unsupported
-  `off` level are logged and ignored rather than failing `initialize`.
+  `initializationOptions`. Broken configuration files are logged and ignored
+  rather than failing `initialize`.
 - `server.rs`: the stdio `Connection`, the main loop, and the
   notification handlers. When `journal_file` is configured and loads,
   diagnostics are computed for every file reachable via `include` (via

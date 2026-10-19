@@ -20,11 +20,12 @@ Two options are accepted **before** the subcommand:
 | Option | Description |
 |---|---|
 | `--config <PATH>` | Use this `pactole.toml` as the only configuration file, skipping global and project discovery |
-| `--validation <LEVEL>` | Override the `[validation]` levels from the configuration: `warn` or `error` |
+| `--validation <LEVEL>` | Override the `[validation]` levels from the configuration: `off`, `warn` or `error` |
 
 ```sh
 pactole --config ./pactole.toml check ledger.pactole
 pactole --validation warn check ledger.pactole
+pactole --validation off check ledger.pactole
 ```
 
 Without `--config`, Pactole reads the user-level `pactole.toml`
@@ -105,15 +106,16 @@ Parses the file like `parse`, then validates the resulting journal (see the
 `OK` on success. Warnings are printed on stderr but do not fail the command by
 default; `--strict` treats warnings as errors.
 
-A configurable check such as the mandatory payee declaration can be
-downgraded to a warning in `pactole.toml`:
+A configurable check such as the payee requirements (a transaction must
+carry a payee, and that payee must be declared) can be downgraded to a
+warning, or disabled, in `pactole.toml`:
 
 ```toml
 [validation]
-payee = "warn"
+payee = "warn" # "off", "warn" or "error"
 ```
 
-or for a single run with `pactole --validation warn check ...`. Every other
+or for a single run with `pactole --validation warn|off check ...`. Every other
 business check remains an error.
 
 Errors include syntax errors, lowering errors, business validation errors and

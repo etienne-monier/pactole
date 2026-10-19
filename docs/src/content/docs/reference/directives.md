@@ -70,9 +70,10 @@ transaction or a balance assertion.
 payee "name"
 ```
 
-Declares a payee as known. Every transaction's payee must match a declaration
-somewhere in the journal — an error by default, downgradable to a warning with
-`[validation] payee = "warn"` (see
+Declares a payee as known. By default every transaction must carry a payee and
+that payee must match a declaration somewhere in the journal. The
+`[validation] payee` setting controls how strict this is: `"warn"` reports a
+missing or undeclared payee as a warning, and `"off"` disables both checks (see
 [the CLI reference](/reference/cli/#global-options)). The directive carries no
 date and may appear after its first use.
 
@@ -100,7 +101,7 @@ account's `open` restriction.
 ## Transaction
 
 ```text
-DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]
+DATE[=EFFECTIVE_DATE] STATUS? ["payee"] ["narration"] TAGS/LINKS [(reference)]
   ACCOUNT AMOUNT?
   ...
 ```
@@ -144,9 +145,10 @@ See [Split a journal with includes](/how-to/split-a-journal-with-includes/).
    closed.
 3. **Declared commodities** — every commodity used must be declared, and allowed
    by any restriction set on the account's `open`.
-4. **Declared payees** — every transaction's payee must be declared (the only
-   configurable invariant: `[validation] payee = "warn"` reports it as a
-   warning instead).
+4. **Payees** — every transaction must carry a payee, and that payee must be
+   declared (the only configurable invariant: `[validation] payee = "warn"`
+   reports a missing or undeclared payee as a warning, and `"off"` disables
+   both checks).
 5. **Balanced transactions** — the postings of each transaction sum to zero per
    commodity.
 6. **Balance assertions** — each `balance` assertion must match the account's

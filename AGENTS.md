@@ -143,12 +143,13 @@ pactole/
        - `analyze_file(&str) -> ParsedFile` is kept exactly as-is (single-file, no include
          resolution) for backward compatibility; `analyze_file_with_loader` is strictly additive.
        - `analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)` is the
-         configurable variant: it reclassifies the one configurable business check
-         (`PayeeNotDeclared`) as a warning when `[validation] payee = "warn"`, while every other
-         business issue stays an error. `validated_journal()` then succeeds as long as no
-         error-severity diagnostic remains; warnings alone do not block it. The
-         `analyze_file_with_loader` form uses `ValidationOptions::default()` (everything an
-         error), so existing callers behave exactly as before.
+         configurable variant: it reclassifies the two configurable business checks
+         (`PayeeMissing` and `PayeeNotDeclared`) according to `[validation] payee` — a warning
+         under `"warn"`, suppressed under `"off"` — while every other business issue stays an
+         error. `validated_journal()` then succeeds as long as no error-severity diagnostic
+         remains; warnings alone do not block it. The `analyze_file_with_loader` form uses
+         `ValidationOptions::default()` (everything an error), so existing callers behave exactly
+         as before.
        - Configuration types (`ValidationOptions`, `ValidationLevel`, `FormatOptions`) come from
          `pactole-config`; `pactole-storage-fs` re-exports `FormatOptions` to keep its formatting
          API self-contained.
@@ -164,7 +165,7 @@ pactole/
    - Command-line application binary named `pactole` (using `clap` derive).
    - **Root flags** (before the subcommand):
       - `--config <path>`: use this `pactole.toml` and skip global/project layer discovery.
-      - `--validation <warn|error>`: override the `[validation] payee` level.
+      - `--validation <off|warn|error>`: override the `[validation] payee` level.
    - Subcommands:
       - `pactole parse <file>`: Parse file and debug-print journal entries.
       - `pactole fmt <file> [--write]`: Format `.pactole` file canonically (supports `-` for stdin),
@@ -221,12 +222,13 @@ pactole/
        `rootUri`, then `rootPath` — when given as relative; when no workspace root is known at
        all, resolved against the server process's current working directory instead of being
        silently left relative, so it does not later fail to resolve and silently drop every
-       diagnostic for the whole include graph) and `validation` (a `"warn"`/`"error"` string or a
-       `{ "payee": ... }` table). Validation settings follow the same layering as the CLI: the
+       diagnostic for the whole include graph) and `validation` (an
+       `"off"`/`"warn"`/`"error"` string or a `{ "payee": ... }` table). Validation settings
+       follow the same layering as the CLI: the
        global `pactole.toml` (via `pactole_config::config_dir`), then the project `pactole.toml`
        (next to `journal_file`, or at the workspace root when none is configured), then
-       `initializationOptions`. Unreadable or invalid configuration files, and the
-       not-yet-supported `off` level, are logged and ignored rather than failing `initialize`.
+       `initializationOptions`. Unreadable or invalid configuration files are logged and ignored
+       rather than failing `initialize`.
      - `server.rs`: the stdio `Connection`, main loop, and notification handlers. Publishes
        `textDocument/publishDiagnostics`:
        - When `journal_file` is configured and loads successfully, diagnostics are computed for
@@ -308,9 +310,9 @@ pactole/
      `[[import.rules]]` is replaced in block by the highest layer defining it. Unknown keys are
      rejected per section (`deny_unknown_fields`), so typos fail loudly.
    - **Schema**:
-     - `[validation] payee`: `"warn"` or `"error"` (default `"error"`, preserving historical
-       behavior). The future `"off"` level is rejected with an explicit message until the grammar
-       makes the payee optional.
+     - `[validation] payee`: `"off"`, `"warn"` or `"error"` (default `"error"`, preserving
+       historical behavior). It governs both payee checks (`PayeeMissing` and `PayeeNotDeclared`);
+       `"off"` suppresses them, `"warn"` downgrades them.
      - `[format] posting_width`: amount alignment column (default 50).
      - `[import]`: `bank_account`, `currency`, `default_counter_account`, `[import.accounts]`,
        `[[import.rules]]` — the OFX import settings; `ImportConfig`/`Rule`/`Direction` are
@@ -342,15 +344,15 @@ Refer to `GRAMMAR.md` for complete grammar details. Key invariants:
   - `DATE commodity COMMODITY`
   - `payee "NAME"` (undated, global declaration)
   - `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY`
-  - `DATE[=EFFECTIVE_DATE] STATUS "payee" ["narration"] [TAGS/LINKS] [(ref)]`
+  - `DATE[=EFFECTIVE_DATE] STATUS ["payee"] ["narration"] [TAGS/LINKS] [(ref)]`
   - `include "path"`
 - **Indentation & Directive Structure**:
   - Metadata lines (`key: value`) must immediately follow the directive header **before** any transaction postings.
   - Transaction postings are indented.
   - Metadata belonging to a posting is indented underneath that posting.
 - **Payees**:
-  - Transactions require a mandatory payee string.
-  - In business validation (`check`), every transaction's payee must be declared in the journal via a `payee` directive.
+  - A transaction's payee is optional at the grammar level (a single leading string is always the payee, never a narration), but by default a transaction must carry a payee and that payee must be declared.
+  - This is the configurable invariant: `[validation] payee = "error"` (default) reports a missing (`PayeeMissing`) or undeclared (`PayeeNotDeclared`) payee as an error, `"warn"` as a warning, and `"off"` suppresses both.
 - **Transaction Balancing**:
   - All postings in a transaction must sum to zero per commodity.
   - At most one posting can omit an amount (its amount is inferred).

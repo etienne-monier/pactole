@@ -147,3 +147,56 @@ Interleaved tags and links
       (link)
       (tag)
       (link))))
+
+====================================
+Transaction with no payee
+====================================
+
+2026-09-03
+  Depenses:Divers 10.00 EUR
+  Actifs:Compte-Joint -10.00 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))
+
+====================================
+Transaction with no payee, status, tags and reference
+====================================
+
+2026-09-03 * #food (CB-00123)
+  Depenses:Divers 10.00 EUR
+  Actifs:Compte-Joint -10.00 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (tag)
+      (reference))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name)))))

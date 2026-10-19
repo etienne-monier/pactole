@@ -77,6 +77,12 @@ pub enum ValidationError {
         /// Date of the transaction.
         date: NaiveDate,
     },
+    /// A transaction has no payee.
+    #[error("transaction on {date} has no payee")]
+    PayeeMissing {
+        /// Date of the transaction.
+        date: NaiveDate,
+    },
     /// More than one transaction posting has no amount.
     #[error(
         "transaction on {date} has {count} postings without an amount, but at most one posting \

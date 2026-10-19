@@ -2,6 +2,8 @@
 /// `payee` in the `[validation]` section of `pactole.toml`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ValidationLevel {
+    /// Do not report the issue.
+    Off,
     /// Report the issue as a warning: visible everywhere, but never
     /// blocking (except under a strict flag such as `pactole check --strict`).
     Warning,
@@ -14,17 +16,18 @@ impl ValidationLevel {
     /// Returns the canonical `pactole.toml` spelling of this level.
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Off => "off",
             Self::Warning => "warn",
             Self::Error => "error",
         }
     }
 
-    /// Parses a level spelling (`warn` or `error`).
+    /// Parses a level spelling (`off`, `warn` or `error`).
     ///
-    /// Returns `None` for any other value, including the future `off`
-    /// level, which is deliberately not accepted yet.
+    /// Returns `None` for any other value.
     pub fn parse(value: &str) -> Option<Self> {
         match value {
+            "off" => Some(Self::Off),
             "warn" => Some(Self::Warning),
             "error" => Some(Self::Error),
             _ => None,
@@ -36,7 +39,8 @@ impl ValidationLevel {
 /// section of `pactole.toml`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ValidationOptions {
-    /// Severity of a transaction whose payee has no matching `payee`
-    /// declaration in the journal.
+    /// Severity of the two payee checks: a transaction must carry a payee
+    /// (`PayeeMissing` otherwise), and that payee must have a matching
+    /// `payee` declaration in the journal (`PayeeNotDeclared` otherwise).
     pub payee: ValidationLevel,
 }

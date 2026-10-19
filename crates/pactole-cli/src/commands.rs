@@ -163,6 +163,8 @@ pub(crate) enum ValidationArg {
     Warn,
     /// Report configurable checks as errors (the default).
     Error,
+    /// Disable the configurable check.
+    Off,
 }
 
 impl From<ValidationArg> for pactole_config::ValidationLevel {
@@ -170,6 +172,7 @@ impl From<ValidationArg> for pactole_config::ValidationLevel {
         match value {
             ValidationArg::Warn => pactole_config::ValidationLevel::Warning,
             ValidationArg::Error => pactole_config::ValidationLevel::Error,
+            ValidationArg::Off => pactole_config::ValidationLevel::Off,
         }
     }
 }

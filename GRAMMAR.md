@@ -53,7 +53,7 @@ never as metadata of the directive itself.
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                    |
 | `payee`       | `payee "name"`                                                      |
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`         |
-| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS "payee" ["narration"] TAGS/LINKS [(reference)]` |
+| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS ["payee"] ["narration"] TAGS/LINKS [(reference)]` |
 | `include`     | `include "path"`                                                    |
 
 Note `payee` is the only directive with no leading date: unlike an
@@ -84,7 +84,7 @@ default) leaves the account unrestricted.
 ### Transactions
 
 ```
-transaction := date ("=" effective_date)? status? payee narration?
+transaction := date ("=" effective_date)? status? payee? narration?
                (tag | link)*
                reference?
 ```
@@ -96,10 +96,15 @@ transaction := date ("=" effective_date)? status? payee narration?
   `?` (uncleared). When omitted, the transaction is considered uncleared
   (`?`). Unlike Beancount, no custom flag (arbitrary uppercase letter) is
   allowed, and there is no `txn` keyword.
-- `payee`: a quoted string, **mandatory** (unlike Beancount, where this
-  field is optional and a single string is treated as the narration
-  instead).
-- `narration` (optional): a second quoted string.
+- `payee` (optional): a quoted string. When a payee *declaration* is
+  required (the default `[validation] payee = "error"`), a transaction
+  without a payee is rejected (`payee-missing`) and a payee that does not
+  match any `payee` declaration is rejected too (`payee-not-declared`).
+  Setting `[validation] payee = "warn"` downgrades both to warnings, and
+  `"off"` disables both. A single leading string is always the payee,
+  never a narration without payee (unlike Beancount).
+- `narration` (optional): a second quoted string; it may only appear after
+  a payee.
 - `tag`/`link`: zero or more, **freely interleaved** (`#tag1 ^link1 #tag2
   ^link2`, or any other order).
 - `reference` (optional): free text between parentheses, e.g.
@@ -117,6 +122,17 @@ fields:
 2026-09-10 ! "Amazon"
 2026-09-11 * "Employer" "September salary" #income
 2026-09-12 * "Landlord" "Rent" #housing ^lease-2026 ^auto-pay #recurring (REF-042)
+2026-09-13 * #food
+```
+
+A transaction may omit the payee entirely (and, with it, the narration),
+leaving just the date, status, tags/links and/or reference on its header
+line — useful with `[validation] payee = "off"`:
+
+```pactole
+2026-09-14
+  Expenses:Groceries 42.00 EUR
+  Assets:Checking -42.00 EUR
 ```
 
 ### Postings
@@ -204,10 +220,13 @@ payee := "payee" string
 ```
 
 Declares a payee as "known", borrowed from Ledger-cli's `payee`
-directive. A transaction's payee must match one of these declarations
-*somewhere* in the journal — this catches typos and inconsistent
-naming (e.g. `"Whole Foods"` vs. `"Wholefoods"`) the same way `open`
-catches a reference to an unknown account.
+directive. By default a transaction's payee must match one of these
+declarations *somewhere* in the journal — this catches typos and
+inconsistent naming (e.g. `"Whole Foods"` vs. `"Wholefoods"`) the same way
+`open` catches a reference to an unknown account. The `[validation] payee`
+setting of `pactole.toml` controls how strict this is (`error`, `warn` or
+`off`); with `off`, payee declarations are still parsed but never
+required.
 
 Unlike every other directive, `payee` carries **no date**: a payee has
 no temporal life cycle (it is never "opened", closed or superseded), so
@@ -332,10 +351,13 @@ For reference, a summary of the deliberate deviations from Beancount:
   `payee`, `balance`, `transaction`, `include`); `pad`, `price`, `note`,
   `event`, `document`, `query`, `custom`, `option`, `plugin`,
   `pushtag`/`poptag` do not exist.
-- `payee` is mandatory in a transaction; `narration` is optional (the
-  reverse of the Beancount convention). A `payee` *declaration* (this
-  file's `payee "name"` directive, borrowed from Ledger-cli) does not
-  exist in Beancount at all.
+- `payee` and `narration` are both optional in a transaction, but a
+  single leading string is always the payee, never the narration (the
+  reverse of the Beancount convention, which treats a lone string as the
+  narration). Whether a transaction must carry a payee, and whether that
+  payee must be declared, is controlled by `[validation] payee`. A
+  `payee` *declaration* (this file's `payee "name"` directive, borrowed
+  from Ledger-cli) does not exist in Beancount at all.
 - Status flags limited to `*`, `!`, `?` (no custom flags, no `txn`
   keyword).
 - No cost/price annotations on postings (`{cost}`, `@`, `@@`).

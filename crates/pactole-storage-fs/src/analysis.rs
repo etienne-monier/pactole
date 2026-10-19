@@ -136,6 +136,7 @@ enum BusinessDiagnosticKind {
     CommodityNotDeclared,
     PayeeAlreadyDeclared,
     PayeeNotDeclared,
+    PayeeMissing,
     TooManyPostingsWithoutAmount,
     AmbiguousAutoBalanceCommodity,
     TransactionNotBalanced,
@@ -153,6 +154,7 @@ impl BusinessDiagnosticKind {
             Self::CommodityNotDeclared => "commodity-not-declared",
             Self::PayeeAlreadyDeclared => "payee-already-declared",
             Self::PayeeNotDeclared => "payee-not-declared",
+            Self::PayeeMissing => "payee-missing",
             Self::TooManyPostingsWithoutAmount => "too-many-postings-without-amount",
             Self::AmbiguousAutoBalanceCommodity => "ambiguous-auto-balance-commodity",
             Self::TransactionNotBalanced => "transaction-not-balanced",
@@ -161,19 +163,23 @@ impl BusinessDiagnosticKind {
         }
     }
 
-    /// Severity of this diagnostic under the given validation options.
+    /// Severity of this diagnostic under the given validation options, or
+    /// `None` when configuration suppresses it entirely.
     ///
-    /// Every business issue is an error by default; `PayeeNotDeclared` is
-    /// the one configurable check (the `[validation] payee` setting of
-    /// `pactole.toml`), reported as a warning under
-    /// [`ValidationLevel::Warning`]. All other kinds stay errors whatever the
+    /// Every business issue is an error by default; the payee checks
+    /// (`PayeeMissing` and `PayeeNotDeclared`) are the configurable ones
+    /// (the `[validation] payee` setting of `pactole.toml`): reported as a
+    /// warning under [`ValidationLevel::Warning`] and suppressed under
+    /// [`ValidationLevel::Off`]. All other kinds stay errors whatever the
     /// configuration says.
-    fn severity(self, options: &ValidationOptions) -> DiagnosticSeverity {
+    fn severity(self, options: &ValidationOptions) -> Option<DiagnosticSeverity> {
         match self {
-            Self::PayeeNotDeclared if options.payee == ValidationLevel::Warning => {
-                DiagnosticSeverity::Warning
-            }
-            _ => DiagnosticSeverity::Error,
+            Self::PayeeNotDeclared | Self::PayeeMissing => match options.payee {
+                ValidationLevel::Off => None,
+                ValidationLevel::Warning => Some(DiagnosticSeverity::Warning),
+                ValidationLevel::Error => Some(DiagnosticSeverity::Error),
+            },
+            _ => Some(DiagnosticSeverity::Error),
         }
     }
 }
@@ -212,6 +218,7 @@ fn business_kind(error: &ValidationError) -> BusinessDiagnosticKind {
             BusinessDiagnosticKind::PayeeAlreadyDeclared
         }
         ValidationError::PayeeNotDeclared { .. } => BusinessDiagnosticKind::PayeeNotDeclared,
+        ValidationError::PayeeMissing { .. } => BusinessDiagnosticKind::PayeeMissing,
         ValidationError::TooManyPostingsWithoutAmount { .. } => {
             BusinessDiagnosticKind::TooManyPostingsWithoutAmount
         }
@@ -528,7 +535,7 @@ impl AnalyzedProject {
             return Err(structural);
         }
         if self.business_diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind.severity(&self.validation) == DiagnosticSeverity::Error
+            diagnostic.kind.severity(&self.validation) == Some(DiagnosticSeverity::Error)
         }) {
             return Err(self.diagnostics());
         }
@@ -555,18 +562,16 @@ impl AnalyzedProject {
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
         let mut diagnostics = self.structural_diagnostics();
 
-        diagnostics.extend(
-            self.business_diagnostics
-                .iter()
-                .map(|diagnostic| Diagnostic {
-                    path: diagnostic.path.clone(),
-                    span: diagnostic.span,
-                    severity: diagnostic.kind.severity(&self.validation),
-                    source: DiagnosticSource::Business,
-                    code: Some(diagnostic.kind.code().to_string()),
-                    message: diagnostic.message.clone(),
-                }),
-        );
+        diagnostics.extend(self.business_diagnostics.iter().filter_map(|diagnostic| {
+            Some(Diagnostic {
+                path: diagnostic.path.clone(),
+                span: diagnostic.span,
+                severity: diagnostic.kind.severity(&self.validation)?,
+                source: DiagnosticSource::Business,
+                code: Some(diagnostic.kind.code().to_string()),
+                message: diagnostic.message.clone(),
+            })
+        }));
 
         diagnostics
     }
@@ -790,7 +795,8 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
             .or(entry.spans.account)
             .unwrap_or(entry.span),
         ValidationError::BalanceAssertionFailed { .. } => entry.span,
-        ValidationError::TooManyPostingsWithoutAmount { .. }
+        ValidationError::PayeeMissing { .. }
+        | ValidationError::TooManyPostingsWithoutAmount { .. }
         | ValidationError::AmbiguousAutoBalanceCommodity { .. }
         | ValidationError::TransactionNotBalanced { .. } => entry.span,
     }
@@ -864,10 +870,11 @@ fn validate_project(
         .collect();
 
     // Warnings do not prevent a validated journal: only error-severity
-    // business diagnostics do.
+    // business diagnostics do. Suppressed payee diagnostics (severity
+    // `None`) never block validation.
     let validated_journal = if diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.kind.severity(validation) == DiagnosticSeverity::Error)
+        .any(|diagnostic| diagnostic.kind.severity(validation) == Some(DiagnosticSeverity::Error))
     {
         None
     } else {
@@ -1225,6 +1232,69 @@ mod tests {
         assert_eq!(account.severity, DiagnosticSeverity::Error);
         assert!(project.has_errors());
         assert!(project.validated_journal().is_err());
+    }
+
+    #[test]
+    fn off_level_suppresses_the_undeclared_payee_diagnostic_and_validates() {
+        let (loader, _) = undeclared_payee_project();
+
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &ValidationOptions {
+                payee: ValidationLevel::Off,
+            },
+        )
+        .unwrap();
+
+        assert!(
+            !project
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+        );
+        assert!(!project.has_errors());
+        assert!(!project.has_warnings());
+        assert!(project.validated_journal().is_ok());
+    }
+
+    #[test]
+    fn missing_payee_severity_follows_the_payee_level() {
+        let source = "2026-01-01 open Assets:Checking\n\
+                      2026-01-01 open Expenses:Food\n\
+                      2026-01-01 commodity EUR\n\
+                      2026-01-02\n\
+                      \u{20}\u{20}Assets:Checking -10 EUR\n\
+                      \u{20}\u{20}Expenses:Food 10 EUR\n";
+
+        for (level, expected) in [
+            (ValidationLevel::Error, Some(DiagnosticSeverity::Error)),
+            (ValidationLevel::Warning, Some(DiagnosticSeverity::Warning)),
+            (ValidationLevel::Off, None),
+        ] {
+            let mut loader = InMemorySourceLoader::new();
+            loader.insert("/journal/main.pactole", source);
+
+            let project = analyze_file_with_loader_with_options(
+                Path::new("/journal/main.pactole"),
+                &loader,
+                &ValidationOptions { payee: level },
+            )
+            .unwrap();
+
+            let severity = project
+                .diagnostics()
+                .iter()
+                .find(|diagnostic| diagnostic.code.as_deref() == Some("payee-missing"))
+                .map(|diagnostic| diagnostic.severity);
+            assert_eq!(severity, expected, "level {level:?}");
+
+            assert_eq!(
+                project.validated_journal().is_ok(),
+                expected != Some(DiagnosticSeverity::Error),
+                "level {level:?}"
+            );
+        }
     }
 
     #[test]

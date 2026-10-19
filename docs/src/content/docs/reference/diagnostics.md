@@ -17,7 +17,7 @@ requires the same context.
   cannot be converted into a domain entry.
 - **Include** diagnostics describe a problem while resolving the file graph.
 - **Business** diagnostics come from journal validation: account lifecycles,
-  declarations, balancing and balance assertions.
+  declarations, payees, balancing and balance assertions.
 
 Every project diagnostic has a source file, a half-open source span, a severity,
 an origin, an optional stable code and a human-readable message. Syntax and

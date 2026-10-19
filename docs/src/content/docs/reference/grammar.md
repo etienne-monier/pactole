@@ -56,7 +56,7 @@ itself.
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                   |
 | `payee`       | `payee "name"`                                                    |
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`        |
-| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]` |
+| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS? ["payee"] ["narration"] TAGS/LINKS [(reference)]` |
 | `include`     | `include "path"`                                                  |
 
 `payee` is the only directive with no leading date: a payee has no temporal life
@@ -82,7 +82,7 @@ unrestricted.
 ### Transactions
 
 ```text
-transaction := date ("=" effective_date)? status? payee narration?
+transaction := date ("=" effective_date)? status? payee? narration?
                (tag | link)*
                reference?
 ```
@@ -93,8 +93,11 @@ transaction := date ("=" effective_date)? status? payee narration?
 - `status`: optionally one of `*` (cleared), `!` (pending) or `?` (uncleared).
   When omitted, the transaction is considered uncleared. No custom flag and no
   `txn` keyword.
-- `payee`: a quoted string, **mandatory**.
-- `narration` (optional): a second quoted string.
+- `payee` (optional): a quoted string. A single leading string is always the
+  payee, never a narration. Whether a transaction must carry a payee, and
+  whether that payee must be declared, is controlled by `[validation] payee`.
+- `narration` (optional): a second quoted string; it may only appear after a
+  payee.
 - `tag`/`link`: zero or more, **freely interleaved**.
 - `reference` (optional): free text between parentheses, e.g. `(CB-00123)`.
 
@@ -103,6 +106,17 @@ transaction := date ("=" effective_date)? status? payee narration?
 2026-09-10 ! "Amazon"
 2026-09-11 * "Employer" "September salary" #income
 2026-09-12 * "Landlord" "Rent" #housing ^lease-2026 ^auto-pay #recurring (REF-042)
+2026-09-14 * #food
+```
+
+A transaction may omit the payee entirely (and with it the narration),
+leaving just the date, status, tags/links and/or reference on its header
+line — useful with `[validation] payee = "off"`:
+
+```pactole
+2026-09-15
+  Expenses:Groceries 42.00 EUR
+  Assets:Checking -42.00 EUR
 ```
 
 ### Postings
@@ -177,10 +191,12 @@ or `-` in between — exactly the rule Beancount uses for its currency codes (e.
 payee := "payee" string
 ```
 
-Declares a payee as "known". A transaction's payee must match one of these
-declarations somewhere in the journal — this catches typos and inconsistent
-naming (e.g. `"Whole Foods"` vs. `"Wholefoods"`), the same way `open` catches a
-reference to an unknown account.
+Declares a payee as "known". By default a transaction's payee must match one of
+these declarations somewhere in the journal — this catches typos and
+inconsistent naming (e.g. `"Whole Foods"` vs. `"Wholefoods"`), the same way
+`open` catches a reference to an unknown account. The `[validation] payee`
+setting (`error`, `warn` or `off`) controls how strict this is; with `off`,
+declarations are still parsed but never required.
 
 Unlike every other directive, `payee` carries **no date**: only its presence in
 the file matters, not its position relative to the transactions using it — it
@@ -270,9 +286,11 @@ amounts and indentation to be freely aligned:
 
 - Only 7 directives are supported; `pad`, `price`, `note`, `event`, `document`,
   `query`, `custom`, `option`, `plugin`, `pushtag`/`poptag` do not exist.
-- `payee` is mandatory in a transaction and `narration` is optional (the reverse
-  of the Beancount convention). A `payee` *declaration* does not exist in
-  Beancount at all.
+- `payee` and `narration` are both optional in a transaction, but a single
+  leading string is always the payee, never the narration (the reverse of the
+  Beancount convention). Whether a transaction must carry a payee, and whether
+  that payee must be declared, is controlled by `[validation] payee`. A `payee`
+  *declaration* does not exist in Beancount at all.
 - Status flags are limited to `*`, `!`, `?` (no custom flags, no `txn` keyword);
   the status may be omitted and defaults to `?` (uncleared).
 - No cost/price annotations on postings (`{cost}`, `@`, `@@`).

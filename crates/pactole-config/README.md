@@ -28,7 +28,7 @@ Unknown keys are rejected per section, so typos fail loudly.
 
 ```toml
 [validation]
-payee = "error" # "warn" or "error"
+payee = "error" # "off", "warn" or "error"
 
 [format]
 posting_width = 50
@@ -47,10 +47,10 @@ counter_account = "Expenses:Groceries"
 payee = "Supermarket"
 ```
 
-- `[validation] payee` controls whether a transaction whose payee has no
-  `payee` declaration is an error (default) or a warning. The future `off`
-  level is rejected with an explicit message until the grammar makes the
-  payee optional.
+- `[validation] payee` controls the two payee checks of a transaction —
+  it must carry a payee, and that payee must have a `payee` declaration:
+  reporting them as errors (default), as warnings, or ignoring them
+  (`off`).
 - `[format] posting_width` is the column at which posting amounts are
   aligned (default 50).
 - `[import]` holds the OFX import settings used by `pactole import-ofx`. It

@@ -135,14 +135,9 @@ fn import_tables_merge_per_key_and_rules_in_block() {
 }
 
 #[test]
-fn rejects_the_future_off_level_with_a_clear_message() {
-    let error = resolve("[validation]\npayee = \"off\"\n").unwrap_err();
-
-    assert!(
-        matches!(&error, ConfigError::Invalid { message, .. }
-            if message.contains("`off` is not supported yet")),
-        "unexpected error: {error}"
-    );
+fn accepts_the_off_validation_level() {
+    let config = resolve("[validation]\npayee = \"off\"\n").unwrap();
+    assert_eq!(config.validation.payee, ValidationLevel::Off);
 }
 
 #[test]
@@ -151,7 +146,7 @@ fn rejects_an_unknown_validation_level() {
 
     assert!(
         matches!(&error, ConfigError::Invalid { message, .. }
-            if message.contains("`strict`") && message.contains("`warn` or `error`")),
+            if message.contains("`strict`") && message.contains("`off`, `warn` or `error`")),
         "unexpected error: {error}"
     );
 }

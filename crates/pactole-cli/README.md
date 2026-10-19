@@ -33,9 +33,10 @@ Two root flags are accepted before the subcommand: `--config <path>` (use this
   for Bash, Elvish, Fish, PowerShell or Zsh.
 - **`pactole check <file> [--strict]`**: syntax parsing **then** full
   business validation (`pactole_core::validate_journal`) — accounts opened
-  before use/close, commodities declared before use, each transaction's
-  payee declared, each transaction balanced. Configurable checks follow the
-  resolved `[validation]` levels; `--strict` turns warnings into a failure.
+  before use/close, commodities declared before use, each transaction
+  carrying a declared payee, each transaction balanced. Configurable checks
+  follow the resolved `[validation]` levels; `--strict` turns warnings into
+  a failure.
 - **`pactole register <file> [filters]`**: lists transactions, one line
   per matching posting, with a running balance per commodity. Without
   filters, all postings are listed; filters are combined (`--account`

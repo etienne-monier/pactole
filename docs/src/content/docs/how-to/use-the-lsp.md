@@ -66,10 +66,11 @@ no `journal_file` is set). They can be overridden from
 }
 ```
 
-With `warn`, an undeclared payee is reported as a warning instead of an error,
-so a journal being migrated from another tool stays green in the editor. A
-broken or unreadable configuration file is logged and ignored rather than
-failing initialization.
+`validation` accepts `"off"`, `"warn"` or `"error"`. With `warn`, a missing or
+undeclared payee is reported as a warning instead of an error, so a journal
+being migrated from another tool stays green in the editor; with `off`, both
+payee checks are disabled. A broken or unreadable configuration file is logged
+and ignored rather than failing initialization.
 
 See [Diagnostics and project analysis](/reference/diagnostics/) for the
 standalone/project distinction, partial analysis behavior and include

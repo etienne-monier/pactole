@@ -1130,11 +1130,21 @@ fn init_does_not_overwrite_existing_files() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// A journal whose payee is not declared, valid only under `payee = "warn"`.
+/// A journal whose payee is not declared, valid only under `payee = "warn"`
+/// or `payee = "off"`.
 const UNDECLARED_PAYEE_JOURNAL: &str = "2024-01-01 open Assets:Checking\n\
 2024-01-01 open Expenses:Food\n\
 2024-01-01 commodity EUR\n\
 2024-01-05 * \"Unknown\"\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n\
+\u{20}\u{20}Expenses:Food 10 EUR\n";
+
+/// A journal whose transaction has no payee at all, valid only under
+/// `payee = "off"`.
+const MISSING_PAYEE_JOURNAL: &str = "2024-01-01 open Assets:Checking\n\
+2024-01-01 open Expenses:Food\n\
+2024-01-01 commodity EUR\n\
+2024-01-05\n\
 \u{20}\u{20}Assets:Checking -10 EUR\n\
 \u{20}\u{20}Expenses:Food 10 EUR\n";
 
@@ -1186,6 +1196,57 @@ fn check_accepts_an_undeclared_payee_when_warned_but_strict_rejects_it() {
         .expect("failed to run pactole-cli");
 
     assert!(!strict.status.success());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn check_accepts_an_undeclared_payee_when_validation_is_off() {
+    let dir = unique_temp_dir("check-payee-off");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, UNDECLARED_PAYEE_JOURNAL).unwrap();
+
+    let output = pactole_cmd()
+        .args(["--validation", "off", "check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("payee-not-declared"));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "OK\n");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn check_reports_a_missing_payee_by_default_but_accepts_it_when_off() {
+    let dir = unique_temp_dir("check-payee-missing");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, MISSING_PAYEE_JOURNAL).unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("error: [payee-missing]"));
+
+    let off = pactole_cmd()
+        .args(["--validation", "off", "check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        off.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&off.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&off.stdout), "OK\n");
 
     std::fs::remove_dir_all(&dir).ok();
 }

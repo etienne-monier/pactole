@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [validation]
-//! payee = "warn" # `warn` or `error`
+//! payee = "warn" # `off`, `warn` or `error`
 //!
 //! [format]
 //! posting_width = 50
@@ -237,17 +237,12 @@ fn validate_layer(raw: &RawFile, path: &Path) -> Result<(), ConfigError> {
         message,
     };
 
-    if let Some(value) = raw.validation.as_ref().and_then(|v| v.payee.as_deref()) {
-        if value == "off" {
-            return Err(invalid(
-                "validation level `off` is not supported yet; use `warn` or `error`".to_string(),
-            ));
-        }
-        if ValidationLevel::parse(value).is_none() {
-            return Err(invalid(format!(
-                "invalid validation level `{value}`: expected `warn` or `error`"
-            )));
-        }
+    if let Some(value) = raw.validation.as_ref().and_then(|v| v.payee.as_deref())
+        && ValidationLevel::parse(value).is_none()
+    {
+        return Err(invalid(format!(
+            "invalid validation level `{value}`: expected `off`, `warn` or `error`"
+        )));
     }
 
     if let Some(posting_width) = raw.format.as_ref().and_then(|f| f.posting_width)

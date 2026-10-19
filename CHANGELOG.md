@@ -16,17 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   root `--config`/`--validation` flags, the LSP's `initializationOptions`).
   It carries `[validation]`, `[format]` and `[import]` sections; unknown keys
   are rejected so typos fail loudly.
-- Configurable validation severity: `[validation] payee = "warn"`, or the
-  `pactole --validation warn` root flag, reports transactions with an
-  undeclared payee as warnings instead of errors (soft migration from
-  Beancount), while every other business check stays an error. `pactole check
-  --strict` still fails on warnings. The future `off` level is rejected with
-  an explicit message until the grammar makes the payee optional.
+- Configurable payee validation: `[validation] payee` (or the `pactole
+  --validation` root flag) now accepts `off`, `warn` and `error`. It governs
+  both payee checks — a transaction must carry a payee (`payee-missing`
+  otherwise) and that payee must have been declared (`payee-not-declared`) —
+  reporting them as errors (the default), as warnings, or suppressing them
+  entirely (`off`), while every other business check stays an error.
+  `pactole check --strict` still fails on warnings. To make a payee-less
+  transaction possible at all, the payee is now optional in the grammar.
 - `pactole init` now creates a project `pactole.toml` next to the ledger
   (`--global` writes it into the user configuration directory instead).
 - The language server reads the same layered configuration files as the CLI
-  and accepts a `validation` `initializationOptions` key (a
-  `"warn"`/`"error"` string or a `{ "payee": ... }` table); broken
+  and accepts a `validation` `initializationOptions` key (an
+  `"off"`/`"warn"`/`"error"` string or a `{ "payee": ... }` table); broken
   configuration files are logged and ignored instead of failing `initialize`.
 - OFX import supports several bank accounts: map each statement account
   identifier (OFX `ACCTID`) to its Pactole account in an `[import.accounts]`
