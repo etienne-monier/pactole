@@ -685,9 +685,9 @@ pub fn analyze_file_with_loader(
 /// options.
 ///
 /// This is the same analysis as [`analyze_file_with_loader`], with the
-/// severity of configurable business checks (currently only the undeclared
-/// payee check) driven by `validation`. The default options reproduce
-/// [`analyze_file_with_loader`] exactly.
+/// severity of the configurable business checks (the payee checks,
+/// `PayeeMissing` and `PayeeNotDeclared`) driven by `validation`. The default
+/// options reproduce [`analyze_file_with_loader`] exactly.
 ///
 /// # Errors
 ///

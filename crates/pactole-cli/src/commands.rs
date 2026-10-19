@@ -163,7 +163,7 @@ pub(crate) enum ValidationArg {
     Warn,
     /// Report configurable checks as errors (the default).
     Error,
-    /// Disable the configurable check.
+    /// Disable the configurable checks.
     Off,
 }
 
