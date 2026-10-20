@@ -226,6 +226,9 @@ pactole/
        (next to `journal_file`, or at the workspace root when none is configured), then
        `initializationOptions`. Unreadable or invalid configuration files, and the
        not-yet-supported `off` level, are logged and ignored rather than failing `initialize`.
+       Also supports the `[declaration]` section (`payees`/`accounts`/`commodities`), whose
+       relative paths are resolved against the journal's directory (like an `include`), and
+       exposes them as `DeclarationTargets` for the declaration quick fixes.
      - `server.rs`: the stdio `Connection`, main loop, and notification handlers. Publishes
        `textDocument/publishDiagnostics`:
        - When `journal_file` is configured and loads successfully, diagnostics are computed for
@@ -243,6 +246,16 @@ pactole/
       navigation, incremental sync, and reading `~/.config/pactole` remain out of scope for this
       first version. Unhandled requests are answered with a `MethodNotFound` error rather than
       silently ignored.
+    - Declaration quick fixes (`code_action.rs`): beyond the "insert today's date" fix, the server
+      turns the `payee-not-declared`, `account-not-open` and `commodity-not-declared` business
+      diagnostics into quick fixes inserting the missing declaration above the offending
+      transaction (`open`/`commodity` are dated with the transaction's date; a `payee` has no
+      date). The declaration goes into the current document, or is appended to the file configured
+      in the `[declaration]` section of `pactole.toml` — but only when that file is actually
+      reachable from the root journal through `include`; otherwise the fix falls back to the
+      current document. `[declaration]` paths are resolved against the journal's directory (like
+      an `include`), and the fixes only exist when a `journal_file` is configured, since business
+      diagnostics require a project context.
    - **Depends on `pactole-storage-fs`/`pactole-syntax` only through their existing public API**
      (`analyze_file`, `analyze_file_with_loader`,
      `analyze_file_with_loader_with_options`, `FsSourceLoader`, `SourceLoader`,
@@ -311,6 +324,10 @@ pactole/
        historical behavior). It controls only the diagnostic for an undeclared payee; the payee
        remains mandatory in the grammar.
      - `[format] posting_width`: amount alignment column (default 50).
+     - `[declaration]` (`payees`, `accounts`, `commodities`): the files an
+       editor front-end should insert new declarations into, instead of the
+       current document. Paths are kept raw (leaf crate); `pactole-lsp`
+       resolves them against the journal's directory.
      - `[import]`: `bank_account`, `currency`, `default_counter_account`, `[import.accounts]`,
        `[[import.rules]]` — the OFX import settings; `ImportConfig`/`Rule`/`Direction` are
        defined here and re-exported by `pactole-import`.

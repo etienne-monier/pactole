@@ -929,7 +929,11 @@ fn source_items(file: &ParsedFile) -> Vec<SourceItem> {
 /// instead of being treated as distinct paths and recursing without bound.
 /// Absolute paths are preserved as absolute; this only collapses components,
 /// it never resolves a relative path against a base directory.
-pub(crate) fn normalize_lexically(path: &Path) -> PathBuf {
+///
+/// Exposed so callers comparing an externally-computed path (e.g. a
+/// configured declaration file) against [`AnalyzedProject::files`] can use
+/// the exact same normalization.
+pub fn normalize_lexically(path: &Path) -> PathBuf {
     use std::path::Component;
 
     let mut components = path.components().peekable();

@@ -33,7 +33,7 @@
 
 use std::path::{Path, PathBuf};
 
-use pactole_config::{Overrides, ValidationLevel, ValidationOptions};
+use pactole_config::{DeclarationOptions, Overrides, ValidationLevel, ValidationOptions};
 use serde::Deserialize;
 
 /// Raw shape of the `initializationOptions` JSON value this server
@@ -85,12 +85,46 @@ pub struct Config {
     /// by `initializationOptions`.
     pub validation: ValidationOptions,
 
+    /// Declaration files from the layered configuration files, with their
+    /// paths resolved against the journal's directory (see
+    /// [`Config::resolve_declaration_paths`]).
+    pub declarations: DeclarationTargets,
+
     /// The `initializationOptions` payee override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
     payee_override: Option<ValidationLevel>,
+
+    /// The raw `[declaration]` paths from the layered configuration files,
+    /// kept unresolved so [`Config::load_layered`] can resolve them once the
+    /// journal location is known.
+    declaration_paths: DeclarationOptions,
+}
+
+/// Files receiving new declarations, resolved to absolute-ish paths.
+///
+/// A field is `None` when its `[declaration]` key is unset, or when no
+/// `journal_file` is configured (there is no directory to resolve a relative
+/// path against, and no project to validate against anyway).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DeclarationTargets {
+    /// File receiving new `payee "..."` declarations.
+    pub payees: Option<PathBuf>,
+    /// File receiving new `DATE open ACCOUNT` declarations.
+    pub accounts: Option<PathBuf>,
+    /// File receiving new `DATE commodity COMMODITY` declarations.
+    pub commodities: Option<PathBuf>,
 }
 
 impl Config {
+    /// Builds a [`Config`] with the given declaration targets, for tests and
+    /// callers that resolve paths themselves.
+    pub fn with_declarations(declarations: DeclarationTargets) -> Self {
+        Self {
+            declarations,
+            ..Self::default()
+        }
+    }
+
     /// Builds a [`Config`] from the raw `initializationOptions` JSON value
     /// (as received in [`lsp_types::InitializeParams::initialization_options`])
     /// and the workspace root directory (derived from `rootUri`/`rootPath`,
@@ -149,7 +183,9 @@ impl Config {
             validation: ValidationOptions {
                 payee: payee_override.unwrap_or_default(),
             },
+            declarations: DeclarationTargets::default(),
             payee_override,
+            declaration_paths: DeclarationOptions::default(),
         }
     }
 
@@ -173,13 +209,50 @@ impl Config {
         };
 
         match pactole_config::Config::load(None, project.as_deref(), &overrides) {
-            Ok(config) => self.validation = config.validation,
+            Ok(config) => {
+                self.validation = config.validation;
+                self.declaration_paths = config.declaration;
+            }
             Err(error) => {
                 log::warn!(
                     "cannot load `pactole.toml`, keeping current validation settings: {error}"
                 );
             }
         }
+
+        self.resolve_declaration_paths();
+    }
+
+    /// Resolves the raw `[declaration]` paths against the journal's directory.
+    ///
+    /// Declaration files are looked up the same way an `include` written in
+    /// the root journal is: relative to the journal's own directory. A
+    /// relative path is therefore meaningful only when a `journal_file` is
+    /// configured, which is also the only situation where business
+    /// diagnostics exist at all — without a journal every target stays `None`
+    /// and code actions keep editing the current document.
+    fn resolve_declaration_paths(&mut self) {
+        let Some(base) = self.journal_file.as_deref().and_then(Path::parent) else {
+            self.declarations = DeclarationTargets::default();
+            return;
+        };
+
+        let resolve = |raw: &Option<String>| {
+            let raw = raw.as_deref()?;
+            let path = PathBuf::from(raw);
+            let path = if path.is_absolute() {
+                path
+            } else {
+                base.join(path)
+            };
+            Some(pactole_storage_fs::normalize_lexically(&path))
+        };
+
+        self.declarations = DeclarationTargets {
+            payees: resolve(&self.declaration_paths.payees),
+            accounts: resolve(&self.declaration_paths.accounts),
+            commodities: resolve(&self.declaration_paths.commodities),
+        };
     }
 }
 
@@ -312,6 +385,59 @@ mod tests {
         config.load_layered(Some(&dir));
 
         assert_eq!(config.validation.payee, ValidationLevel::Warning);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn declaration_paths_are_resolved_against_the_journal_directory() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-lsp-declaration-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(dir.join("journal")).unwrap();
+        std::fs::write(
+            dir.join("journal").join("pactole.toml"),
+            "[declaration]\npayees = \"payees.pactole\"\naccounts = \"/etc/pactole/accounts.pactole\"\n",
+        )
+        .unwrap();
+
+        let options = serde_json::json!({ "journal_file": "journal/main.pactole" });
+        let mut config = Config::from_initialization_options(Some(&options), Some(&dir));
+        config.load_layered(Some(&dir));
+
+        assert_eq!(
+            config.declarations.payees,
+            Some(dir.join("journal").join("payees.pactole"))
+        );
+        assert_eq!(
+            config.declarations.accounts,
+            Some(PathBuf::from("/etc/pactole/accounts.pactole"))
+        );
+        assert_eq!(config.declarations.commodities, None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn declaration_paths_stay_unresolved_without_a_journal_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-lsp-declaration-no-journal-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("pactole.toml"),
+            "[declaration]\npayees = \"payees.pactole\"\n",
+        )
+        .unwrap();
+
+        let mut config = Config::from_initialization_options(None, Some(&dir));
+        config.load_layered(Some(&dir));
+
+        assert_eq!(config.declarations, DeclarationTargets::default());
 
         std::fs::remove_dir_all(&dir).ok();
     }

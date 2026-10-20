@@ -60,7 +60,7 @@ impl Documents {
     /// open-document map; a `path` that cannot be turned into a URI (should
     /// not normally happen for the paths this server deals with) is treated
     /// as not open.
-    fn get_by_path(&self, path: &Path) -> Option<&str> {
+    pub fn get_by_path(&self, path: &Path) -> Option<&str> {
         let uri = Url::from_file_path(path).ok()?;
         self.get(&uri)
     }

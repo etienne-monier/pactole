@@ -88,6 +88,14 @@ pub fn position_to_offset(source: &str, pos: &lsp_types::Position) -> usize {
     line_start + byte_pos
 }
 
+/// Returns the source text covered by `range`, or `None` when the range is
+/// outside `source` or splits a UTF-8 character boundary.
+pub fn text_at_range<'a>(source: &'a str, range: &lsp_types::Range) -> Option<&'a str> {
+    let start = position_to_offset(source, &range.start);
+    let end = position_to_offset(source, &range.end);
+    source.get(start..end)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +184,27 @@ mod tests {
         let source = "payee \"café\"\n";
         let pos = lsp_types::Position::new(0, 11); // after café (UTF-16 char offset)
         assert_eq!(position_to_offset(source, &pos), 7 + 5); // "payee \"" (7) + "café" (5 bytes) = 12
+    }
+
+    #[test]
+    fn text_at_range_returns_the_covered_slice() {
+        let source = "2026-01-02 * \"Shop\"\n";
+        let range = lsp_types::Range::new(
+            lsp_types::Position::new(0, 13),
+            lsp_types::Position::new(0, 19),
+        );
+
+        assert_eq!(text_at_range(source, &range), Some("\"Shop\""));
+    }
+
+    #[test]
+    fn text_at_range_returns_none_outside_the_source() {
+        let source = "2026-01-02 * \"Shop\"\n";
+        let range = lsp_types::Range::new(
+            lsp_types::Position::new(9, 0),
+            lsp_types::Position::new(9, 4),
+        );
+
+        assert_eq!(text_at_range(source, &range), Some(""));
     }
 }

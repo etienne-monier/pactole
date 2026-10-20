@@ -482,6 +482,10 @@ Schéma :
   configurable (payee non déclaré) ; les autres contrôles métier restent des
   erreurs. Le niveau futur `off` est rejeté avec un message explicite (voir
   §10).
+- `[declaration]` : `payees`, `accounts`, `commodities` — les fichiers
+  recevant les nouvelles déclarations insérées par un front-end éditeur. Les
+  chemins restent bruts dans cette crate ; le consommateur (`pactole-lsp`)
+  les résout par rapport au répertoire du journal.
 - `[format] posting_width` : colonne d'alignement des montants (défaut 50).
 - `[import]` : `bank_account`, `currency`,
   `default_counter_account`, `[import.accounts]`, `[[import.rules]]` — les

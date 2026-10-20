@@ -14,6 +14,7 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawFile {
     pub(crate) validation: Option<RawValidation>,
+    pub(crate) declaration: Option<RawDeclaration>,
     pub(crate) format: Option<RawFormat>,
     pub(crate) import: Option<RawImport>,
 }
@@ -23,6 +24,15 @@ pub(crate) struct RawFile {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawValidation {
     pub(crate) payee: Option<String>,
+}
+
+/// The `[declaration]` section, unmerged.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RawDeclaration {
+    pub(crate) payees: Option<String>,
+    pub(crate) accounts: Option<String>,
+    pub(crate) commodities: Option<String>,
 }
 
 /// The `[format]` section, unmerged.
@@ -81,6 +91,19 @@ impl RawFile {
             self.validation
                 .get_or_insert_with(RawValidation::default)
                 .payee = Some(payee);
+        }
+
+        if let Some(declaration) = upper.declaration {
+            let target = self.declaration.get_or_insert_with(RawDeclaration::default);
+            if let Some(payees) = declaration.payees {
+                target.payees = Some(payees);
+            }
+            if let Some(accounts) = declaration.accounts {
+                target.accounts = Some(accounts);
+            }
+            if let Some(commodities) = declaration.commodities {
+                target.commodities = Some(commodities);
+            }
         }
 
         if let Some(format) = upper.format

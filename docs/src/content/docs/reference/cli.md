@@ -30,7 +30,7 @@ Without `--config`, Pactole reads the user-level `pactole.toml`
 (`~/.config/pactole/pactole.toml`, or
 `$XDG_CONFIG_HOME/pactole/pactole.toml`), then the project `pactole.toml`
 next to the journal being processed, merging them key by key. Every setting
-(`[validation]`, `[format]`, `[import]`) lives in that single file; unknown
+(`[validation]`, `[declaration]`, `[format]`, `[import]`) lives in that single file; unknown
 keys are rejected so typos fail loudly.
 
 ## `pactole parse`

@@ -233,4 +233,14 @@ currency = "EUR"
 default_counter_account = "Depenses:A-Classer"
 ```
 
+Optional, for editors: the `[declaration]` section names the files that
+receive new payee/account/commodity declarations (see the `pactole-lsp`
+README).
+
+```toml
+[declaration]
+payees = "payees.pactole"
+accounts = "accounts.pactole"
+```
+
 More commands (querying balances, reports, etc.) are coming.

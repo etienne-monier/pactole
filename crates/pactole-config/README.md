@@ -28,7 +28,11 @@ Unknown keys are rejected per section, so typos fail loudly.
 
 ```toml
 [validation]
-payee = "error" # "warn" or "error"
+payee = "error" # "warn", "error" or "off"
+
+[declaration]
+payees = "payees.pactole"
+accounts = "accounts.pactole"
 
 [format]
 posting_width = 50
@@ -50,6 +54,10 @@ payee = "Supermarket"
 - `[validation] payee` controls whether a transaction whose payee has no
   `payee` declaration is ignored (`off`), a warning (`warn`), or an error
   (`error`, the default). The payee itself remains mandatory in the grammar.
+- `[declaration]` (`payees`, `accounts`, `commodities`) names the files where
+  an editor front-end should insert a new declaration, instead of the current
+  document. Paths are kept raw here; the consumer resolves them against the
+  journal's directory. See the `pactole-lsp` README.
 - `[format] posting_width` is the column at which posting amounts are
   aligned (default 50).
 - `[import]` holds the OFX import settings used by `pactole import-ofx`. It

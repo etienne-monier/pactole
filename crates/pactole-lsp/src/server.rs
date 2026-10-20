@@ -124,7 +124,17 @@ fn handle_request(
     // -----------------------------
     if request.method == lsp_types::request::CodeActionRequest::METHOD {
         let params: CodeActionParams = serde_json::from_value(request.params)?;
-        let result = crate::code_action::actions_for(documents, &params.text_document.uri, &params);
+        // Declaration quick fixes need the project (to know which files are
+        // actually reachable through `include`), so the same analysis the
+        // diagnostics were computed from is reused here.
+        let project = analyze_project(config, documents);
+        let result = crate::code_action::actions_for(
+            documents,
+            &params.text_document.uri,
+            &params,
+            config,
+            project.as_ref(),
+        );
         let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
         connection.sender.send(Message::Response(resp))?;
         return Ok(());
@@ -271,6 +281,29 @@ fn publish_for(
     Ok(())
 }
 
+/// Analyzes the configured project, following `include`s from the root
+/// journal, or returns `None` when no `journal_file` is configured or it
+/// cannot be loaded.
+///
+/// This is the single place project analysis happens: both diagnostics
+/// publication and the declaration code actions reuse it, so they always
+/// agree on which files belong to the project.
+fn analyze_project(
+    config: &Config,
+    documents: &Documents,
+) -> Option<pactole_storage_fs::AnalyzedProject> {
+    let journal_file = config.journal_file.as_ref()?;
+    let loader = DocumentsSourceLoader::new(documents);
+
+    match analyze_file_with_loader_with_options(journal_file, &loader, &config.validation) {
+        Ok(project) => Some(project),
+        Err(_) => {
+            log::warn!("project analysis failed for journal_file={journal_file:?}");
+            None
+        }
+    }
+}
+
 /// Collects diagnostics without depending on the LSP transport.
 ///
 /// A configured project is preferred. If the current document is not part of
@@ -282,34 +315,22 @@ fn collect_diagnostics(
     documents: &Documents,
     uri: &Url,
 ) -> HashMap<Url, Vec<Diagnostic>> {
-    if let Some(journal_file) = &config.journal_file {
-        let loader = DocumentsSourceLoader::new(documents);
-        match analyze_file_with_loader_with_options(journal_file, &loader, &config.validation) {
-            Ok(project) => {
-                let mut publications = HashMap::new();
-                for (path, diagnostics) in project_diagnostics(&project) {
-                    if let Some(file_uri) = path_to_url(&path) {
-                        publications.insert(file_uri, diagnostics);
-                    }
-                }
-
-                if !publications.contains_key(uri)
-                    && let Some(source) = documents.get(uri)
-                {
-                    let file = pactole_storage_fs::analyze_file(source);
-                    let path = uri.to_file_path().unwrap_or_default();
-                    publications.insert(uri.clone(), standalone_diagnostics(&file, &path));
-                }
-                return publications;
-            }
-            Err(_) => {
-                log::warn!(
-                    "project analysis failed, falling back to standalone analysis of {}: journal_file={:?}",
-                    uri,
-                    journal_file
-                );
+    if let Some(project) = analyze_project(config, documents) {
+        let mut publications = HashMap::new();
+        for (path, diagnostics) in project_diagnostics(&project) {
+            if let Some(file_uri) = path_to_url(&path) {
+                publications.insert(file_uri, diagnostics);
             }
         }
+
+        if !publications.contains_key(uri)
+            && let Some(source) = documents.get(uri)
+        {
+            let file = pactole_storage_fs::analyze_file(source);
+            let path = uri.to_file_path().unwrap_or_default();
+            publications.insert(uri.clone(), standalone_diagnostics(&file, &path));
+        }
+        return publications;
     }
 
     let Some(source) = documents.get(uri) else {

@@ -10,7 +10,8 @@ use pactole_syntax::SyntaxDiagnostic;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::analysis::normalize_lexically;
+pub use crate::analysis::normalize_lexically;
+
 pub mod analysis;
 pub mod errors;
 pub mod loader;

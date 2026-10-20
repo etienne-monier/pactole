@@ -17,6 +17,10 @@
 //! [validation]
 //! payee = "warn" # `warn` or `error`
 //!
+//! [declaration]
+//! payees = "payees.pactole"
+//! accounts = "accounts.pactole"
+//!
 //! [format]
 //! posting_width = 50
 //!
@@ -34,6 +38,7 @@
 //! This crate is a leaf: it depends on no other Pactole crate. All other
 //! crates depend on it for their configuration needs.
 
+mod declaration;
 mod format;
 mod import;
 mod raw;
@@ -43,6 +48,7 @@ use std::path::{Path, PathBuf};
 
 use crate::raw::{RawDirection, RawFile, RawRule};
 
+pub use crate::declaration::DeclarationOptions;
 pub use crate::format::FormatOptions;
 pub use crate::import::{Direction, ImportConfig, Rule};
 pub use crate::validation::{ValidationLevel, ValidationOptions};
@@ -102,6 +108,9 @@ pub struct Overrides {
 pub struct Config {
     /// Validation strictness (the `[validation]` section).
     pub validation: ValidationOptions,
+    /// Declaration files (the `[declaration]` section), with paths kept
+    /// unresolved.
+    pub declaration: DeclarationOptions,
     /// Formatter options (the `[format]` section).
     pub format: FormatOptions,
     /// Import settings (the `[import]` section), or `None` when no layer
@@ -145,6 +154,7 @@ impl Config {
 
         Ok(Config {
             validation: resolve_validation(&merged, overrides),
+            declaration: resolve_declaration(&merged),
             format: resolve_format(&merged),
             import: resolve_import(&merged, import_path)?,
         })
@@ -266,6 +276,18 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
 
     ValidationOptions {
         payee: overrides.payee.or(payee).unwrap_or_default(),
+    }
+}
+
+fn resolve_declaration(merged: &RawFile) -> DeclarationOptions {
+    let Some(declaration) = &merged.declaration else {
+        return DeclarationOptions::default();
+    };
+
+    DeclarationOptions {
+        payees: declaration.payees.clone(),
+        accounts: declaration.accounts.clone(),
+        commodities: declaration.commodities.clone(),
     }
 }
 

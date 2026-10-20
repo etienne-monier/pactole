@@ -20,6 +20,21 @@ fn empty_layers_yield_defaults() {
     assert_eq!(config.validation.payee, ValidationLevel::Error);
     assert_eq!(config.format.posting_width, 50);
     assert_eq!(config.import, None);
+    assert!(config.declaration.is_empty());
+}
+
+#[test]
+fn parses_declaration_files() {
+    let config =
+        resolve("[declaration]\npayees = \"payees.pactole\"\naccounts = \"accounts.pactole\"\n")
+            .unwrap();
+
+    assert_eq!(config.declaration.payees.as_deref(), Some("payees.pactole"));
+    assert_eq!(
+        config.declaration.accounts.as_deref(),
+        Some("accounts.pactole")
+    );
+    assert_eq!(config.declaration.commodities, None);
 }
 
 #[test]
@@ -178,6 +193,7 @@ fn rejects_an_incomplete_import_section() {
 fn rejects_unknown_keys_in_every_section() {
     for contents in [
         "[validation]\npaye = \"warn\"\n",
+        "[declaration]\npayes = \"payees.pactole\"\n",
         "[format]\nposting_widthh = 40\n",
         "[import]\nbankaccount = \"Assets:Checking\"\n",
         "[unknown]\nkey = 1\n",

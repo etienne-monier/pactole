@@ -71,6 +71,22 @@ so a journal being migrated from another tool stays green in the editor. A
 broken or unreadable configuration file is logged and ignored rather than
 failing initialization.
 
+The `[declaration]` section of `pactole.toml` can redirect new declarations to
+separate files:
+
+```toml
+[declaration]
+payees = "payees.pactole"
+accounts = "accounts.pactole"
+commodities = "commodities.pactole"
+```
+
+Each path is resolved against the journal's directory, like an `include`. The
+quick fix that declares a missing payee, account or commodity then appends to
+the matching file, provided that file is reachable from the root journal
+through an `include`; otherwise it falls back to the current document. The
+server never creates the file nor adds the `include`.
+
 See [Diagnostics and project analysis](/reference/diagnostics/) for the
 standalone/project distinction, partial analysis behavior and include
 diagnostic codes.
@@ -99,7 +115,9 @@ and generic editor configuration examples, including the external formatter.
   selecting it inserts the date in `YYYY-MM-DD` format and replaces a partial
   date such as `2026-`;
 - offers a quick fix to insert the date of the day on an undated `open`,
-  `close`, `commodity`, `balance` or transaction directive.
+  `close`, `commodity`, `balance` or transaction directive;
+- offers a quick fix to declare a missing payee, account or commodity, either
+  above the offending transaction or in a `[declaration]` file.
 
 Document synchronization is full-document rather than incremental. This keeps
 the server simple and robust for the typically small, hand-edited journals

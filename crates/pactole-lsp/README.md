@@ -33,7 +33,7 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
 - `conversion.rs`: `span_to_range`/`point_to_position`, converting
   `pactole-syntax`'s byte-based `Span`/`Point` into LSP's UTF-16
   `Range`/`Position`, by re-scanning the relevant source line.
-- `diagnostics.rs`: `diagnostics_for_file` (syntax + lowering
+- `diagnostics.rs`: `standalone_diagnostics` (syntax + lowering
   diagnostics for a `ParsedFile`) and `project_diagnostics` (per-file
   diagnostics, plus `IncludeIssue`s attached to the file containing the
   offending `include`, for an `AnalyzedProject`).
@@ -41,8 +41,9 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   `initializationOptions` and the layered `pactole.toml` files. Supports
   `journal_file` (path of the root `.pactole` file, resolved against the
   workspace root, or against the server's current working directory if no
-  root is known) and `validation` (a `"warn"`/`"error"` string or a
-  `{ "payee": ... }` table). Validation settings follow the CLI layering:
+  root is known), `validation` (a `"warn"`/`"error"` string or a
+  `{ "payee": ... }` table) and the `[declaration]` section of
+  `pactole.toml` (see below). Validation settings follow the CLI layering:
   user-level `pactole.toml`, then project `pactole.toml` (next to
   `journal_file`, or at the workspace root when none is configured), then
   `initializationOptions`. Broken configuration files and the unsupported
@@ -59,7 +60,13 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   and links, plus a date-of-the-day item at the beginning of a directive. The
   date item replaces a partially typed `YYYY-` prefix.
 - `code_action.rs`: a quick fix that inserts today's date at the beginning of
-  an undated `open`, `close`, `commodity`, `balance` or transaction directive.
+  an undated `open`, `close`, `commodity`, `balance` or transaction directive,
+  plus declaration quick fixes for the `payee-not-declared`,
+  `account-not-open` and `commodity-not-declared` business diagnostics: the
+  missing declaration is inserted above the offending transaction, either in
+  the current document or in the file configured for that category (see
+  `[declaration]` below). `open` and `commodity` declarations are dated with
+  the offending transaction's date; a `payee` has no date.
 
 ## Explicitly out of scope (first version)
 
@@ -90,6 +97,29 @@ Validation levels can be overridden the same way, globally or per check:
 
 Without an override, the server reads the same layered `pactole.toml` as the
 CLI (user-level file, then project file).
+
+### Declaration files
+
+The `[declaration]` section of `pactole.toml` tells the server where a new
+payee, account or commodity declaration should go. Each path is resolved
+against the journal's directory, exactly like an `include` written in the root
+journal:
+
+```toml
+[declaration]
+payees = "payees.pactole"
+accounts = "accounts.pactole"
+commodities = "commodities.pactole"
+```
+
+With this configured, a `payee-not-declared`, `account-not-open` or
+`commodity-not-declared` quick fix appends the declaration to the matching
+file instead of the document being edited.
+
+The target file is only used when it is actually reachable from the root
+journal through `include`; when it is not (or when no `journal_file` is
+configured), the quick fix falls back to the current document. The server
+never creates the declaration file nor adds the `include` for you.
 
 ## Dependencies / boundaries
 
