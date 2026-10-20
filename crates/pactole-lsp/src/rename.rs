@@ -10,15 +10,17 @@
 //! `open`, a `close` or `balance`, a posting account). A payee is renamed by
 //! replacing only the *content* of its `string` token, so the surrounding
 //! quotes are preserved (a `string` token is single-line and unescaped per
-//! the grammar, which makes the inner range a safe ±1-character adjustment of
-//! the token range).
+//! the grammar, which makes the inner range a ±1-character adjustment of the
+//! token range). The adjustment is only applied to a token that really
+//! carries both quotes (see `payee_content_range`): a token left
+//! unterminated by error recovery is refused instead of mis-edited.
 //!
 //! Following the roadmap, a position with no symbol — or a symbol that is not
 //! renameable (a commodity, an `include` path, a date, a narration, a tag) —
 //! yields an empty result, never an error. Invalid rename *input* is a
 //! different matter: an invalid new name, or one that would create a
 //! duplicate declaration (`open` or `payee`) across the scope, is reported to
-//! the editor as an [`RenameError`], which the server maps to an
+//! the editor as a [`RenameError`], which the server maps to an
 //! `InvalidParams` response so nothing is applied.
 
 use std::collections::HashMap;
@@ -26,7 +28,8 @@ use std::error::Error;
 use std::fmt;
 
 use lsp_types::{
-    PrepareRenameResponse, RenameParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
+    PrepareRenameResponse, Range, RenameParams, TextDocumentPositionParams, TextEdit, Url,
+    WorkspaceEdit,
 };
 
 use crate::config::Config;
@@ -55,7 +58,7 @@ impl Error for RenameError {}
 /// under the cursor across the navigation scope, as a single
 /// [`WorkspaceEdit`]. Non-renamable symbols, positions without a symbol, and
 /// a rename to the same name yield `Ok(None)`; an invalid or conflicting new
-/// name is an [`RenameError`].
+/// name is a [`RenameError`].
 pub fn handle_rename(
     config: &Config,
     documents: &Documents,
@@ -86,6 +89,16 @@ pub fn handle_rename(
     // The project is owned by this frame while the scope borrows it, so the
     // occurrences (and the edits built from them) cannot outlive the analysis.
     let project = analyze_scope(config, documents, &uri);
+    // A configured journal that fails to analyze would silently narrow the
+    // scope to the current file only, applying a partial rename across the
+    // journal: refuse instead of mutating a subset of the files.
+    if config.journal_file.is_some() && project.is_none() {
+        return Err(RenameError(
+            "cannot analyze the configured journal file; rename would be incomplete across the journal, fix the journal first"
+                .to_string(),
+        )
+        .into());
+    }
     let scope = Scope::build(project.as_ref(), &uri, &current_file);
 
     let occurrences = scoped_occurrences(&scope);
@@ -99,20 +112,33 @@ pub fn handle_rename(
         let Some(location) = &occurrence.location else {
             // A file with no URI cannot be edited from the client side; in
             // practice only an untitled buffer outside the request itself
-            // could get here.
+            // could get here. Never log the occurrence's name: it is
+            // document content (see the README's logging policy).
             log::warn!(
-                "skipping rename occurrence of `{}` without a URI",
-                occurrence.name
+                "skipping a {:?} rename occurrence without a URI in {:?}",
+                occurrence.kind,
+                occurrence.path
             );
             continue;
         };
-        let mut range = location.range;
-        if occurrence.kind == SymbolKind::Payee {
+        let range = if occurrence.kind == SymbolKind::Payee {
             // Keep the surrounding quotes: replace only the string's
-            // content (single-line token with single UTF-16-unit quotes).
-            range.start.character += 1;
-            range.end.character -= 1;
-        }
+            // content. A degenerate token (error recovery left the string
+            // unterminated) cannot be edited safely: refuse the whole
+            // rename rather than corrupting that file.
+            match payee_content_range(&location.range, occurrence.name) {
+                Some(range) => range,
+                None => {
+                    return Err(RenameError(format!(
+                        "cannot rename `{}`: an occurrence is an unterminated string (missing closing quote), fix it first",
+                        occurrence.name
+                    ))
+                    .into());
+                }
+            }
+        } else {
+            location.range
+        };
         changes
             .entry(location.uri.clone())
             .or_default()
@@ -155,22 +181,49 @@ pub fn handle_prepare_rename(
         return Ok(None);
     };
 
-    let mut range = span_to_range(&source, &span);
+    let range = span_to_range(&source, &span);
     match symbol.kind {
         SymbolKind::Account => Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
             range,
             placeholder: symbol.name,
         })),
         SymbolKind::Payee => {
-            range.start.character += 1;
-            range.end.character -= 1;
+            // The inner range is only offered on a well-formed `"…"` token;
+            // a token left unterminated by error recovery has no safe inner
+            // range, so the position is reported as not renameable.
+            let Some(content) = payee_content_range(&range, &symbol.name) else {
+                return Ok(None);
+            };
             Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                range,
+                range: content,
                 placeholder: symbol.name,
             }))
         }
         _ => Ok(None),
     }
+}
+
+/// Returns the range of a payee `string` token's *content* (the token range
+/// with the surrounding quotes removed), or `None` for a degenerate token.
+///
+/// A well-formed token is `"` + content + `"` with single UTF-16-unit quotes
+/// and no escape, so its length in UTF-16 units is exactly the name's length
+/// plus two. Error recovery can leave a string unterminated (a `MISSING`
+/// closing-quote node inside the `string` node), in which case the name still
+/// carries the leading quote and this length check fails; a zero-width
+/// `MISSING` token fails it too. Adjusting such a range would drop (or
+/// duplicate) a real character of the source, so callers refuse the rename
+/// instead of applying a corrupted edit.
+fn payee_content_range(range: &Range, name: &str) -> Option<Range> {
+    let token_units = range.end.character.checked_sub(range.start.character)?;
+    let quoted_units = u32::try_from(name.encode_utf16().count()).ok()? + 2;
+    if token_units != quoted_units {
+        return None;
+    }
+    let mut content = *range;
+    content.start.character += 1;
+    content.end.character -= 1;
+    Some(content)
 }
 
 /// Validates the requested new name for `kind` against the grammar only
@@ -227,7 +280,7 @@ fn check_conflict(
 mod tests {
     use super::*;
 
-    use lsp_types::{Position, Range, TextDocumentIdentifier, WorkDoneProgressParams};
+    use lsp_types::{Position, TextDocumentIdentifier, WorkDoneProgressParams};
 
     fn main_path() -> std::path::PathBuf {
         std::path::PathBuf::from("/journal/main.pactole")
@@ -325,6 +378,24 @@ mod tests {
         assert!(narration.is_none(), "narrations are not renameable");
     }
 
+    #[test]
+    fn prepare_rename_is_empty_for_an_unterminated_payee_string() {
+        // Error recovery keeps the `string` node but inserts a `MISSING`
+        // closing quote (see the `pactole-syntax` tests): the token has no
+        // safe inner range, so the position is not renameable.
+        let source = "payee \"abc\n2026-01-02 * \"abc\n  Assets:Checking -10 EUR\n";
+        let uri = main_uri();
+        let mut documents = Documents::new();
+        documents.open(uri.clone(), source.to_string());
+
+        let response =
+            handle_prepare_rename(&documents, prepare_params(&uri, Position::new(0, 7))).unwrap();
+        assert!(
+            response.is_none(),
+            "an unterminated string is not renameable"
+        );
+    }
+
     // -----------------------------
     // No-op and empty results
     // -----------------------------
@@ -411,6 +482,40 @@ mod tests {
     }
 
     #[test]
+    fn renames_an_account_in_close_and_balance_directives() {
+        let source = "2026-01-01 open Assets:Old\n2026-02-01 balance Assets:Old 100 EUR\n2026-03-01 close Assets:Old\n";
+        let uri = main_uri();
+        let mut documents = Documents::new();
+        documents.open(uri.clone(), source.to_string());
+
+        let edit = handle_rename(
+            &Config::default(),
+            &documents,
+            rename_params(&uri, Position::new(1, 20), "Assets:New"),
+        )
+        .unwrap()
+        .expect("the account is renameable");
+
+        assert_eq!(
+            edits_in(&edit, &uri),
+            &[
+                TextEdit {
+                    range: Range::new(Position::new(0, 16), Position::new(0, 26)),
+                    new_text: "Assets:New".to_string(),
+                },
+                TextEdit {
+                    range: Range::new(Position::new(1, 19), Position::new(1, 29)),
+                    new_text: "Assets:New".to_string(),
+                },
+                TextEdit {
+                    range: Range::new(Position::new(2, 17), Position::new(2, 27)),
+                    new_text: "Assets:New".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn renames_an_account_across_the_include_graph() {
         let main_source =
             "include \"accounts.pactole\"\n2026-01-02 * \"Shop\"\n  Assets:Checking -10 EUR\n";
@@ -487,6 +592,54 @@ mod tests {
     // -----------------------------
 
     #[test]
+    fn rename_refuses_an_unterminated_payee_string() {
+        // Same degenerate token as
+        // `prepare_rename_is_empty_for_an_unterminated_payee_string`: the
+        // inner range would drop the last character of the token, so the
+        // rename is refused instead of corrupting the file.
+        let source = "payee \"abc\n2026-01-02 * \"abc\n  Assets:Checking -10 EUR\n";
+        let uri = main_uri();
+        let mut documents = Documents::new();
+        documents.open(uri.clone(), source.to_string());
+
+        let error = handle_rename(
+            &Config::default(),
+            &documents,
+            rename_params(&uri, Position::new(1, 15), "abd"),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("unterminated string"),
+            "unexpected message: {error}"
+        );
+    }
+
+    #[test]
+    fn rename_refuses_when_the_journal_cannot_be_analyzed() {
+        // A configured journal that fails to load would silently narrow the
+        // rename to the current file only: the request is refused instead.
+        let uri = main_uri();
+        let mut documents = Documents::new();
+        documents.open(uri.clone(), "2026-01-01 open Assets:Checking\n".to_string());
+
+        let mut config = Config::default();
+        config.journal_file = Some(std::path::PathBuf::from("/missing/main.pactole"));
+
+        let error = handle_rename(
+            &config,
+            &documents,
+            rename_params(&uri, Position::new(0, 18), "Assets:Current"),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("cannot analyze"),
+            "unexpected message: {error}"
+        );
+    }
+
+    #[test]
     fn rename_rejects_an_invalid_account_name() {
         let uri = main_uri();
         let mut documents = Documents::new();
@@ -512,7 +665,7 @@ mod tests {
         let mut documents = Documents::new();
         documents.open(uri.clone(), "payee \"Whole Foods\"\n".to_string());
 
-        for new_name in ["bad\"name", ""] {
+        for new_name in ["bad\"name", "bad\nname", ""] {
             let error = handle_rename(
                 &Config::default(),
                 &documents,
@@ -587,6 +740,36 @@ mod tests {
             &Config::default(),
             &documents,
             rename_params(&uri, Position::new(1, 6), "A"),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("already declared"),
+            "unexpected message: {error}"
+        );
+    }
+
+    #[test]
+    fn rename_refuses_a_conflicting_declaration_across_files() {
+        let main_source =
+            "include \"accounts.pactole\"\n2026-01-02 * \"Shop\"\n  Assets:Old -10 EUR\n";
+        let accounts_source = "2026-01-01 open Assets:Old\n2026-01-01 open Assets:New\n";
+
+        let uri = main_uri();
+        let accounts_uri = Url::from_file_path("/journal/accounts.pactole").expect("file URL");
+        let mut documents = Documents::new();
+        documents.open(uri.clone(), main_source.to_string());
+        documents.open(accounts_uri.clone(), accounts_source.to_string());
+
+        let mut config = Config::default();
+        config.journal_file = Some(main_path());
+
+        // Both declarations are in the scope (one per file), so merging
+        // would still create a duplicate `open`.
+        let error = handle_rename(
+            &config,
+            &documents,
+            rename_params(&uri, Position::new(2, 4), "Assets:New"),
         )
         .unwrap_err();
 

@@ -261,7 +261,11 @@ pactole/
        quotes). The new name is validated (accounts reuse `pactole_core::AccountName`; payees
        must be non-empty and contain no double quote or newline), and a rename that would
        create a duplicate `open` or `payee` declaration in the scope is refused with a
-       `RenameError`, which `server.rs` maps to an `InvalidParams` response; a no-op rename, a
+       `RenameError`, which `server.rs` maps to an `InvalidParams` response. So are a payee
+       occurrence whose `string` token was left unterminated by error recovery (its inner range
+       is undefined; `prepareRename` reports it as not renameable) and a rename when a
+       configured `journal_file` cannot be analyzed (the edit would cover the current file
+       only); a no-op rename, a
        non-renamable symbol or a position without a symbol yields an empty result.
     - Completion, code actions, hover, navigation and rename are supported. Formatting over LSP (use
       `pactole fmt`), `textDocument/documentSymbol`, incremental sync, and reading

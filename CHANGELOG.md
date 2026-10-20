@@ -48,7 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `textDocument/rename` edits every occurrence across the same include graph
   (payee edits keep the surrounding quotes). An invalid new name, or one that
   would create a duplicate `open` or `payee` declaration, is rejected with an
-  error before anything is applied.
+  error before anything is applied, as are a payee occurrence in an
+  unterminated string and a rename when a configured `journal_file` cannot be
+  analyzed.
 
 ### Changed
 

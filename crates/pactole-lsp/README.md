@@ -95,7 +95,11 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   validated (accounts reuse `pactole_core::AccountName`; payees must be
   non-empty and contain no double quote or newline), and a rename that would
   create a duplicate `open` or `payee` declaration in the scope is refused
-  with an error before anything is applied. A no-op rename, a non-renamable
+  with an error before anything is applied. So is a payee occurrence whose
+  `string` token was left unterminated by error recovery (its inner range is
+  undefined; `prepareRename` reports it as not renameable), and so is a
+  rename when a configured `journal_file` cannot be analyzed, since the edit
+  would silently cover the current file only. A no-op rename, a non-renamable
   symbol (a commodity, an `include` path, a date, a narration, a tag) or a
   position without a symbol returns an empty result rather than an error.
 
