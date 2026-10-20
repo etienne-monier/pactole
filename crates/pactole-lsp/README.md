@@ -18,18 +18,25 @@ existing public API (`analyze_file`, `analyze_file_with_loader`,
 `analyze_file_with_loader_with_options`, `FsSourceLoader`, `SourceLoader`,
 `SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `IncludeIssue`,
 `SyntaxDiagnostic`, `Span`/`Point`) and uses `pactole-config` for layered
-configuration: it neither adds nor modifies anything in these crates.
+configuration: it neither adds nor modifies anything in these crates. It
+also uses `tree-sitter` directly (same version as `pactole-syntax`) to
+locate the CST token under the cursor for navigation.
 
 ## Current features
 
 Diagnostics (`textDocument/publishDiagnostics`), completion
-(`textDocument/completion`) and hover information, via:
+(`textDocument/completion`), hover information, and navigation
+(`textDocument/definition`, `textDocument/references`), via:
 
 - `documents.rs`: `Documents` (in-memory table of open URI → current
-  text) and `DocumentsSourceLoader`, a
+  text), `DocumentsSourceLoader`, a
   `pactole_storage_fs::SourceLoader` that serves the buffer of an open
   (potentially unsaved) document when one exists for a given path, with
-  a fallback to `FsSourceLoader` otherwise.
+  a fallback to `FsSourceLoader` otherwise, plus the request-scope helpers
+  shared by hover, completion and navigation: `uri_to_path` (the `file:`
+  path behind a document URI) and `analyze_scope` (the configured journal's
+  include graph, or the current document as its own entry point when none
+  is configured).
 - `conversion.rs`: `span_to_range`/`point_to_position`, converting
   `pactole-syntax`'s byte-based `Span`/`Point` into LSP's UTF-16
   `Range`/`Position`, by re-scanning the relevant source line.
@@ -67,12 +74,23 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   the current document or in the file configured for that category (see
   `[declaration]` below). `open` and `commodity` declarations are dated with
   the offending transaction's date; a `payee` has no date.
+- `navigation.rs`: goto definition and find references for accounts, payees
+  and commodities, plus goto definition on an `include` path (jumps to the
+  included file). Both requests share one occurrence index built directly
+  from each file's CST, searched across one shared scope: the whole include
+  graph of `journal_file` (unsaved open buffers taking precedence over what
+  is on disk), plus the current document when it is not part of that
+  project — and, when no `journal_file` is configured, the current document
+  as its own entry point, so its own `include`s are followed too (the same
+  scope hover and completion use via `documents::analyze_scope`). A
+  position with no symbol, or a symbol with no declaration, returns an
+  empty result rather than an error.
 
 ## Explicitly out of scope (first version)
 
-Navigation, formatting via LSP (use `pactole fmt`) and incremental sync. Any
-unhandled request receives a `MethodNotFound` error rather than being silently
-ignored.
+Document symbols (`textDocument/documentSymbol`), formatting via LSP (use
+`pactole fmt`) and incremental sync. Any unhandled request receives a
+`MethodNotFound` error rather than being silently ignored.
 See the roadmap in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §10
 for the planned status of these items.
 
@@ -176,7 +194,7 @@ diagnostics publications).
 ## See also
 
 - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §5 — full
-  description of the current LSP, its limits, and the roadmap (navigation,
-  LSP formatting, incremental sync).
+  description of the current LSP, its limits, and the roadmap (document
+  symbols, LSP formatting, incremental sync).
 - [`../../README.md`](../../README.md#configuration) — the shared
   `pactole.toml` format and layering rules.

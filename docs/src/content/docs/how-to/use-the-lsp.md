@@ -117,7 +117,12 @@ and generic editor configuration examples, including the external formatter.
 - offers a quick fix to insert the date of the day on an undated `open`,
   `close`, `commodity`, `balance` or transaction directive;
 - offers a quick fix to declare a missing payee, account or commodity, either
-  above the offending transaction or in a `[declaration]` file.
+  above the offending transaction or in a `[declaration]` file;
+- jumps from an account, payee or commodity to its declaration
+  (`textDocument/definition`), and from an `include` path to the included
+  file;
+- lists every occurrence of an account, payee or commodity across the
+  include graph (`textDocument/references`).
 
 Document synchronization is full-document rather than incremental. This keeps
 the server simple and robust for the typically small, hand-edited journals
@@ -127,7 +132,7 @@ Pactole is designed for.
 
 The language server does not currently provide:
 
-- navigation or references;
+- document symbols (`textDocument/documentSymbol`);
 - automatic insertion without selecting a completion or code action;
 - formatting through LSP (use [`pactole fmt`](/reference/cli/) instead);
 - incremental synchronization.

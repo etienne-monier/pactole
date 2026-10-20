@@ -16,9 +16,10 @@
 //! `journal_file` or at the workspace root), overridden by the
 //! `initializationOptions` `validation` key (see [`config`]).
 //!
-//! Completion, code actions and hover are supported for editor assistance;
-//! formatting is intentionally left to the `pactole fmt` command. Navigation,
-//! incremental synchronization and formatting over LSP are not supported yet.
+//! Completion, code actions, hover and navigation (`textDocument/definition`,
+//! `textDocument/references`) are supported for editor assistance; formatting
+//! is intentionally left to the `pactole fmt` command. Incremental
+//! synchronization is not supported yet.
 
 pub mod code_action;
 pub mod completion;
@@ -27,4 +28,5 @@ pub mod conversion;
 pub mod diagnostics;
 pub mod documents;
 pub mod hover;
+pub mod navigation;
 pub mod server;

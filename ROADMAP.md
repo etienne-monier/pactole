@@ -146,11 +146,15 @@ journals.
 ### P1.3 — Add LSP navigation
 
 - [ ] Implement `textDocument/documentSymbol`.
-- [ ] Implement `textDocument/definition` for accounts, payees, and
-  commodities.
-- [ ] Implement `textDocument/references` for the same symbols.
-- [ ] Add navigation tests across included files.
-- [ ] Return an empty result, rather than an error, when no definition exists.
+- [x] Implement `textDocument/definition` for accounts, payees, and
+  commodities (also on `include` paths, which jump to the included file).
+- [x] Implement `textDocument/references` for the same symbols.
+- [x] Add navigation tests across included files.
+- [x] Return an empty result, rather than an error, when no definition exists.
+
+Note: definition and references currently re-scan each file's CST per
+request; the positioned index of P1.2 can later replace that shared
+occurrence layer without changing the LSP behavior.
 
 ### P1.4 — Improve the existing completion and hover features
 

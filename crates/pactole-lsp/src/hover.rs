@@ -1,25 +1,20 @@
 //! Hover support for `.pactole` files.
 
 use std::error::Error;
-use std::path::PathBuf;
 
-use lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, Url};
+use lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind};
 
 use pactole_core::Entry;
 use pactole_storage_fs::{AnalyzedProject, ParsedFile};
 
 use crate::config::Config;
 use crate::conversion::position_to_offset;
-use crate::documents::{Documents, DocumentsSourceLoader};
+use crate::documents::{Documents, analyze_scope};
 
 #[derive(Clone, Debug)]
 struct SymbolInfo {
     kind: &'static str,
     detail: String,
-}
-
-fn uri_to_path(uri: &Url) -> Option<PathBuf> {
-    uri.to_file_path().ok()
 }
 
 fn find_word_at(text: &str, offset: usize) -> String {
@@ -189,30 +184,8 @@ pub fn handle_hover(
         return Ok(None);
     }
 
-    let current_doc_path = uri_to_path(&uri);
     let file = pactole_storage_fs::analyze_file(&source);
-
-    let project = if let Some(journal_file) = &config.journal_file {
-        let loader = DocumentsSourceLoader::new(documents);
-        pactole_storage_fs::analyze_file_with_loader_with_options(
-            journal_file,
-            &loader,
-            &config.validation,
-        )
-        .ok()
-    } else {
-        let loader = DocumentsSourceLoader::new(documents);
-        if let Some(p) = current_doc_path.as_deref() {
-            pactole_storage_fs::analyze_file_with_loader_with_options(
-                p,
-                &loader,
-                &config.validation,
-            )
-            .ok()
-        } else {
-            None
-        }
-    };
+    let project = analyze_scope(config, documents, &uri);
 
     if let Some(info) = build_hover_for_word_combined(&word, project.as_ref(), &file) {
         let contents = HoverContents::Markup(MarkupContent {

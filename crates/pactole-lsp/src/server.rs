@@ -13,7 +13,7 @@ use lsp_types::notification::{
 use lsp_types::request::Request;
 use lsp_types::{
     CodeActionParams, CodeActionProviderCapability, CompletionOptions, CompletionParams,
-    Diagnostic, HoverProviderCapability, InitializeParams, PublishDiagnosticsParams,
+    Diagnostic, HoverProviderCapability, InitializeParams, OneOf, PublishDiagnosticsParams,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
@@ -79,6 +79,8 @@ fn server_capabilities() -> ServerCapabilities {
         }),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
+        definition_provider: Some(OneOf::Left(true)),
+        references_provider: Some(OneOf::Left(true)),
         ..Default::default()
     }
 }
@@ -166,6 +168,48 @@ fn handle_request(
     if request.method == lsp_types::request::HoverRequest::METHOD {
         let params: lsp_types::HoverParams = serde_json::from_value(request.params)?;
         match crate::hover::handle_hover(config, documents, params) {
+            Ok(result) => {
+                let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
+                connection.sender.send(Message::Response(resp))?;
+            }
+            Err(err) => {
+                let response = lsp_server::Response::new_err(
+                    request.id,
+                    lsp_server::ErrorCode::InternalError as i32,
+                    err.to_string(),
+                );
+                connection.sender.send(Message::Response(response))?;
+            }
+        }
+        return Ok(());
+    }
+    // -----------------------------
+    // Goto definition request
+    // -----------------------------
+    if request.method == lsp_types::request::GotoDefinition::METHOD {
+        let params: lsp_types::GotoDefinitionParams = serde_json::from_value(request.params)?;
+        match crate::navigation::handle_definition(config, documents, params) {
+            Ok(result) => {
+                let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
+                connection.sender.send(Message::Response(resp))?;
+            }
+            Err(err) => {
+                let response = lsp_server::Response::new_err(
+                    request.id,
+                    lsp_server::ErrorCode::InternalError as i32,
+                    err.to_string(),
+                );
+                connection.sender.send(Message::Response(response))?;
+            }
+        }
+        return Ok(());
+    }
+    // -----------------------------
+    // Find references request
+    // -----------------------------
+    if request.method == lsp_types::request::References::METHOD {
+        let params: lsp_types::ReferenceParams = serde_json::from_value(request.params)?;
+        match crate::navigation::handle_references(config, documents, params) {
             Ok(result) => {
                 let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
                 connection.sender.send(Message::Response(resp))?;
@@ -400,6 +444,14 @@ mod tests {
         let capabilities = serde_json::to_value(server_capabilities()).unwrap();
 
         assert_eq!(capabilities["hoverProvider"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn advertises_navigation_support() {
+        let capabilities = serde_json::to_value(server_capabilities()).unwrap();
+
+        assert_eq!(capabilities["definitionProvider"], serde_json::json!(true));
+        assert_eq!(capabilities["referencesProvider"], serde_json::json!(true));
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionTextEdit,
-    InsertTextFormat, Position, Range, TextEdit, Url,
+    InsertTextFormat, Position, Range, TextEdit,
 };
 
 use chrono::Local;
@@ -14,7 +14,7 @@ use pactole_storage_fs::{AnalyzedProject, ParsedFile};
 
 use crate::config::Config;
 use crate::conversion::position_to_offset;
-use crate::documents::{Documents, DocumentsSourceLoader};
+use crate::documents::{Documents, analyze_scope, uri_to_path};
 use std::error::Error;
 
 #[derive(Clone, Debug, Default)]
@@ -401,10 +401,6 @@ fn completions_for_context(
     items
 }
 
-fn uri_to_path(uri: &Url) -> Option<PathBuf> {
-    uri.to_file_path().ok()
-}
-
 /// Computes completion items for the requested document position.
 pub fn handle_completion(
     config: &Config,
@@ -423,19 +419,8 @@ pub fn handle_completion(
     let ctx = context_at(&source, offset, &pos);
     let current_doc_path = uri_to_path(&uri);
 
-    let index = if let Some(journal_file) = &config.journal_file {
-        let loader = DocumentsSourceLoader::new(documents);
-        match pactole_storage_fs::analyze_file_with_loader_with_options(
-            journal_file,
-            &loader,
-            &config.validation,
-        ) {
-            Ok(project) => build_index_from_project(&project),
-            Err(_) => {
-                let file = pactole_storage_fs::analyze_file(&source);
-                build_index_from_file(&file)
-            }
-        }
+    let index = if let Some(project) = analyze_scope(config, documents, &uri) {
+        build_index_from_project(&project)
     } else {
         let file = pactole_storage_fs::analyze_file(&source);
         build_index_from_file(&file)

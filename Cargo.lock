@@ -731,6 +731,7 @@ dependencies = [
  "pactole-syntax",
  "serde",
  "serde_json",
+ "tree-sitter",
 ]
 
 [[package]]

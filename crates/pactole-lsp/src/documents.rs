@@ -9,10 +9,15 @@
 //! `.pactole` files (typically small, hand-edited ledgers).
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use lsp_types::Url;
-use pactole_storage_fs::{FsSourceLoader, SourceLoadError, SourceLoader};
+use pactole_storage_fs::{
+    AnalyzedProject, FsSourceLoader, SourceLoadError, SourceLoader,
+    analyze_file_with_loader_with_options,
+};
+
+use crate::config::Config;
 
 /// The in-memory state of every currently-open document, keyed by URI.
 #[derive(Debug, Default)]
@@ -99,6 +104,26 @@ impl SourceLoader for DocumentsSourceLoader<'_> {
         log::trace!("loaded {} from the filesystem", path.display());
         self.fs.load(path)
     }
+}
+
+/// The filesystem path behind a document URI, or `None` for any scheme with
+/// no file path (e.g. an `untitled:` buffer).
+pub fn uri_to_path(uri: &Url) -> Option<PathBuf> {
+    uri.to_file_path().ok()
+}
+
+/// Analyzes the request scope shared by hover, completion and navigation:
+/// the configured root journal and its whole include graph, or — when no
+/// `journal_file` is configured — the current document as its own entry
+/// point, so its own `include`s are followed too. Open buffers take
+/// precedence over their on-disk content through [`DocumentsSourceLoader`].
+///
+/// Returns `None` when neither entry point can be analyzed, in which case
+/// callers fall back to the current document alone.
+pub fn analyze_scope(config: &Config, documents: &Documents, uri: &Url) -> Option<AnalyzedProject> {
+    let loader = DocumentsSourceLoader::new(documents);
+    let entry = config.journal_file.clone().or_else(|| uri_to_path(uri))?;
+    analyze_file_with_loader_with_options(&entry, &loader, &config.validation).ok()
 }
 
 #[cfg(test)]
@@ -226,6 +251,38 @@ mod tests {
             .find(|f| f.path == included)
             .expect("included file should be part of the analyzed project");
         assert_eq!(included_file.file.entries().len(), 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Without a `journal_file`, the current document becomes its own entry
+    /// point, so its own `include`s are followed too (the scope hover,
+    /// completion and navigation all share).
+    #[test]
+    fn analyze_scope_falls_back_to_the_current_document_without_a_journal_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-documents-scope-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("main.pactole");
+        let included = dir.join("included.pactole");
+        std::fs::write(&main, "include \"included.pactole\"\n").unwrap();
+        std::fs::write(&included, "2026-09-03 open Assets:Checking\n").unwrap();
+
+        let docs = Documents::new();
+        let main_uri = Url::from_file_path(&main).unwrap();
+        let project = analyze_scope(&Config::default(), &docs, &main_uri)
+            .expect("the current document is analyzable as an entry point");
+        assert_eq!(project.files().len(), 2);
+
+        // A document URI with no filesystem path cannot be an entry point.
+        let untitled = uri("untitled:Untitled-1");
+        assert!(analyze_scope(&Config::default(), &docs, &untitled).is_none());
+
+        // `uri_to_path` only accepts `file:` URIs.
+        assert_eq!(uri_to_path(&main_uri), Some(main));
+        assert_eq!(uri_to_path(&untitled), None);
 
         std::fs::remove_dir_all(&dir).ok();
     }

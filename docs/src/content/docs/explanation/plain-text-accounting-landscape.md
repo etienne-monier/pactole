@@ -139,7 +139,7 @@ analysis and an LSP. These can become a central user-facing advantage:
 
 - syntax and business diagnostics while editing;
 - completion for accounts, commodities and payees;
-- navigation to declarations;
+- navigation to declarations and references;
 - hover information for symbols;
 - code actions to create missing declarations or fix common errors;
 - formatting through the LSP;

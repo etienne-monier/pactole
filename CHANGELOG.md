@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as windows-1252 import their accented text correctly.
 - OFX import reads the banking transactions of investment statements
   (`INVSTMTMSGSRSV1`).
+- The language server supports navigation: `textDocument/definition` jumps
+  from an account, payee or commodity use to its declaration (and from an
+  `include` path to the included file), and `textDocument/references` lists
+  every occurrence of the symbol across the include graph of `journal_file`
+  (or of the current document when none is configured).
 
 ### Changed
 

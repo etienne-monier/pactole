@@ -242,10 +242,20 @@ pactole/
          `publish_for` call; any URI no longer covered by the latest one (e.g. an `include` was
          removed, dropping a file out of the project) is published an empty diagnostics list, so
          diagnostics never go stale once a file drops out of the analyzed set.
-    - Completion, code actions and hover are supported. Formatting over LSP (use `pactole fmt`),
-      navigation, incremental sync, and reading `~/.config/pactole` remain out of scope for this
-      first version. Unhandled requests are answered with a `MethodNotFound` error rather than
-      silently ignored.
+     - `navigation.rs`: goto definition (`textDocument/definition`) and find references
+       (`textDocument/references`) for accounts, payees, commodities and `include` paths
+       (jumping to the included file). Both resolve against one shared occurrence index built
+       directly from each file's CST through `tree-sitter-pactole` (hence the crate's direct
+       `tree-sitter` dependency), tagging each token as a declaration or a use. The scope is the
+       `journal_file` include graph analyzed with `DocumentsSourceLoader` (unsaved buffers
+       first), plus the current document when it is not part of it; with no `journal_file`, the
+       current document is its own entry point so its own `include`s are followed too — the same
+       scope `hover.rs` and `completion.rs` use via the shared `documents::analyze_scope` helper.
+       A missing declaration is reported as an empty result, never an error.
+    - Completion, code actions, hover and navigation are supported. Formatting over LSP (use
+      `pactole fmt`), `textDocument/documentSymbol`, incremental sync, and reading
+      `~/.config/pactole` remain out of scope for this first version. Unhandled requests are
+      answered with a `MethodNotFound` error rather than silently ignored.
     - Declaration quick fixes (`code_action.rs`): beyond the "insert today's date" fix, the server
       turns the `payee-not-declared`, `account-not-open` and `commodity-not-declared` business
       diagnostics into quick fixes inserting the missing declaration above the offending
@@ -258,10 +268,11 @@ pactole/
       diagnostics require a project context.
    - **Depends on `pactole-storage-fs`/`pactole-syntax` only through their existing public API**
      (`analyze_file`, `analyze_file_with_loader`,
-     `analyze_file_with_loader_with_options`, `FsSourceLoader`, `SourceLoader`,
-      `SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `SyntaxDiagnostic`,
-     `Span`/`Point`), plus `pactole-config` for layered configuration; it does not add or
-     change anything in those crates.
+     `analyze_file_with_loader_with_options`, `normalize_lexically`, `FsSourceLoader`,
+     `SourceLoader`, `SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `SyntaxDiagnostic`,
+     `Span`/`Point`), plus `pactole-config` for layered configuration and `tree-sitter`
+     (directly, for the navigation CST index); it does not add or change anything in those
+     crates.
    - Has no dependency on `thiserror`: it has no error enums of its own, only propagating errors
      via `Box<dyn Error + Sync + Send>` in `server.rs`.
 
