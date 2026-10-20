@@ -24,18 +24,15 @@ Beancount directives such as `pad`, `price`, `note`, `event`, `document`,
 In Beancount the first string of a transaction is the narration (and the payee
 is optional). Pactole reverses this:
 
-- a single leading string is always the **payee**, and the **narration is the
-  optional second string**;
-- both are optional at the grammar level, but by default a transaction must
-  carry a payee.
+- the **payee is mandatory**;
+- the **narration is optional**.
 
 Pactole also adds a `payee "name"` *declaration* directive, borrowed from
-Ledger-cli, which has no equivalent in Beancount. By default every transaction's
-payee must be declared somewhere in the journal, so typos like `"Whole Foods"`
-vs. `"Wholefoods"` are rejected. For a soft migration, `[validation] payee =
-"warn"` in `pactole.toml` (or `pactole --validation warn check ...`) reports a
-missing or undeclared payee as a warning instead of an error; `"off"` disables
-both checks entirely.
+Ledger-cli, which has no equivalent in Beancount. Every transaction's payee must
+be declared somewhere in the journal, so typos like `"Whole Foods"` vs.
+`"Wholefoods"` are rejected. For a soft migration, `[validation] payee =
+"warn"` in `pactole.toml` reports
+undeclared payees as warnings instead of errors.
 
 ## Status flags
 

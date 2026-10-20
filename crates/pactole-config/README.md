@@ -15,8 +15,8 @@ Layers, from lowest to highest precedence:
    (`$XDG_CONFIG_HOME/pactole/pactole.toml` when that variable is set,
    `%APPDATA%\pactole\pactole.toml` on Windows);
 2. the project file `pactole.toml` (next to the journal);
-3. in-memory overrides (the CLI's root `--config`/`--validation` flags,
-   the LSP's `initializationOptions`). `--config <path>` replaces the
+3. in-memory overrides (the CLI's root `--config` flag, and the LSP's
+   `initializationOptions`). `--config <path>` replaces the
    discovered layers with that single file.
 
 Layers merge per key: a key absent from a higher layer keeps the value from
@@ -28,7 +28,7 @@ Unknown keys are rejected per section, so typos fail loudly.
 
 ```toml
 [validation]
-payee = "error" # "off", "warn" or "error"
+payee = "error" # "warn" or "error"
 
 [format]
 posting_width = 50
@@ -47,10 +47,9 @@ counter_account = "Expenses:Groceries"
 payee = "Supermarket"
 ```
 
-- `[validation] payee` controls the two payee checks of a transaction —
-  it must carry a payee, and that payee must have a `payee` declaration:
-  reporting them as errors (default), as warnings, or ignoring them
-  (`off`).
+- `[validation] payee` controls whether a transaction whose payee has no
+  `payee` declaration is ignored (`off`), a warning (`warn`), or an error
+  (`error`, the default). The payee itself remains mandatory in the grammar.
 - `[format] posting_width` is the column at which posting amounts are
   aligned (default 50).
 - `[import]` holds the OFX import settings used by `pactole import-ofx`. It

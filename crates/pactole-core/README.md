@@ -23,10 +23,10 @@ Re-exported from `src/lib.rs`:
   (`validation.rs`): consumes the input `Journal` and checks the business
   invariants — chronological ordering of entries, account lifecycle
   (opened before use/close, not used after close), commodities declared
-  before use, every transaction carrying a payee that is declared, and
-  balancing of each transaction per commodity. On success, it returns the
-  `Journal` (sorted chronologically and with self-balanced transactions);
-  on failure, it returns a `ValidationError`.
+  before use, payees declared before use in a transaction, and balancing
+  of each transaction per commodity. On success, it returns the `Journal`
+  (sorted chronologically and with self-balanced transactions); on
+  failure, it returns a `ValidationError`.
 - **`register(journal: &Journal, filter: &RegisterFilter) -> Vec<RegisterEntry>`**
   (`register.rs`): computes a "register" report (running balance per
   commodity), filterable by account (including sub-accounts), date range,

@@ -19,7 +19,6 @@ use crate::commands::{Cli, Command};
 fn main() -> ExitCode {
     let Cli {
         config: explicit_config,
-        validation,
         command,
     } = Cli::parse();
 
@@ -27,11 +26,7 @@ fn main() -> ExitCode {
         Command::Parse { file } => parse::run(file),
         Command::Fmt { file, write } => {
             let project_dir = file_project_dir(&file);
-            match config::load(
-                explicit_config.as_deref(),
-                validation,
-                project_dir.as_deref(),
-            ) {
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
                 Ok(config) => format::run(file, write, &config.format),
                 Err(error) => config::failure(error),
             }
@@ -43,11 +38,7 @@ fn main() -> ExitCode {
         }
         Command::Check { file, strict } => {
             let project_dir = parent_dir(&file);
-            match config::load(
-                explicit_config.as_deref(),
-                validation,
-                project_dir.as_deref(),
-            ) {
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
                 Ok(config) => check::run(file, strict, &config.validation),
                 Err(error) => config::failure(error),
             }
@@ -63,11 +54,7 @@ fn main() -> ExitCode {
             status,
         } => {
             let project_dir = parent_dir(&file);
-            match config::load(
-                explicit_config.as_deref(),
-                validation,
-                project_dir.as_deref(),
-            ) {
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
                 Ok(config) => register::run(
                     file,
                     account,
@@ -92,11 +79,7 @@ fn main() -> ExitCode {
                 .as_deref()
                 .and_then(parent_dir)
                 .or_else(|| std::env::current_dir().ok());
-            match config::load(
-                explicit_config.as_deref(),
-                validation,
-                project_dir.as_deref(),
-            ) {
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
                 Ok(config) => import_ofx::run(file, into, account, write, &config),
                 Err(error) => config::failure(error),
             }

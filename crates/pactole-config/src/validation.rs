@@ -2,7 +2,7 @@
 /// `payee` in the `[validation]` section of `pactole.toml`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ValidationLevel {
-    /// Do not report the issue.
+    /// Do not report undeclared payees.
     Off,
     /// Report the issue as a warning: visible everywhere, but never
     /// blocking (except under a strict flag such as `pactole check --strict`).
@@ -22,7 +22,7 @@ impl ValidationLevel {
         }
     }
 
-    /// Parses a level spelling (`off`, `warn` or `error`).
+    /// Parses a level spelling (`warn` or `error`).
     ///
     /// Returns `None` for any other value.
     pub fn parse(value: &str) -> Option<Self> {
@@ -39,8 +39,7 @@ impl ValidationLevel {
 /// section of `pactole.toml`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ValidationOptions {
-    /// Severity of the two payee checks: a transaction must carry a payee
-    /// (`PayeeMissing` otherwise), and that payee must have a matching
-    /// `payee` declaration in the journal (`PayeeNotDeclared` otherwise).
+    /// Severity of a transaction whose payee has no matching `payee`
+    /// declaration in the journal.
     pub payee: ValidationLevel,
 }

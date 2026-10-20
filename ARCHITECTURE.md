@@ -390,7 +390,6 @@ sous-commande) :
 
 - `--config <path>` : utilise ce `pactole.toml` comme unique couche et
   court-circuite la découverte global/projet ;
-- `--validation <warn|error>` : surcharge le niveau `[validation] payee`.
 
 Sous-commandes actuelles :
 
@@ -465,7 +464,7 @@ plus prioritaire :
    `%APPDATA%\pactole\` sous Windows) ;
 2. le fichier projet `pactole.toml` — à côté du journal traité côté CLI,
    à côté de `journal_file` (ou à la racine du workspace si aucun) côté LSP ;
-3. les surcharges en mémoire — drapeaux racine `--config`/`--validation` de
+3. les surcharges en mémoire — drapeau racine `--config` de
    la CLI, `initializationOptions` du LSP. `--config <path>` remplace la
    découverte par ce fichier unique (erreur si illisible).
 
@@ -478,27 +477,27 @@ bruyamment.
 
 Schéma :
 
-- `[validation] payee` : `"off"`, `"warn"` ou `"error"` (défaut `error`,
-  comportement historique conservé). Ce niveau pilote les deux contrôles
-  portant sur le payee : une transaction doit porter un payee
-  (`PayeeMissing` sinon) et ce payee doit avoir été déclaré
-  (`PayeeNotDeclared`). `warn` rétrograde les deux en avertissement, `off`
-  les supprime tous les deux ; les autres contrôles métier restent des
-  erreurs quel que soit le niveau.
+- `[validation] payee` : `"warn"` ou `"error"` (défaut `error`, comportement
+  historique conservé). `warn` rétrograde en avertissement le seul contrôle
+  configurable (payee non déclaré) ; les autres contrôles métier restent des
+  erreurs. Le niveau futur `off` est rejeté avec un message explicite (voir
+  §10).
 - `[format] posting_width` : colonne d'alignement des montants (défaut 50).
 - `[import]` : `bank_account`, `currency`,
   `default_counter_account`, `[import.accounts]`, `[[import.rules]]` — les
   réglages de `pactole import-ofx`.
 
 Chaque commande distingue avertissements et erreurs : `pactole check
---strict` transforme les avertissements en échec, et `--validation` permet
+--strict` transforme les avertissements en échec. Le niveau de validation est
+configuré dans `pactole.toml`.
 de surcharger le niveau sans éditer de fichier.
 
 - **LSP** (`pactole-lsp`) : en plus des couches ci-dessus, `journal_file`
   reste une clé d'`initializationOptions` propre, et `validation` peut y être
   surchargé sous forme de chaîne (`"warn"`) ou de table
-  (`{ "payee": "warn" }`). Un fichier de configuration illisible ou invalide
-  est journalisé et ignoré, jamais bloquant (voir §5).
+  (`{ "payee": "warn" }`). Un fichier de configuration illisible/invalide ou
+  un niveau non supporté est journalisé et ignoré, jamais bloquant (voir
+  §5).
 - **Grammaire tree-sitter** : `tree-sitter.json` déclare les métadonnées
   du langage (`scope: source.pactole`, extension `.pactole`) pour les
   outils de l'écosystème tree-sitter (voir aussi `HELIX.md`).
@@ -546,22 +545,27 @@ de surcharger le niveau sans éditer de fichier.
 Ce qui reste explicitement à faire, par ordre approximatif de valeur/
 complexité croissante :
 
-1. **Autres importeurs** (CSV, QIF...) : `pactole-import` est structuré
+1. **Niveau de validation `off`** : `pactole-config` accepte aujourd'hui
+   uniquement `warn` et `error` (voir §8). Passer à `off` demande de rendre
+   le payee optionnel dans la grammaire (régénérer le parseur, mettre à jour
+   le corpus, `GRAMMAR.md` et `ValidationError::PayeeMissing`), puis
+   d'accepter `off` côté configuration, CLI et LSP.
+2. **Autres importeurs** (CSV, QIF...) : `pactole-import` est structuré
    pour cela (parseur de format → `ImportRecord`, puis moteur de règles
    partagé → `Transaction`), mais seul OFX est implémenté. Ajouter un
    importeur consiste à écrire un nouveau module produisant des
    `ImportRecord`s et à exposer un point d'entrée analogue à
    `import_ofx`.
-2. **Navigation LSP** ("go to definition"/"find references") : la
+3. **Navigation LSP** ("go to definition"/"find references") : la
    complétion, le survol et les actions de code existent déjà, mais la
    navigation est encore absente.
-3. **Formatage via LSP** (`textDocument/formatting`) : aujourd'hui,
+4. **Formatage via LSP** (`textDocument/formatting`) : aujourd'hui,
    formater nécessite la CLI (`pactole fmt`) ; `pactole-lsp` ne l'expose
    pas.
-4. **Synchronisation incrémentale** (`TextDocumentSyncKind::INCREMENTAL`)
+5. **Synchronisation incrémentale** (`TextDocumentSyncKind::INCREMENTAL`)
    si la synchronisation complète actuelle s'avère limitante sur de gros
    journaux.
-5. **`pactole-storage-db`** (nom provisoire) : future crate de stockage
+6. **`pactole-storage-db`** (nom provisoire) : future crate de stockage
    adossée à une base de données, implémentant
    `pactole_core::traits::ReadableStorage` (et possiblement un pendant
    accessible en écriture) à la place du système de fichiers, en miroir

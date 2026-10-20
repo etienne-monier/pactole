@@ -135,15 +135,10 @@ export default grammar({
       seq(
         field("date", $.date),
         optional(seq("=", field("effective_date", $.date))),
-        // Every header element after the date is optional and carries its
-        // own leading `_ws`, so a bare `DATE` line (with only postings
-        // below) is valid. The payee is optional: omitting it yields a
-        // transaction with no payee at all (reported by
-        // `ValidationError::PayeeMissing` on the Rust side). Payee and
-        // narration stay tied together so a single leading string is
-        // unambiguously the payee, never a narration without payee.
-        optional(seq($._ws, $.status)),
-        optional(seq($._ws, $.payee, optional(seq($._ws, $.narration)))),
+        $._ws,
+        optional(seq($.status, $._ws)),
+        $.payee,
+        optional(seq($._ws, $.narration)),
         // Tags and links may be freely interleaved, in any order.
         repeat(seq($._ws, choice($.tag, $.link))),
         optional(seq($._ws, $.reference)),

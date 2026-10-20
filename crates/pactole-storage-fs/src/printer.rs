@@ -127,17 +127,11 @@ fn print_transaction(transaction: &Transaction, options: &FormatOptions, out: &m
         TransactionStatus::Uncleared => '?',
     });
 
-    // The payee and narration form a single unit: the grammar only allows a
-    // narration after a payee. A transaction with no payee therefore prints
-    // neither; emitting an empty payee would re-parse as `Some("")` rather
-    // than `None`.
-    if let Some(payee) = &transaction.payee {
+    out.push(' ');
+    out.push_str(&quote_string(transaction.payee.as_deref().unwrap_or("")));
+    if let Some(narration) = &transaction.narration {
         out.push(' ');
-        out.push_str(&quote_string(payee));
-        if let Some(narration) = &transaction.narration {
-            out.push(' ');
-            out.push_str(&quote_string(narration));
-        }
+        out.push_str(&quote_string(narration));
     }
 
     for tag in &transaction.tags {
@@ -712,62 +706,6 @@ mod tests {
         };
 
         let source = super::format_transactions(std::slice::from_ref(&transaction));
-        let parsed = crate::analyze_file(&source);
-        assert!(parsed.syntax_diagnostics().is_empty());
-        assert!(parsed.lowering_diagnostics().is_empty());
-        let entries = parsed.entries();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(
-            entries[0].entry,
-            pactole_core::Entry::Transaction(transaction)
-        );
-    }
-
-    #[test]
-    fn format_transactions_round_trips_a_transaction_without_a_payee() {
-        use chrono::NaiveDate;
-        use pactole_core::{
-            AccountName, Amount, CommodityName, Metadata, Posting, Transaction, TransactionStatus,
-        };
-        use rust_decimal::Decimal;
-
-        let transaction = Transaction {
-            date: NaiveDate::from_ymd_opt(2026, 9, 3).unwrap(),
-            effective_date: None,
-            status: TransactionStatus::Cleared,
-            payee: None,
-            narration: None,
-            postings: vec![
-                Posting {
-                    account: AccountName::new("Depenses:Alimentation").unwrap(),
-                    amount: Some(Amount {
-                        number: "45.30".parse::<Decimal>().unwrap(),
-                        commodity: CommodityName::new("EUR").unwrap(),
-                    }),
-                    meta: Metadata::new(),
-                },
-                Posting {
-                    account: AccountName::new("Actifs:Banque").unwrap(),
-                    amount: Some(Amount {
-                        number: "-45.30".parse::<Decimal>().unwrap(),
-                        commodity: CommodityName::new("EUR").unwrap(),
-                    }),
-                    meta: Metadata::new(),
-                },
-            ],
-            tags: vec!["food".to_string()],
-            links: Vec::new(),
-            reference: Some("CB-1".to_string()),
-            meta: Metadata::new(),
-        };
-
-        let source = super::format_transactions(std::slice::from_ref(&transaction));
-        // No payee is emitted, rather than an empty one.
-        assert!(
-            !source.contains("\"\""),
-            "unexpected empty payee in: {source}"
-        );
-
         let parsed = crate::analyze_file(&source);
         assert!(parsed.syntax_diagnostics().is_empty());
         assert!(parsed.lowering_diagnostics().is_empty());

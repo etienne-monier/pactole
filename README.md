@@ -87,19 +87,18 @@ pactole parse path/to/file.pactole
 Check that a file is fully valid: not only that it parses correctly,
 but also that it makes sense from a business point of view (accounts
 are opened before being used or closed, commodities are declared
-before being used, every transaction carries a declared `payee`, and
+before being used, every transaction's payee is a known `payee`, and
 every transaction balances):
 
 ```sh
 pactole check path/to/file.pactole
 ```
 
-Every check is reported as an error by default. The payee checks (a
-transaction must carry a payee, and that payee must be declared) can be
-downgraded to warnings in `pactole.toml` (`[validation] payee = "warn"`)
-or turned off entirely (`[validation] payee = "off"`), or set for one run
-with `pactole --validation warn|off check ...`; `--strict` then still
-turns warnings into a failure.
+Every check is reported as an error by default. A configurable check such
+as the mandatory payee declaration can be downgraded to a warning in
+`pactole.toml` (`[validation] payee = "warn"`), or for one run with
+`[validation] payee = "warn"` in `pactole.toml`; `--strict` then still turns
+warnings into a failure.
 
 Generate shell completion scripts to stdout:
 
@@ -216,14 +215,14 @@ highest precedence:
    `$XDG_CONFIG_HOME/pactole/pactole.toml`);
 2. the project file `pactole.toml` next to the journal being operated on;
 3. in-memory flags: `--config <path>` (a single explicit file replacing
-   discovery) and `--validation off|warn|error`.
+   discovery). Validation is configured in `pactole.toml`.
 
 Layers merge per key, so a project file only needs to override what it
 changes. Unknown keys are rejected, so typos fail loudly:
 
 ```toml
 [validation]
-payee = "error" # "off", "warn" or "error"
+payee = "error" # "warn" or "error"
 
 [format]
 posting_width = 50

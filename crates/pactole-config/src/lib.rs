@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [validation]
-//! payee = "warn" # `off`, `warn` or `error`
+//! payee = "warn" # `warn` or `error`
 //!
 //! [format]
 //! posting_width = 50

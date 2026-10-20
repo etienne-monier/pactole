@@ -11,9 +11,8 @@ use crate::record::ImportRecord;
 use pactole_config::{Direction, ImportConfig, Rule};
 
 /// Payee used when a transaction has neither a rule-provided payee nor a
-/// source payee. A transaction's payee is mandatory under the default
-/// validation settings, so a placeholder is required rather than leaving it
-/// empty.
+/// source payee. A transaction's payee is mandatory in Pactole, so a
+/// placeholder is required rather than leaving it empty.
 const FALLBACK_PAYEE: &str = "Unknown";
 
 /// Lowers each [`ImportRecord`] into a balanced [`Transaction`], resolving the

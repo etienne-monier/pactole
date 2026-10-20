@@ -18,9 +18,9 @@ command.
 
 ## Main commands
 
-Two root flags are accepted before the subcommand: `--config <path>` (use this
-`pactole.toml` as the only configuration layer) and `--validation
-<warn|error>` (override the `[validation]` levels).
+The root flag `--config <path>` is accepted before the subcommand to use a
+specific `pactole.toml` as the only configuration layer. Validation levels are
+configured in `pactole.toml`.
 
 - **`pactole parse <file>`**: parses the file and prints (`Debug`) the
   resulting journal entries. Mainly useful for debugging the
@@ -33,10 +33,9 @@ Two root flags are accepted before the subcommand: `--config <path>` (use this
   for Bash, Elvish, Fish, PowerShell or Zsh.
 - **`pactole check <file> [--strict]`**: syntax parsing **then** full
   business validation (`pactole_core::validate_journal`) — accounts opened
-  before use/close, commodities declared before use, each transaction
-  carrying a declared payee, each transaction balanced. Configurable checks
-  follow the resolved `[validation]` levels; `--strict` turns warnings into
-  a failure.
+  before use/close, commodities declared before use, each transaction's
+  payee declared, each transaction balanced. Configurable checks follow the
+  resolved `[validation]` levels; `--strict` turns warnings into a failure.
 - **`pactole register <file> [filters]`**: lists transactions, one line
   per matching posting, with a running balance per commodity. Without
   filters, all postings are listed; filters are combined (`--account`

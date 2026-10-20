@@ -137,6 +137,7 @@ fn import_tables_merge_per_key_and_rules_in_block() {
 #[test]
 fn accepts_the_off_validation_level() {
     let config = resolve("[validation]\npayee = \"off\"\n").unwrap();
+
     assert_eq!(config.validation.payee, ValidationLevel::Off);
 }
 

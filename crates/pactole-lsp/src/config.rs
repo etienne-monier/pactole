@@ -98,7 +98,8 @@ impl Config {
     ///
     /// A missing or unparsable `initializationOptions` value is treated the
     /// same as an empty configuration, rather than failing `initialize`.
-    /// Invalid validation levels are logged and ignored.
+    /// Invalid validation levels (including the not-yet-supported `off`) are
+    /// logged and ignored.
     pub fn from_initialization_options(
         initialization_options: Option<&serde_json::Value>,
         workspace_root: Option<&Path>,
@@ -135,7 +136,7 @@ impl Config {
                 Some(level) => Some(level),
                 None => {
                     log::warn!(
-                        "ignoring unsupported `validation` initialization option `{value}` \
+                        "ignoring invalid `validation` initialization option `{value}` \
                          (expected `off`, `warn` or `error`)"
                     );
                     None
@@ -289,16 +290,8 @@ mod tests {
     }
 
     #[test]
-    fn off_level_is_accepted_from_initialization_options() {
+    fn off_level_is_accepted() {
         let options = serde_json::json!({ "validation": "off" });
-        let config = Config::from_initialization_options(Some(&options), None);
-
-        assert_eq!(config.validation.payee, ValidationLevel::Off);
-    }
-
-    #[test]
-    fn off_level_table_is_accepted_from_initialization_options() {
-        let options = serde_json::json!({ "validation": { "payee": "off" } });
         let config = Config::from_initialization_options(Some(&options), None);
 
         assert_eq!(config.validation.payee, ValidationLevel::Off);

@@ -568,6 +568,10 @@
           ]
         },
         {
+          "type": "SYMBOL",
+          "name": "_ws"
+        },
+        {
           "type": "CHOICE",
           "members": [
             {
@@ -575,11 +579,11 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "_ws"
+                  "name": "status"
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "status"
+                  "name": "_ws"
                 }
               ]
             },
@@ -587,6 +591,10 @@
               "type": "BLANK"
             }
           ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "payee"
         },
         {
           "type": "CHOICE",
@@ -600,28 +608,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "payee"
-                },
-                {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "SEQ",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "_ws"
-                        },
-                        {
-                          "type": "SYMBOL",
-                          "name": "narration"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "BLANK"
-                    }
-                  ]
+                  "name": "narration"
                 }
               ]
             },

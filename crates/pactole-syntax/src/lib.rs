@@ -141,11 +141,8 @@ mod tests {
     #[test]
     fn unexpected_syntax_after_known_tokens_lists_them_and_quotes_the_snippet() {
         // `balance` requires a trailing commodity code after the number;
-        // omitting it makes the directive unparsable. Since `DATE` alone is
-        // now a valid, payee-less transaction header, the leading date is
-        // consumed by that transaction and the rest (`balance Assets:Cash
-        // 10`) is left as an `ERROR` wrapping the recognized account and
-        // number.
+        // omitting it leaves date/account/number recognized but makes the
+        // whole directive unparsable, so it is wrapped in a single `ERROR`.
         let source = "2024-01-01 balance Assets:Cash 10\n";
         let doc = parse_document(source);
 
@@ -156,13 +153,13 @@ mod tests {
             .find(|d| d.kind == DiagnosticKind::Error)
             .expect("expected an error-node diagnostic");
         assert!(
-            diagnostic.message.contains("an account name"),
-            "message should mention the recognized account: {}",
+            diagnostic.message.contains("a date"),
+            "message should mention the recognized date: {}",
             diagnostic.message
         );
         assert!(
-            diagnostic.message.contains("a number"),
-            "message should mention the recognized number: {}",
+            diagnostic.message.contains("an account name"),
+            "message should mention the recognized account: {}",
             diagnostic.message
         );
         assert!(
@@ -216,7 +213,7 @@ mod tests {
             .expect("expected an error-node diagnostic");
         // No source text was provided, so there is no quoted snippet, but
         // the recognized tokens are still named.
-        assert!(diagnostic.message.contains("an account name"));
+        assert!(diagnostic.message.contains("a date"));
         assert!(!diagnostic.message.contains('('));
     }
 

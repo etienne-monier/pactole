@@ -230,10 +230,8 @@ pub fn validate_journal_all(journal: Journal) -> ValidationReport {
 
 /// Checks that every posting of `transaction` uses an open account and a
 /// declared commodity, and — when the account is restricted to a list of
-/// commodities — that it uses one of them, then balances it, and finally
-/// checks the payee: a transaction must carry a payee (`PayeeMissing`
-/// otherwise) and, when set, that payee must have been declared
-/// (`PayeeNotDeclared`).
+/// commodities — that it uses one of them, that its payee (when set) has
+/// been declared, then balances it.
 fn validate_transaction(
     transaction: &mut Transaction,
     open_accounts: &HashMap<AccountName, Vec<CommodityName>>,
@@ -241,6 +239,14 @@ fn validate_transaction(
     declared_payees: &HashSet<String>,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
+    if let Some(payee) = &transaction.payee
+        && !declared_payees.contains(payee)
+    {
+        errors.push(ValidationError::PayeeNotDeclared {
+            payee: payee.clone(),
+            date: transaction.date,
+        });
+    }
 
     for posting in &transaction.postings {
         if !open_accounts.contains_key(&posting.account) {
@@ -259,55 +265,34 @@ fn validate_transaction(
         }
     }
 
-    if errors.is_empty()
-        && let Err(error) = balance_transaction(transaction)
-    {
+    if !errors.is_empty() {
+        return errors;
+    }
+
+    if let Err(error) = balance_transaction(transaction) {
         errors.push(error);
+        return errors;
     }
 
-    if errors.is_empty() {
-        // Enforce `open`'s commodity restrictions after balancing, so that
-        // an auto-balanced posting's inferred commodity is checked too.
-        for posting in &transaction.postings {
-            let allowed = match open_accounts.get(&posting.account) {
-                Some(allowed) => allowed,
-                None => {
-                    unreachable!("account presence was checked before commodity restrictions")
-                }
-            };
-            if allowed.is_empty() {
-                continue;
-            }
-            if let Some(amount) = &posting.amount
-                && !allowed.contains(&amount.commodity)
-            {
-                errors.push(ValidationError::CommodityNotAllowed {
-                    account: posting.account.clone(),
-                    commodity: amount.commodity.clone(),
-                    date: transaction.date,
-                });
-            }
+    // Enforce `open`'s commodity restrictions after balancing, so that an
+    // auto-balanced posting's inferred commodity is checked too.
+    for posting in &transaction.postings {
+        let allowed = match open_accounts.get(&posting.account) {
+            Some(allowed) => allowed,
+            None => unreachable!("account presence was checked before commodity restrictions"),
+        };
+        if allowed.is_empty() {
+            continue;
         }
-    }
-
-    // The payee is optional in the grammar (so a transaction may have none);
-    // a missing payee is reported as `PayeeMissing`, and a payee that does
-    // not match any declaration as `PayeeNotDeclared`. Checked last so that
-    // posting- and balance-level problems are reported ahead of it, but
-    // always appended so both kinds surface together in a full report.
-    match &transaction.payee {
-        Some(payee) if !declared_payees.contains(payee) => {
-            errors.push(ValidationError::PayeeNotDeclared {
-                payee: payee.clone(),
+        if let Some(amount) = &posting.amount
+            && !allowed.contains(&amount.commodity)
+        {
+            errors.push(ValidationError::CommodityNotAllowed {
+                account: posting.account.clone(),
+                commodity: amount.commodity.clone(),
                 date: transaction.date,
             });
         }
-        None => {
-            errors.push(ValidationError::PayeeMissing {
-                date: transaction.date,
-            });
-        }
-        _ => {}
     }
 
     errors
@@ -513,9 +498,8 @@ mod tests {
     fn validates_a_well_formed_journal_and_sorts_entries() {
         let journal = Journal {
             entries: vec![
-                Entry::Transaction(transaction_with_payee(
+                Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    "Payee",
                     vec![
                         posting("Actifs:Compte", Some(("100.00", "EUR"))),
                         posting("Depenses:Divers", None),
@@ -524,16 +508,13 @@ mod tests {
                 open(date(2024, 1, 1), "Actifs:Compte"),
                 open(date(2024, 1, 1), "Depenses:Divers"),
                 commodity(date(2024, 1, 1), "EUR"),
-                payee("Payee"),
             ],
         };
 
         let validated = validate_journal(journal).unwrap();
 
-        // The undated payee declaration sorts first (it must be available
-        // before any dated entry), then dated entries chronologically.
-        assert!(matches!(validated.entries[0], Entry::Payee(_)));
-        assert_eq!(validated.entries[1].date(), Some(date(2024, 1, 1)));
+        // Entries were sorted chronologically.
+        assert_eq!(validated.entries[0].date(), Some(date(2024, 1, 1)));
         assert_eq!(
             validated.entries.last().unwrap().date(),
             Some(date(2024, 1, 5))
@@ -914,7 +895,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_transaction_with_no_payee() {
+    fn accepts_transaction_with_no_payee_without_checking_declarations() {
         let journal = Journal {
             entries: vec![
                 open(date(2024, 1, 1), "Actifs:Compte"),
@@ -930,12 +911,7 @@ mod tests {
             ],
         };
 
-        assert_eq!(
-            validate_journal(journal),
-            Err(ValidationError::PayeeMissing {
-                date: date(2024, 1, 5),
-            })
-        );
+        assert!(validate_journal(journal).is_ok());
     }
 
     #[test]
@@ -945,16 +921,14 @@ mod tests {
                 open(date(2024, 1, 1), "Actifs:Compte"),
                 open(date(2024, 1, 1), "Depenses:Divers"),
                 commodity(date(2024, 1, 1), "EUR"),
-                Entry::Transaction(transaction_with_payee(
+                Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    "Payee",
                     vec![
                         posting("Actifs:Compte", Some(("-100.00", "EUR"))),
                         posting("Depenses:Divers", Some(("100.00", "EUR"))),
                     ],
                 )),
                 balance(date(2024, 1, 10), "Actifs:Compte", ("-100.00", "EUR")),
-                payee("Payee"),
             ],
         };
 
@@ -968,16 +942,14 @@ mod tests {
                 open(date(2024, 1, 1), "Actifs:Compte"),
                 open(date(2024, 1, 1), "Depenses:Divers"),
                 commodity(date(2024, 1, 1), "EUR"),
-                Entry::Transaction(transaction_with_payee(
+                Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    "Payee",
                     vec![
                         posting("Actifs:Compte", Some(("-100.00", "EUR"))),
                         posting("Depenses:Divers", Some(("100.00", "EUR"))),
                     ],
                 )),
                 balance(date(2024, 1, 10), "Actifs:Compte", ("-50.00", "EUR")),
-                payee("Payee"),
             ],
         };
 
@@ -1001,9 +973,8 @@ mod tests {
                 open(date(2024, 1, 1), "Actifs:Compte"),
                 open(date(2024, 1, 1), "Depenses:Divers"),
                 commodity(date(2024, 1, 1), "EUR"),
-                Entry::Transaction(transaction_with_payee(
+                Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    "Payee",
                     vec![
                         posting("Actifs:Compte", Some(("-100.01", "EUR"))),
                         posting("Depenses:Divers", Some(("100.01", "EUR"))),
@@ -1015,7 +986,6 @@ mod tests {
                     ("-100.00", "EUR"),
                     Some("0.01"),
                 ),
-                payee("Payee"),
             ],
         };
 
@@ -1029,9 +999,8 @@ mod tests {
                 open(date(2024, 1, 1), "Actifs:Compte"),
                 open(date(2024, 1, 1), "Depenses:Divers"),
                 commodity(date(2024, 1, 1), "EUR"),
-                Entry::Transaction(transaction_with_payee(
+                Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    "Payee",
                     vec![
                         posting("Actifs:Compte", Some(("-100.02", "EUR"))),
                         posting("Depenses:Divers", Some(("100.02", "EUR"))),
@@ -1043,7 +1012,6 @@ mod tests {
                     ("-100.00", "EUR"),
                     Some("0.01"),
                 ),
-                payee("Payee"),
             ],
         };
 
@@ -1072,16 +1040,14 @@ mod tests {
                 open(date(2024, 1, 1), "Actifs:Compte"),
                 open(date(2024, 1, 1), "Depenses:Divers"),
                 commodity(date(2024, 1, 1), "EUR"),
-                Entry::Transaction(transaction_with_payee(
+                Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    "Payee",
                     vec![
                         posting("Actifs:Compte", Some(("-100.00", "EUR"))),
                         posting("Depenses:Divers", Some(("100.00", "EUR"))),
                     ],
                 )),
                 balance(date(2024, 1, 5), "Actifs:Compte", ("-100.00", "EUR")),
-                payee("Payee"),
             ],
         };
 
@@ -1095,15 +1061,13 @@ mod tests {
                 open_restricted(date(2024, 1, 1), "Actifs:Compte", &["EUR", "USD"]),
                 open(date(2024, 1, 1), "Depenses:Divers"),
                 commodity(date(2024, 1, 1), "EUR"),
-                Entry::Transaction(transaction_with_payee(
+                Entry::Transaction(transaction(
                     date(2024, 1, 5),
-                    "Payee",
                     vec![
                         posting("Actifs:Compte", Some(("-100.00", "EUR"))),
                         posting("Depenses:Divers", Some(("100.00", "EUR"))),
                     ],
                 )),
-                payee("Payee"),
             ],
         };
 

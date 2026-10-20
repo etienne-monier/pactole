@@ -16,10 +16,6 @@ pub(crate) struct Cli {
     #[arg(long, value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
 
-    /// Override the `payee` validation level from `pactole.toml`.
-    #[arg(long, value_enum, value_name = "LEVEL")]
-    pub(crate) validation: Option<ValidationArg>,
-
     #[command(subcommand)]
     pub(crate) command: Command,
 }
@@ -154,27 +150,6 @@ pub(crate) enum Command {
         #[arg(long)]
         no_ledger: bool,
     },
-}
-
-/// CLI-facing mirror of [`pactole_config::ValidationLevel`].
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
-pub(crate) enum ValidationArg {
-    /// Report configurable checks as warnings instead of errors.
-    Warn,
-    /// Report configurable checks as errors (the default).
-    Error,
-    /// Disable the configurable checks.
-    Off,
-}
-
-impl From<ValidationArg> for pactole_config::ValidationLevel {
-    fn from(value: ValidationArg) -> Self {
-        match value {
-            ValidationArg::Warn => pactole_config::ValidationLevel::Warning,
-            ValidationArg::Error => pactole_config::ValidationLevel::Error,
-            ValidationArg::Off => pactole_config::ValidationLevel::Off,
-        }
-    }
 }
 
 /// CLI-facing mirror of [`pactole_core::TransactionStatus`].
