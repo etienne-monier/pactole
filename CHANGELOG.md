@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `include` path to the included file), and `textDocument/references` lists
   every occurrence of the symbol across the include graph of `journal_file`
   (or of the current document when none is configured).
+- The language server supports renaming accounts and payees:
+  `textDocument/prepareRename` offers the renameable range, and
+  `textDocument/rename` edits every occurrence across the same include graph
+  (payee edits keep the surrounding quotes). An invalid new name, or one that
+  would create a duplicate `open` or `payee` declaration, is rejected with an
+  error before anything is applied.
 
 ### Changed
 

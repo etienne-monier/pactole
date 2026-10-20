@@ -25,8 +25,9 @@ locate the CST token under the cursor for navigation.
 ## Current features
 
 Diagnostics (`textDocument/publishDiagnostics`), completion
-(`textDocument/completion`), hover information, and navigation
-(`textDocument/definition`, `textDocument/references`), via:
+(`textDocument/completion`), hover information, navigation
+(`textDocument/definition`, `textDocument/references`) and rename
+(`textDocument/prepareRename`, `textDocument/rename`), via:
 
 - `documents.rs`: `Documents` (in-memory table of open URI → current
   text), `DocumentsSourceLoader`, a
@@ -85,6 +86,18 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   scope hover and completion use via `documents::analyze_scope`). A
   position with no symbol, or a symbol with no declaration, returns an
   empty result rather than an error.
+- `rename.rs`: rename for accounts and payees (`textDocument/prepareRename`
+  and `textDocument/rename`), reusing `navigation.rs`'s occurrence index,
+  scope and symbol classification. An account token is replaced as written;
+  a payee edit replaces only the content of its `string` token, so the
+  surrounding quotes are preserved (`prepareRename` offers that inner range
+  too, so the editor prefills the input without quotes). The new name is
+  validated (accounts reuse `pactole_core::AccountName`; payees must be
+  non-empty and contain no double quote or newline), and a rename that would
+  create a duplicate `open` or `payee` declaration in the scope is refused
+  with an error before anything is applied. A no-op rename, a non-renamable
+  symbol (a commodity, an `include` path, a date, a narration, a tag) or a
+  position without a symbol returns an empty result rather than an error.
 
 ## Explicitly out of scope (first version)
 
@@ -144,8 +157,9 @@ never creates the declaration file nor adds the `include` for you.
 - `chrono` (the local date), `lsp-server`, `lsp-types` (LSP protocol), `serde`/`serde_json` (JSON
   deserialization), `pactole-storage-fs`, `pactole-syntax`, `pactole-config`.
 - `log` + `env_logger` for debug traces (see below).
-- No `thiserror` dependency: no error types of its own, only error
-  propagation via `Box<dyn Error + Sync + Send>` in `server.rs`.
+- No `thiserror` dependency: the only error type is the hand-written
+  `RenameError` struct (mapped to an `InvalidParams` response); errors are
+  otherwise propagated via `Box<dyn Error + Sync + Send>` in `server.rs`.
 
 ## Debug traces
 
@@ -187,9 +201,10 @@ cargo test -p pactole-lsp
 cargo clippy -p pactole-lsp --all-targets
 ```
 
-Unit tests cover notably `config.rs` (`journal_file` resolution and layered
-validation settings) and `server.rs` (computing the URIs to clear between two
-diagnostics publications).
+Unit tests cover notably `navigation.rs` and `rename.rs` (symbol detection,
+scope resolution, rename edits and validation), `config.rs` (`journal_file`
+resolution and layered validation settings) and `server.rs` (computing the
+URIs to clear between two diagnostics publications).
 
 ## See also
 

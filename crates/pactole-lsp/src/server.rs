@@ -14,7 +14,7 @@ use lsp_types::request::Request;
 use lsp_types::{
     CodeActionParams, CodeActionProviderCapability, CompletionOptions, CompletionParams,
     Diagnostic, HoverProviderCapability, InitializeParams, OneOf, PublishDiagnosticsParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    RenameOptions, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 
 use pactole_storage_fs::analyze_file_with_loader_with_options;
@@ -81,6 +81,10 @@ fn server_capabilities() -> ServerCapabilities {
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         definition_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
+        rename_provider: Some(OneOf::Right(RenameOptions {
+            prepare_provider: Some(true),
+            work_done_progress_options: Default::default(),
+        })),
         ..Default::default()
     }
 }
@@ -210,6 +214,50 @@ fn handle_request(
     if request.method == lsp_types::request::References::METHOD {
         let params: lsp_types::ReferenceParams = serde_json::from_value(request.params)?;
         match crate::navigation::handle_references(config, documents, params) {
+            Ok(result) => {
+                let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
+                connection.sender.send(Message::Response(resp))?;
+            }
+            Err(err) => {
+                let response = lsp_server::Response::new_err(
+                    request.id,
+                    lsp_server::ErrorCode::InternalError as i32,
+                    err.to_string(),
+                );
+                connection.sender.send(Message::Response(response))?;
+            }
+        }
+        return Ok(());
+    }
+    // -----------------------------
+    // Rename requests
+    // -----------------------------
+    if request.method == lsp_types::request::Rename::METHOD {
+        let params: lsp_types::RenameParams = serde_json::from_value(request.params)?;
+        match crate::rename::handle_rename(config, documents, params) {
+            Ok(result) => {
+                let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
+                connection.sender.send(Message::Response(resp))?;
+            }
+            Err(err) => {
+                // An invalid or conflicting new name is the user's input
+                // problem, not a server failure: report it as `InvalidParams`
+                // so editors surface the message as a rename error and
+                // nothing is applied.
+                let code = if err.downcast_ref::<crate::rename::RenameError>().is_some() {
+                    lsp_server::ErrorCode::InvalidParams as i32
+                } else {
+                    lsp_server::ErrorCode::InternalError as i32
+                };
+                let response = lsp_server::Response::new_err(request.id, code, err.to_string());
+                connection.sender.send(Message::Response(response))?;
+            }
+        }
+        return Ok(());
+    }
+    if request.method == lsp_types::request::PrepareRenameRequest::METHOD {
+        let params: lsp_types::TextDocumentPositionParams = serde_json::from_value(request.params)?;
+        match crate::rename::handle_prepare_rename(documents, params) {
             Ok(result) => {
                 let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
                 connection.sender.send(Message::Response(resp))?;
@@ -452,6 +500,16 @@ mod tests {
 
         assert_eq!(capabilities["definitionProvider"], serde_json::json!(true));
         assert_eq!(capabilities["referencesProvider"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn advertises_rename_support() {
+        let capabilities = serde_json::to_value(server_capabilities()).unwrap();
+
+        assert_eq!(
+            capabilities["renameProvider"]["prepareProvider"],
+            serde_json::json!(true)
+        );
     }
 
     #[test]

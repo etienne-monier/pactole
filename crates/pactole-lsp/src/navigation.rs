@@ -36,9 +36,10 @@ use crate::config::Config;
 use crate::conversion::{position_to_offset, span_to_range};
 use crate::documents::{Documents, analyze_scope, uri_to_path};
 
-/// The category of symbol goto-definition and find-references resolve.
+/// The category of symbol goto-definition and find-references resolve. Also
+/// shared with rename ([`crate::rename`]), which builds on this index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SymbolKind {
+pub(crate) enum SymbolKind {
     /// An account name, defined by its `open` directive.
     Account,
     /// A payee name, defined by a `payee` directive.
@@ -52,11 +53,11 @@ enum SymbolKind {
 
 /// The symbol found under the cursor.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Symbol {
-    kind: SymbolKind,
+pub(crate) struct Symbol {
+    pub(crate) kind: SymbolKind,
     /// The name as written in the source, without the surrounding quotes of
     /// a payee string or include path.
-    name: String,
+    pub(crate) name: String,
 }
 
 /// One occurrence of a symbol in a file, as extracted from the CST. The
@@ -78,16 +79,16 @@ struct Occurrence<'a> {
 /// An [`Occurrence`] together with the file it was found in, ready to be
 /// turned into an LSP [`Location`].
 #[derive(Debug, Clone)]
-struct ScopedOccurrence<'a> {
+pub(crate) struct ScopedOccurrence<'a> {
     /// The location of the token, or `None` for a file with no URI (an
     /// untitled buffer), which can still take part in matching but cannot be
     /// sent back to the editor.
-    location: Option<Location>,
+    pub(crate) location: Option<Location>,
     /// The filesystem path of the containing file, when known.
-    path: Option<PathBuf>,
-    kind: SymbolKind,
-    name: &'a str,
-    is_definition: bool,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) kind: SymbolKind,
+    pub(crate) name: &'a str,
+    pub(crate) is_definition: bool,
 }
 
 /// One analyzed file of the navigation scope.
@@ -103,8 +104,9 @@ struct ScopeEntry<'a> {
 
 /// The set of files navigation searches: every file reachable from the root
 /// journal through `include`s, plus the current document when it is not part
-/// of that project.
-struct Scope<'a> {
+/// of that project. Shared with rename ([`crate::rename`]), whose scope is
+/// exactly the same.
+pub(crate) struct Scope<'a> {
     entries: Vec<ScopeEntry<'a>>,
 }
 
@@ -112,7 +114,7 @@ impl<'a> Scope<'a> {
     /// Builds the navigation scope from the analyzed project, falling back to
     /// the current document alone when the document is outside the project
     /// (or no project could be analyzed).
-    fn build(
+    pub(crate) fn build(
         project: Option<&'a AnalyzedProject>,
         current_uri: &Url,
         current_file: &'a ParsedFile,
@@ -163,7 +165,21 @@ fn resolve_include(base_dir: Option<&Path>, raw: &str) -> PathBuf {
 
 /// Finds the symbol under `offset` in `file`, by locating the smallest CST
 /// token containing it and classifying it from its node kind and context.
-fn symbol_in_file(file: &ParsedFile, offset: usize) -> Option<Symbol> {
+pub(crate) fn symbol_in_file(file: &ParsedFile, offset: usize) -> Option<Symbol> {
+    symbol_at_offset(file, offset).map(|(symbol, _node)| symbol)
+}
+
+/// Like [`symbol_in_file`] but also returns the span of the token the symbol
+/// was found in, as written in the source (quotes included for a payee string
+/// or include path). Used by rename's `prepareRename` to report the range the
+/// editor may offer for renaming.
+pub(crate) fn symbol_with_span(file: &ParsedFile, offset: usize) -> Option<(Symbol, Span)> {
+    symbol_at_offset(file, offset).map(|(symbol, node)| (symbol, Span::from_node(&node)))
+}
+
+/// The shared implementation of [`symbol_in_file`] and [`symbol_with_span`]:
+/// the symbol under `offset` together with its CST token node.
+fn symbol_at_offset(file: &ParsedFile, offset: usize) -> Option<(Symbol, Node<'_>)> {
     let source = file.document().source();
     let root = file.document().root_node();
     let offset = offset.min(source.len());
@@ -172,8 +188,8 @@ fn symbol_in_file(file: &ParsedFile, offset: usize) -> Option<Symbol> {
     // end of a word); the token's half-open span then no longer contains the
     // offset, so retry with the byte just before it.
     let node = node_at_offset(root, offset);
-    if let Some(symbol) = node.and_then(|node| classify_node(node, source)) {
-        return Some(symbol);
+    if let Some(found) = node.and_then(|node| classify_node(node, source)) {
+        return Some(found);
     }
     offset
         .checked_sub(1)
@@ -191,27 +207,33 @@ fn node_at_offset(root: Node<'_>, offset: usize) -> Option<Node<'_>> {
 
 /// Classifies the token `node` (or its enclosing construct) as a navigable
 /// symbol, walking up ancestors when the node itself is not a token of
-/// interest.
-fn classify_node(mut node: Node<'_>, source: &str) -> Option<Symbol> {
+/// interest. Returns the symbol together with the token node it was found in.
+fn classify_node<'a>(mut node: Node<'a>, source: &str) -> Option<(Symbol, Node<'a>)> {
     loop {
         match node.kind() {
             "account" => {
-                return Some(Symbol {
-                    kind: SymbolKind::Account,
-                    name: node_text(node, source).to_string(),
-                });
+                return Some((
+                    Symbol {
+                        kind: SymbolKind::Account,
+                        name: node_text(node, source).to_string(),
+                    },
+                    node,
+                ));
             }
             "commodity_name" => {
-                return Some(Symbol {
-                    kind: SymbolKind::Commodity,
-                    name: node_text(node, source).to_string(),
-                });
+                return Some((
+                    Symbol {
+                        kind: SymbolKind::Commodity,
+                        name: node_text(node, source).to_string(),
+                    },
+                    node,
+                ));
             }
             "string" => {
                 // Only a payee string or an include path are navigable: a
                 // transaction's narration or a metadata value is plain text.
                 let name = node_text(node, source);
-                return match node.parent() {
+                let symbol = match node.parent() {
                     Some(parent) if parent.kind() == "path" => Some(Symbol {
                         kind: SymbolKind::IncludePath,
                         name: strip_quotes(name).to_string(),
@@ -226,6 +248,7 @@ fn classify_node(mut node: Node<'_>, source: &str) -> Option<Symbol> {
                     }
                     _ => None,
                 };
+                return symbol.map(|symbol| (symbol, node));
             }
             _ => node = node.parent()?,
         }
@@ -403,7 +426,7 @@ fn named_child<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
 
 /// Collects every occurrence of the scope's files with the location to
 /// report for it.
-fn scoped_occurrences<'a>(scope: &Scope<'a>) -> Vec<ScopedOccurrence<'a>> {
+pub(crate) fn scoped_occurrences<'a>(scope: &Scope<'a>) -> Vec<ScopedOccurrence<'a>> {
     let mut collected = Vec::new();
     for entry in &scope.entries {
         let source = entry.file.document().source();
@@ -432,7 +455,11 @@ fn include_target(symbol: &Symbol, base_dir: Option<&Path>) -> Option<PathBuf> {
 /// Whether `occurrence` is the same symbol as `symbol`; for include paths,
 /// matching is by *resolved* target file so identical raw paths written from
 /// different directories do not cross-match.
-fn is_match(occurrence: &ScopedOccurrence, symbol: &Symbol, target: Option<&Path>) -> bool {
+pub(crate) fn is_match(
+    occurrence: &ScopedOccurrence,
+    symbol: &Symbol,
+    target: Option<&Path>,
+) -> bool {
     if occurrence.kind != symbol.kind {
         return false;
     }

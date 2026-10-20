@@ -374,10 +374,11 @@ Modules :
 Explicitement hors du périmètre de cette première version : les symboles de
 document (`textDocument/documentSymbol`), le formatage via LSP (utiliser
 `pactole fmt` pour le formatage) et la synchronisation incrémentale. La
-complétion, le survol (hover), les actions de code et la navigation
-(`textDocument/definition`, `textDocument/references`) sont, eux, supportés.
-Les requêtes non gérées reçoivent une erreur `MethodNotFound` plutôt que
-d'être silencieusement ignorées.
+complétion, le survol (hover), les actions de code, la navigation
+(`textDocument/definition`, `textDocument/references`) et le renommage
+(`textDocument/prepareRename`, `textDocument/rename`, pour les comptes et
+les payees) sont, eux, supportés. Les requêtes non gérées reçoivent une
+erreur `MethodNotFound` plutôt que d'être silencieusement ignorées.
 
 Journalisation (`log`/`env_logger`) : silencieuse par défaut, activable à la
 demande via `RUST_LOG` (ex. `RUST_LOG=pactole_lsp=debug`) ; écrite
@@ -562,12 +563,15 @@ complexité croissante :
    importeur consiste à écrire un nouveau module produisant des
    `ImportRecord`s et à exposer un point d'entrée analogue à
    `import_ofx`.
-3. **Navigation LSP** ("go to definition"/"find references") : implémentée
-   dans `pactole-lsp` (module `navigation.rs`) pour les comptes, payees,
-   commodités et chemins d'`include`, avec un index d'occurrences partagé
-   bâti sur l'arbre CST de chaque fichier. Il reste à exposer
-   `textDocument/documentSymbol`, et l'index pourra être mis en cache si le
-   rescan par requête devient limitant.
+3. **Navigation et renommage LSP** ("go to definition"/"find
+   references"/"rename") : implémentés dans `pactole-lsp` (module
+   `navigation.rs`, plus `rename.rs` qui réutilise son index) pour les
+   comptes, payees, commodités et chemins d'`include`, avec un index
+   d'occurrences partagé bâti sur l'arbre CST de chaque fichier. Le
+   renommage couvre les comptes et les payees, avec refus des noms créant
+   une double déclaration. Il reste à exposer `textDocument/documentSymbol`,
+   et l'index pourra être mis en cache si le rescan par requête devient
+   limitant.
 4. **Formatage via LSP** (`textDocument/formatting`) : aujourd'hui,
    formater nécessite la CLI (`pactole fmt`) ; `pactole-lsp` ne l'expose
    pas.

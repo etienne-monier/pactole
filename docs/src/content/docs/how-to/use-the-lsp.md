@@ -122,7 +122,11 @@ and generic editor configuration examples, including the external formatter.
   (`textDocument/definition`), and from an `include` path to the included
   file;
 - lists every occurrence of an account, payee or commodity across the
-  include graph (`textDocument/references`).
+  include graph (`textDocument/references`);
+- renames an account or a payee across the whole include graph
+  (`textDocument/rename`, with `textDocument/prepareRename`); a new name
+  that is invalid, or that would create a duplicate `open` or `payee`
+  declaration, is refused with an error.
 
 Document synchronization is full-document rather than incremental. This keeps
 the server simple and robust for the typically small, hand-edited journals

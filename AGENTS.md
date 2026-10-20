@@ -252,7 +252,18 @@ pactole/
        current document is its own entry point so its own `include`s are followed too — the same
        scope `hover.rs` and `completion.rs` use via the shared `documents::analyze_scope` helper.
        A missing declaration is reported as an empty result, never an error.
-    - Completion, code actions, hover and navigation are supported. Formatting over LSP (use
+     - `rename.rs`: rename support (`textDocument/prepareRename` and `textDocument/rename`) for
+       the two renamable symbol kinds, accounts and payees, reusing `navigation.rs`'s occurrence
+       index, scope and symbol classification (shared as `pub(crate)` items — rename does not
+       duplicate the CST scan). An account token is replaced as written; a payee edit replaces
+       only the content of its `string` token, preserving the surrounding quotes
+       (`prepareRename` offers that inner range too, so the editor prefills the input without
+       quotes). The new name is validated (accounts reuse `pactole_core::AccountName`; payees
+       must be non-empty and contain no double quote or newline), and a rename that would
+       create a duplicate `open` or `payee` declaration in the scope is refused with a
+       `RenameError`, which `server.rs` maps to an `InvalidParams` response; a no-op rename, a
+       non-renamable symbol or a position without a symbol yields an empty result.
+    - Completion, code actions, hover, navigation and rename are supported. Formatting over LSP (use
       `pactole fmt`), `textDocument/documentSymbol`, incremental sync, and reading
       `~/.config/pactole` remain out of scope for this first version. Unhandled requests are
       answered with a `MethodNotFound` error rather than silently ignored.
@@ -273,8 +284,9 @@ pactole/
      `Span`/`Point`), plus `pactole-config` for layered configuration and `tree-sitter`
      (directly, for the navigation CST index); it does not add or change anything in those
      crates.
-   - Has no dependency on `thiserror`: it has no error enums of its own, only propagating errors
-     via `Box<dyn Error + Sync + Send>` in `server.rs`.
+   - Has no dependency on `thiserror`: its only error type is the hand-written `RenameError`
+     struct, and errors are otherwise propagated via `Box<dyn Error + Sync + Send>` in
+     `server.rs`.
 
 7. **`pactole-import`**:
    - **Edge adapter, zero I/O, depends only on `pactole-core` and `pactole-config`** (plus

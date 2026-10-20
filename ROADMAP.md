@@ -143,7 +143,7 @@ journals.
 - [ ] Replace completion's `BTreeSet<String>` values with this index where
   appropriate.
 
-### P1.3 — Add LSP navigation
+### P1.3 — Add LSP navigation and rename
 
 - [ ] Implement `textDocument/documentSymbol`.
 - [x] Implement `textDocument/definition` for accounts, payees, and
@@ -151,6 +151,8 @@ journals.
 - [x] Implement `textDocument/references` for the same symbols.
 - [x] Add navigation tests across included files.
 - [x] Return an empty result, rather than an error, when no definition exists.
+- [x] Implement `textDocument/rename` and `textDocument/prepareRename` for
+  accounts and payees, reusing the navigation occurrence index and scope.
 
 Note: definition and references currently re-scan each file's CST per
 request; the positioned index of P1.2 can later replace that shared
