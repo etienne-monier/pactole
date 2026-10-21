@@ -1,6 +1,6 @@
 [package]
 name = "pactole-import"
-version = "0.2.0"
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -12,14 +12,14 @@ keywords = ["accounting", "ledger", "import", "ofx"]
 categories = ["finance", "parser-implementations"]
 
 [dependencies]
-chrono = "0.4.45"
-encoding_rs = "0.8"
+chrono.workspace = true
+encoding_rs.workspace = true
 # Pending upstream release: ofx-rs 0.2.0 pins quick-xml below the RustSec-fixed
 # version, its SGML normalizer drops BANKTRANLIST when BANKACCTFROM carries
 # ACCTKEY, and it mangles non-ASCII text (all three fixed on this fork, upstream
 # PR pending).
 ofx-rs = { version = "0.2.0", git = "https://github.com/etienne-monier/ofx-rs.git", rev = "ec8e9dc620ceb9d7e4aa56bcac19b03bba057dc2" }
-pactole-config = { version = "0.2.0", path = "../pactole-config" }
-pactole-core = { version = "0.2.0", path = "../pactole-core" }
-rust_decimal = "1.43.0"
-thiserror = "2.0.20"
+pactole-config.workspace = true
+pactole-core.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true

@@ -14,11 +14,41 @@ default-members = ["crates/pactole-cli", "crates/pactole-lsp/"]
 exclude = ["editors/zed"]
 
 [workspace.package]
+version = "0.3.0"
 authors = ["Etienne Monier"]
 license = "MIT"
 repository = "https://github.com/etienne-monier/pactole"
 homepage = "https://github.com/etienne-monier/pactole"
-rust-version = "1.88"
+# `tree-sitter` 0.27 and `tree-sitter-language` 0.1 require Rust 1.90.
+rust-version = "1.90"
 edition = "2024"
 
 [workspace.dependencies]
+# Pactole crates. The `path` keeps local builds on the workspace sources (the
+# crates are never fetched from crates.io), the `version` is what the published
+# crates require from the registry. Both must match the version of the crate
+# they point at, which Cargo checks on every build.
+pactole-config = { version = "0.3.0", path = "crates/pactole-config" }
+pactole-core = { version = "0.3.0", path = "crates/pactole-core" }
+pactole-import = { version = "0.3.0", path = "crates/pactole-import" }
+pactole-storage-fs = { version = "0.3.0", path = "crates/pactole-storage-fs" }
+pactole-syntax = { version = "0.3.0", path = "crates/pactole-syntax" }
+tree-sitter-pactole = { version = "0.3.0", path = "crates/tree-sitter-pactole" }
+
+# Third-party dependencies.
+chrono = "0.4.45"
+clap = { version = "4.6.6", features = ["derive"] }
+clap_complete = "4.6.0"
+cc = "1.2"
+encoding_rs = "0.8"
+env_logger = "0.11.8"
+log = "0.4.28"
+lsp-server = "0.7.9"
+lsp-types = "0.93.2"
+rust_decimal = "1.43.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.20"
+toml = "1.1.5"
+tree-sitter = "0.27.0"
+tree-sitter-language = "0.1"

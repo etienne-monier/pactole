@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.3.0] - 2026-10-21
+
 ### Added
 
 - Unused declarations are now reported: an `open`ed account that no
@@ -79,6 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - OFX import rules are now written as `[[import.rules]]` inside `pactole.toml`
   instead of `[[rules]]` in a dedicated file.
+- The minimum supported Rust version is now 1.90, which `tree-sitter` 0.27
+  requires. The CI builds and tests the workspace with that toolchain to keep
+  the advertised minimum honest.
+- The version of every crate of the workspace now comes from a single place,
+  the workspace manifest, and the crates depend on each other through the
+  workspace dependencies. Local builds always use the crates of the workspace,
+  while the published crates require the matching versions from crates.io.
+- The CI now checks that the whole workspace can be published
+  (`cargo publish --workspace --dry-run`), and that the `Cargo.lock` stays in
+  sync with the manifests.
 
 ### Removed
 
@@ -163,9 +177,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release notes
 
-This is the first public Pactole release. Version `0.1.0` was published
-manually to reserve and connect the crates on crates.io; the first functional
-release is `0.2.0`.
+Version `0.1.0` was published manually to reserve and connect the crates on
+crates.io; `0.2.0` was the first functional release, and `0.3.0` adds the
+layered `pactole.toml` configuration, the navigation and rename features of the
+language server, and the OFX import fixes.
 
 [unreleased]: https://github.com/etienne-monier/pactole/commits/develop
+[0.3.0]: https://github.com/etienne-monier/pactole/releases/tag/v0.3.0
 [0.2.0]: https://github.com/etienne-monier/pactole/releases/tag/v0.2.0

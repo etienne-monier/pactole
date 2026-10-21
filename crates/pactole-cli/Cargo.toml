@@ -1,6 +1,6 @@
 [package]
 name = "pactole-cli"
-version = "0.2.0"
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -18,10 +18,10 @@ name = "pactole"
 path = "src/main.rs"
 
 [dependencies]
-chrono = "0.4.45"
-clap = { version = "4.6.6", features = ["derive"] }
-clap_complete = "4.6.0"
-pactole-config = { version = "0.2.0", path = "../pactole-config" }
-pactole-core = { version = "0.2.0", path = "../pactole-core" }
-pactole-import = { version = "0.2.0", path = "../pactole-import" }
-pactole-storage-fs = { version = "0.2.0", path = "../pactole-storage-fs" }
+chrono.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+pactole-config.workspace = true
+pactole-core.workspace = true
+pactole-import.workspace = true
+pactole-storage-fs.workspace = true

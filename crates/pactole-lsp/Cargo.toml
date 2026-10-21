@@ -1,6 +1,6 @@
 [package]
 name = "pactole-lsp"
-version = "0.2.0"
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -17,17 +17,17 @@ name = "pactole-lsp"
 path = "src/main.rs"
 
 [dependencies]
-chrono = "0.4.45"
-env_logger = "0.11.8"
-log = "0.4.28"
-lsp-server = "0.7.9"
-lsp-types = "0.93.2"
-pactole-config = { version = "0.2.0", path = "../pactole-config" }
-pactole-core = { version = "0.2.0", path = "../pactole-core" }
-pactole-storage-fs = { version = "0.2.0", path = "../pactole-storage-fs" }
-pactole-syntax = { version = "0.2.0", path = "../pactole-syntax" }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
+chrono.workspace = true
+env_logger.workspace = true
+log.workspace = true
+lsp-server.workspace = true
+lsp-types.workspace = true
+pactole-config.workspace = true
+pactole-core.workspace = true
+pactole-storage-fs.workspace = true
+pactole-syntax.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 # Used directly by `navigation.rs` to locate the CST token under the cursor
 # (`Node::descendant_for_byte_range`); same version as `pactole-syntax`.
-tree-sitter = "0.27.0"
+tree-sitter.workspace = true

@@ -459,6 +459,37 @@ on every push to `develop` and every pull request
 (`.github/workflows/ci.yml`). Publishing the crates to crates.io is triggered
 by pushing a `v*` tag (`.github/workflows/release.yml`).
 
+### Versioning & Publishing
+
+- **The version lives in one place**: `[workspace.package] version` in the root
+  `Cargo.toml`. Every crate inherits it with `version.workspace = true`, and
+  every crate depends on the others through `[workspace.dependencies]`, which
+  pairs the `path` (local builds always use the workspace sources, crates.io
+  is never consulted for them) with the `version` (what the published crates
+  require from the registry). Cargo checks that the two match, so a mismatch
+  fails the build instead of silently drifting.
+- **Bump with the task runner**, never by hand:
+
+  ```sh
+  task version VERSION=0.3.0
+  ```
+
+  It rewrites the package version and the internal dependency requirements,
+  then refreshes `Cargo.lock`. Keep `Cargo.lock` committed and in sync: the CI
+  runs with `--locked`.
+- **The crates are published in lockstep** (`0.3.0`, `0.4.0`, ...). Because a
+  `0.x` caret requirement (`^0.3.0` means `>=0.3.0, <0.4.0`) makes the minor
+  version the compatibility boundary, bumping a crate to a new minor requires
+  bumping every crate that depends on it.
+- **Publication order** is handled by `cargo publish --workspace` (Cargo 1.90
+  and later): `tree-sitter-pactole` → `pactole-core` → `pactole-config` →
+  `pactole-syntax` → `pactole-storage-fs` → `pactole-import` → `pactole-cli` →
+  `pactole-lsp`. The CI runs the same command as a dry run
+  (`publish-check` job) to catch non-publishable manifests before the tag.
+- **The minimum supported Rust version is `rust-version = "1.90"`** (required
+  by `tree-sitter` 0.27), and the CI has an `msrv` job that builds and tests
+  the workspace with that toolchain.
+
 ### Documentation
 
 ```sh

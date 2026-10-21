@@ -1,6 +1,6 @@
 [package]
 name = "pactole-core"
-version = "0.2.0"
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -12,6 +12,6 @@ keywords = ["accounting", "ledger", "plaintext", "finance"]
 categories = ["finance"]
 
 [dependencies]
-chrono = "0.4.45"
-rust_decimal = "1.43.0"
-thiserror = "2.0.20"
+chrono.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true

@@ -2,3 +2,23 @@ version: "3"
 
 tasks:
   doc: cargo doc --workspace --no-deps
+
+  version:
+    desc: "Bump the workspace version: task version VERSION=X.Y.Z (or task version -- X.Y.Z)"
+    cmds:
+      - |
+        set -eu
+        version="{{.VERSION}}"
+        if [ -z "$version" ]; then
+          version="{{.CLI_ARGS}}"
+        fi
+        if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "usage: task version VERSION=X.Y.Z" >&2
+          exit 1
+        fi
+        # [workspace.package] version = "X.Y.Z"
+        sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"$/version = \"$version\"/" Cargo.toml
+        # [workspace.dependencies] { version = "X.Y.Z", path = "crates/..." }
+        sed -i -E "s/(version = \")[0-9]+\.[0-9]+\.[0-9]+(\", path = \"crates\/)/\1$version\2/" Cargo.toml
+        # Refreshes Cargo.lock and fails if the new versions do not resolve.
+        cargo check --workspace

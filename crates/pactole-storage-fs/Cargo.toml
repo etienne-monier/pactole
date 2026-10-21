@@ -1,6 +1,6 @@
 [package]
 name = "pactole-storage-fs"
-version = "0.2.0"
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -12,11 +12,11 @@ keywords = ["accounting", "ledger", "parser", "filesystem"]
 categories = ["parser-implementations", "finance"]
 
 [dependencies]
-chrono = "0.4.45"
-pactole-config = { version = "0.2.0", path = "../pactole-config" }
-pactole-core = { version = "0.2.0", path = "../pactole-core" }
-pactole-syntax = { version = "0.2.0", path = "../pactole-syntax" }
-rust_decimal = "1.43.0"
-thiserror = "2.0.20"
-toml = "1.1.5"
-tree-sitter = "0.27.0"
+chrono.workspace = true
+pactole-config.workspace = true
+pactole-core.workspace = true
+pactole-syntax.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+tree-sitter.workspace = true
