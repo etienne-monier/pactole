@@ -22,6 +22,28 @@ configuration: it neither adds nor modifies anything in these crates. It
 also uses `tree-sitter` directly (same version as `pactole-syntax`) to
 locate the CST token under the cursor for navigation.
 
+## Command line
+
+The binary takes no required argument:
+
+```text
+pactole-lsp            # serve over stdio (the only transport)
+pactole-lsp --version  # print the server name and version
+pactole-lsp --help     # print the usage
+```
+
+`--stdio` is accepted and ignored: it is the only supported transport, but
+editors are often configured to launch a language server with it
+(`args = ["--stdio"]`), and such a configuration must keep working. Any other
+argument is rejected.
+
+The server also announces its name and version in the `initialize` response
+(`serverInfo`), so that clients can display them:
+
+```json
+{ "serverInfo": { "name": "pactole-lsp", "version": "0.3.0" } }
+```
+
 ## Current features
 
 Diagnostics (`textDocument/publishDiagnostics`), completion
@@ -58,7 +80,9 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   `initializationOptions`. Broken configuration files and invalid levels are
   logged and ignored rather than failing `initialize`.
 - `server.rs`: the stdio `Connection`, the main loop, and the
-  notification handlers. When `journal_file` is configured and loads,
+  notification handlers. The `initialize` result carries the server
+  capabilities and the server's name and version (`serverInfo`). When
+  `journal_file` is configured and loads,
   diagnostics are computed for every file reachable via `include` (via
   `analyze_file_with_loader`) and published per file; otherwise the
   current document alone is analyzed standalone via `analyze_file` (its
@@ -168,7 +192,8 @@ never creates the declaration file nor adds the `include` for you.
 
 ## Dependencies / boundaries
 
-- `chrono` (the local date), `lsp-server`, `lsp-types` (LSP protocol), `serde`/`serde_json` (JSON
+- `chrono` (the local date), `clap` (the command line), `lsp-server`,
+  `lsp-types` (LSP protocol), `serde`/`serde_json` (JSON
   deserialization), `pactole-storage-fs`, `pactole-syntax`, `pactole-config`.
 - `log` + `env_logger` for debug traces (see below).
 - No `thiserror` dependency: the only error type is the hand-written
@@ -217,8 +242,13 @@ cargo clippy -p pactole-lsp --all-targets
 
 Unit tests cover notably `navigation.rs` and `rename.rs` (symbol detection,
 scope resolution, rename edits and validation), `config.rs` (`journal_file`
-resolution and layered validation settings) and `server.rs` (computing the
-URIs to clear between two diagnostics publications).
+resolution and layered validation settings) and `server.rs` (the `initialize`
+result, and computing the URIs to clear between two diagnostics
+publications).
+
+`tests/cli.rs` drives the built binary: `--version`, the acceptance of
+`--stdio`, and a real `initialize` round-trip over the stdio transport
+checking the announced `serverInfo`.
 
 ## See also
 

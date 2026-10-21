@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- `pactole-lsp` now reports its name and version: `pactole-lsp --version`
+  prints `pactole-lsp <version>`, and the server announces the same in its
+  `initialize` response (`serverInfo`), so editors can display it in their
+  language server log. The `--stdio` flag is accepted and ignored, so
+  editor configurations passing `args = ["--stdio"]` keep working.
 
 ## [0.3.0] - 2026-10-21
 

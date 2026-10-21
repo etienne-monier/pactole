@@ -361,7 +361,10 @@ Modules :
   niveau invalide sont journalisés et ignorés plutôt que de faire échouer
   `initialize`.
 - `server.rs` : la `Connection` stdio, la boucle principale, et les
-  handlers de notifications. Publie `textDocument/publishDiagnostics` :
+  handlers de notifications. La réponse à `initialize` porte les
+  capacités du serveur **et** son nom et sa version (`serverInfo`), afin
+  que les clients puissent les afficher. Publie
+  `textDocument/publishDiagnostics` :
   - quand `journal_file` est configuré et se charge avec succès, les
     diagnostics sont calculés pour **chaque fichier atteignable via
     `include`** avec `analyze_file_with_loader` et `DocumentsSourceLoader`
@@ -391,6 +394,12 @@ demande via `RUST_LOG` (ex. `RUST_LOG=pactole_lsp=debug`) ; écrite
 uniquement sur stderr, jamais sur stdout (réservé au transport du
 protocole LSP) ; ne contient jamais le contenu des documents ouverts, pour
 rester sans risque à activer sur des journaux potentiellement sensibles.
+
+Ligne de commande : `pactole-lsp` ne prend aucun argument obligatoire.
+`--version` et `--help` sont gérés par `clap` (comme `pactole`), et
+`--stdio` est accepté et ignoré (stdio est le seul transport) pour ne pas
+casser les configurations d'éditeurs qui lancent le serveur avec
+`args = ["--stdio"]`. Tout autre argument est rejeté.
 
 ## 6. `pactole-cli`
 

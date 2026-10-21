@@ -196,6 +196,11 @@ pactole/
 5. **`pactole-lsp`**:
    - A minimal stdio Language Server Protocol server for `.pactole` files, built on `lsp-server` +
      `lsp-types`. Binary name: `pactole-lsp`.
+   - **Command line**: `clap` derive, like `pactole`. `--version` and `--help` are handled by
+     clap; `--stdio` is accepted and ignored (stdio is the only transport) so that editor
+     configurations passing `args = ["--stdio"]` keep working; any other argument is rejected.
+     The `initialize` result carries the server capabilities plus `serverInfo` (name and version),
+     so clients can display them.
    - **Lifecycle & sync**: handles `initialize`/`shutdown`/`exit`, and
      `textDocument/didOpen`/`didChange`/`didClose` using **full-document synchronization**
      (`TextDocumentSyncKind::FULL`) — each `didChange` carries the whole new text, so no

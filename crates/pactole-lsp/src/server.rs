@@ -27,8 +27,12 @@ use crate::documents::{Documents, DocumentsSourceLoader};
 pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
     let (connection, io_threads) = Connection::stdio();
 
+    // `Connection::initialize` can only answer with the server capabilities;
+    // `initialize_start`/`initialize_finish` are used instead so that the
+    // result can also carry the server's name and version.
+    let (initialize_id, initialize_params) = connection.initialize_start()?;
     let server_capabilities = serde_json::to_value(server_capabilities())?;
-    let initialize_params = connection.initialize(server_capabilities)?;
+    connection.initialize_finish(initialize_id, initialize_result(server_capabilities))?;
     let initialize_params: InitializeParams = serde_json::from_value(initialize_params)?;
 
     let workspace_root = workspace_root_from_initialize_params(&initialize_params);
@@ -49,6 +53,18 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
     io_threads.join()?;
     log::info!("shutting down");
     Ok(())
+}
+
+/// Builds the result of the `initialize` request: the server capabilities,
+/// plus the server's name and version so that clients can display them.
+fn initialize_result(capabilities: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "capabilities": capabilities,
+        "serverInfo": {
+            "name": "pactole-lsp",
+            "version": env!("CARGO_PKG_VERSION"),
+        },
+    })
 }
 
 fn server_capabilities() -> ServerCapabilities {
@@ -509,6 +525,30 @@ mod tests {
 
         assert_eq!(
             capabilities["renameProvider"]["prepareProvider"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn initialize_result_advertises_the_server_name_and_version() {
+        let result = initialize_result(serde_json::json!({ "hoverProvider": true }));
+
+        assert_eq!(
+            result["serverInfo"]["name"],
+            serde_json::json!("pactole-lsp")
+        );
+        assert_eq!(
+            result["serverInfo"]["version"],
+            serde_json::json!(env!("CARGO_PKG_VERSION"))
+        );
+    }
+
+    #[test]
+    fn initialize_result_keeps_the_server_capabilities() {
+        let result = initialize_result(serde_json::json!({ "hoverProvider": true }));
+
+        assert_eq!(
+            result["capabilities"]["hoverProvider"],
             serde_json::json!(true)
         );
     }

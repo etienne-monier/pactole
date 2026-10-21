@@ -26,6 +26,10 @@ The command used by your editor is:
 pactole-lsp
 ```
 
+The server takes no required argument. `pactole-lsp --version` prints its
+name and version, and the server also announces them in its `initialize`
+response, so your editor can display them in its language server log.
+
 ## Configure your editor
 
 Register `pactole-lsp` as the language server for files with the `.pactole`
