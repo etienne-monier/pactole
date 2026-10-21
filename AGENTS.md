@@ -43,7 +43,7 @@ pactole/
    - **Zero I/O and Zero Tree-sitter**: Contains only domain entities, business validation, and financial calculations. Must never depend on `pactole-storage-fs`, `pactole-syntax`, `tree-sitter`, or filesystem operations.
    - **Key modules**:
      - `models/`: Domain structs (`Journal`, `Entry`, `Transaction`, `Posting`, `Amount`, `Balance`, `Open`, `Close`, `Commodity`, `Payee`, etc.) and newtypes (`AccountName`, `CommodityName`, `MetadataKey`).
-     - `validation.rs`: Invariant checks on `Journal` (chronological ordering, account lifecycles, declared commodities, declared payees, transaction balancing).
+     - `validation.rs`: Invariant checks on `Journal` (chronological ordering, account lifecycles, declared commodities, declared payees, transaction balancing), plus `unused_declarations(&Journal)`, reporting `open`/`commodity`/`payee` declarations that nothing in the journal ever uses (severity decided by front-ends via `[validation] unused`).
      - `register.rs`: Register report computation (running balance per commodity, filtering by account, date range, payee, narration, status, tag).
      - `traits.rs`: Storage abstractions like `ReadableStorage`.
      - `errors.rs`: `ModelError`, `ValidationError`.
@@ -143,12 +143,14 @@ pactole/
        - `analyze_file(&str) -> ParsedFile` is kept exactly as-is (single-file, no include
          resolution) for backward compatibility; `analyze_file_with_loader` is strictly additive.
        - `analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)` is the
-         configurable variant: it reclassifies the one configurable business check
-         (`PayeeNotDeclared`) as a warning when `[validation] payee = "warn"`, while every other
-         business issue stays an error. `validated_journal()` then succeeds as long as no
-         error-severity diagnostic remains; warnings alone do not block it. The
-         `analyze_file_with_loader` form uses `ValidationOptions::default()` (everything an
-         error), so existing callers behave exactly as before.
+         configurable variant: it gives the configurable business checks — the undeclared payee
+         check (`PayeeNotDeclared`, `[validation] payee`) and the unused-declaration checks
+         (`AccountUnused`/`CommodityUnused`/`PayeeUnused`, `[validation] unused`) — the severity
+         configured for them, while every other business issue stays an error.
+         `validated_journal()` then succeeds as long as no error-severity diagnostic remains;
+         warnings alone do not block it. The `analyze_file_with_loader` form uses
+         `ValidationOptions::default()` (undeclared payees errors, unused declarations warnings),
+         so existing callers behave exactly as before.
        - Configuration types (`ValidationOptions`, `ValidationLevel`, `FormatOptions`) come from
          `pactole-config`; `pactole-storage-fs` re-exports `FormatOptions` to keep its formatting
          API self-contained.
@@ -220,8 +222,9 @@ pactole/
        `rootUri`, then `rootPath` — when given as relative; when no workspace root is known at
        all, resolved against the server process's current working directory instead of being
        silently left relative, so it does not later fail to resolve and silently drop every
-       diagnostic for the whole include graph) and `validation` (a `"warn"`/`"error"` string or a
-       `{ "payee": ... }` table). Validation settings follow the same layering as the CLI: the
+       diagnostic for the whole include graph) and `validation` (a `"warn"`/`"error"` string applied
+       to every configurable check, or a `{ "payee": ..., "unused": ... }` table). Validation
+       settings follow the same layering as the CLI: the
        global `pactole.toml` (via `pactole_config::config_dir`), then the project `pactole.toml`
        (next to `journal_file`, or at the workspace root when none is configured), then
        `initializationOptions`. Unreadable or invalid configuration files, and the
@@ -350,6 +353,11 @@ pactole/
      - `[validation] payee`: `"off"`, `"warn"` or `"error"` (default `"error"`, preserving
        historical behavior). It controls only the diagnostic for an undeclared payee; the payee
        remains mandatory in the grammar.
+     - `[validation] unused`: `"off"`, `"warn"` or `"error"` (default `"warn"`). It controls the
+       diagnostics for declarations nothing uses: an `open`ed account with no transaction nor
+       balance assertion, a `commodity` never used by any amount (nor restricted to an account by
+       an `open`), and a `payee` never used by a transaction (`account-unused`,
+       `commodity-unused`, `payee-unused`).
      - `[format] posting_width`: amount alignment column (default 50).
      - `[declaration]` (`payees`, `accounts`, `commodities`): the files an
        editor front-end should insert new declarations into, instead of the

@@ -28,7 +28,8 @@ Unknown keys are rejected per section, so typos fail loudly.
 
 ```toml
 [validation]
-payee = "error" # "warn", "error" or "off"
+payee = "error" # undeclared payees: "off", "warn" or "error"
+unused = "warn" # never-used declarations: "off", "warn" or "error"
 
 [declaration]
 payees = "payees.pactole"
@@ -54,6 +55,11 @@ payee = "Supermarket"
 - `[validation] payee` controls whether a transaction whose payee has no
   `payee` declaration is ignored (`off`), a warning (`warn`), or an error
   (`error`, the default). The payee itself remains mandatory in the grammar.
+- `[validation] unused` controls the severity of declarations nothing ever
+  uses: an account opened but never posted to nor balance-asserted, a
+  commodity no amount uses (and no `open` restricts an account to), a payee
+  no transaction uses. They are reported as warnings by default, dropped
+  entirely under `off`, and blocking under `error`.
 - `[declaration]` (`payees`, `accounts`, `commodities`) names the files where
   an editor front-end should insert a new declaration, instead of the current
   document. Paths are kept raw here; the consumer resolves them against the

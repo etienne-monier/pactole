@@ -121,6 +121,10 @@ fn render_config(account: &str, currency: &str, counter_account: &str) -> String
          [validation]\n\
          # Severity of configurable checks: \"warn\" or \"error\".\n\
          # payee = \"error\"\n\n\
+         # Severity of declarations that are never used (an opened account\n\
+         # without any transaction, an unused commodity or payee):\n\
+         # \"off\", \"warn\" or \"error\".\n\
+         # unused = \"warn\"\n\n\
          [format]\n\
          # Column at which posting amounts are aligned.\n\
          # posting_width = 50\n\n\

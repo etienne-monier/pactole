@@ -38,10 +38,11 @@ pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
     );
     config.load_layered(workspace_root.as_deref());
     log::info!(
-        "initialized: workspace_root={:?} journal_file={:?} payee_level={}",
+        "initialized: workspace_root={:?} journal_file={:?} payee_level={} unused_level={}",
         workspace_root,
         config.journal_file,
-        config.validation.payee.as_str()
+        config.validation.payee.as_str(),
+        config.validation.unused.as_str()
     );
 
     main_loop(connection, config)?;

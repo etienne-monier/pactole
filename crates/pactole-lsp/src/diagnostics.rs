@@ -95,7 +95,11 @@ pub fn project_diagnostics(project: &AnalyzedProject) -> HashMap<PathBuf, Vec<Di
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pactole_storage_fs::{InMemorySourceLoader, analyze_file, analyze_file_with_loader};
+    use pactole_config::{ValidationLevel, ValidationOptions};
+    use pactole_storage_fs::{
+        InMemorySourceLoader, analyze_file, analyze_file_with_loader,
+        analyze_file_with_loader_with_options,
+    };
     use std::path::Path;
 
     #[test]
@@ -163,13 +167,51 @@ mod tests {
         );
         loader.insert("/journal/other.pactole", "2026-09-04 open Assets:Savings\n");
 
-        let project =
-            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        // Without this, both files would carry an `account-unused` warning
+        // (nothing posts to those accounts); the point of this test is a
+        // file with *no* diagnostic at all, so the check is turned off.
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &ValidationOptions {
+                unused: ValidationLevel::Off,
+                ..ValidationOptions::default()
+            },
+        )
+        .unwrap();
         let by_path = project_diagnostics(&project);
 
         assert!(by_path.contains_key(Path::new("/journal/main.pactole")));
         assert!(by_path.contains_key(Path::new("/journal/other.pactole")));
         assert!(by_path[Path::new("/journal/other.pactole")].is_empty());
+    }
+
+    #[test]
+    fn unused_declarations_are_published_as_warnings() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", "2026-01-01 open Assets:Checking\n");
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let by_path = project_diagnostics(&project);
+        let diagnostics = &by_path[Path::new("/journal/main.pactole")];
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(
+            diagnostics[0].code,
+            Some(lsp_types::NumberOrString::String(
+                "account-unused".to_string()
+            ))
+        );
+        assert_eq!(diagnostics[0].severity, Some(DiagnosticSeverity::WARNING));
+        assert_eq!(diagnostics[0].source.as_deref(), Some("pactole-business"));
+        assert_eq!(
+            diagnostics[0].range,
+            lsp_types::Range::new(
+                lsp_types::Position::new(0, 16),
+                lsp_types::Position::new(0, 31),
+            )
+        );
     }
 
     #[test]

@@ -77,7 +77,10 @@ crates de ce dépôt (ne doit jamais dépendre de `pactole-storage-fs`,
   newtypes (`AccountName`, `CommodityName`, `MetadataKey`) ;
 - `validation.rs` : invariants métier sur un `Journal` (ordre
   chronologique, cycle de vie des comptes, commodités déclarées, payees
-  déclarés, équilibrage des transactions) ;
+  déclarés, équilibrage des transactions), plus `unused_declarations(&Journal)`,
+  qui remonte les déclarations `open`/`commodity`/`payee` que rien dans le
+  journal n'utilise (sévérité décidée par les front-ends via
+  `[validation] unused`) ;
 - `register.rs` : calcul du rapport "register" (solde courant par
   commodité, filtrage par compte/date/payee/narration/statut/tag) ;
 - `traits.rs` : abstraction de stockage (`ReadableStorage`) ;
@@ -136,13 +139,15 @@ historique inchangée) et le flux **tolérant/positionné**
   source", indépendante du système de fichiers réel.
 
 `analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)`
-est la variante configurable : elle reclasse le seul contrôle métier
-configurable (`PayeeNotDeclared`) en avertissement quand
-`[validation] payee = "warn"`, tandis que tous les autres problèmes métier
-restent des erreurs. `validated_journal()` réussit alors tant qu'aucun
-diagnostic de sévérité « erreur » ne subsiste : les avertissements seuls ne
-bloquent pas. La forme `analyze_file_with_loader` utilise
-`ValidationOptions::default()` (tout en erreur), donc le comportement des
+est la variante configurable : elle donne aux deux contrôles métier
+configurables — payee non déclaré (`PayeeNotDeclared`, `[validation] payee`)
+et déclarations inutilisées (`AccountUnused`/`CommodityUnused`/`PayeeUnused`,
+`[validation] unused`) — la sévérité configurée, tandis que tous les autres
+problèmes métier restent des erreurs. `validated_journal()` réussit alors
+tant qu'aucun diagnostic de sévérité « erreur » ne subsiste : les
+avertissements seuls ne bloquent pas. La forme `analyze_file_with_loader`
+utilise `ValidationOptions::default()` (payees non déclarés en erreur,
+déclarations inutilisées en avertissement), donc le comportement des
 appelants existants est inchangé. Les types de configuration
 (`ValidationOptions`, `FormatOptions`) proviennent de `pactole-config` ;
 `pactole-storage-fs` réexporte `FormatOptions` pour garder son API de
@@ -346,14 +351,15 @@ Modules :
   courant du process serveur plutôt que laissé relatif tel quel, pour ne
   pas échouer silencieusement à se résoudre plus tard et faire disparaître
   silencieusement tous les diagnostics de tout le graphe d'`include`), et
-  `validation` (une chaîne `"warn"`/`"error"`, ou une table
-  `{ "payee": ... }`). La validation suit la même stratification que la CLI :
-  le `pactole.toml` global (via `pactole_config::config_dir`), puis le
+  `validation` (une chaîne `"warn"`/`"error"` appliquée à chaque contrôle
+  configurable, ou une table `{ "payee": ..., "unused": ... }`). La
+  validation suit la même stratification que la CLI : le `pactole.toml`
+  global (via `pactole_config::config_dir`), puis le
   `pactole.toml` du projet (à côté de `journal_file`, ou à la racine du
   workspace quand aucun `journal_file` n'est configuré), puis
-  `initializationOptions`. Un fichier de configuration illisible ou
-  invalide, ainsi que le niveau `off` pas encore supporté, sont journalisés
-  et ignorés plutôt que de faire échouer `initialize`.
+  `initializationOptions`. Un fichier de configuration illisible ou un
+  niveau invalide sont journalisés et ignorés plutôt que de faire échouer
+  `initialize`.
 - `server.rs` : la `Connection` stdio, la boucle principale, et les
   handlers de notifications. Publie `textDocument/publishDiagnostics` :
   - quand `journal_file` est configuré et se charge avec succès, les
@@ -449,6 +455,13 @@ clés portés par `pactole-core::validation` :
   (`check`), ce payee doit être déclaré via une directive `payee`
   (contrôle configurable : `[validation] payee = "warn"` le rétrograde en
   avertissement).
+- Une déclaration que rien n'utilise est remontée par
+  `pactole_core::unused_declarations` (codes `account-unused`,
+  `commodity-unused`, `payee-unused`) : compte ouvert sans transaction ni
+  assertion de solde (une simple `close` ne compte pas), commodité jamais
+  utilisée par un montant ni restreinte par un `open`, payee jamais utilisé
+  par une transaction (contrôle configurable : `[validation] unused`, défaut
+  `warn`).
 - Les postings d'une transaction doivent s'équilibrer à zéro par
   commodité ; au plus une posting peut omettre son montant (montant
   déduit).
@@ -480,11 +493,15 @@ bruyamment.
 
 Schéma :
 
-- `[validation] payee` : `"warn"` ou `"error"` (défaut `error`, comportement
-  historique conservé). `warn` rétrograde en avertissement le seul contrôle
-  configurable (payee non déclaré) ; les autres contrôles métier restent des
-  erreurs. Le niveau futur `off` est rejeté avec un message explicite (voir
-  §10).
+- `[validation] payee` : `"off"`, `"warn"` ou `"error"` (défaut `error`,
+  comportement historique conservé). `warn` rétrograde en avertissement le
+  contrôle du payee non déclaré ; les autres contrôles métier restent des
+  erreurs.
+- `[validation] unused` : `"off"`, `"warn"` ou `"error"` (défaut `warn`). Il
+  règle la sévérité des déclarations que rien n'utilise : compte ouvert sans
+  transaction ni assertion de solde, commodité jamais utilisée par un montant
+  (ni restreinte par un `open`), payee jamais utilisé par une transaction
+  (codes `account-unused`, `commodity-unused`, `payee-unused`).
 - `[declaration]` : `payees`, `accounts`, `commodities` — les fichiers
   recevant les nouvelles déclarations insérées par un front-end éditeur. Les
   chemins restent bruts dans cette crate ; le consommateur (`pactole-lsp`)
@@ -552,11 +569,12 @@ de surcharger le niveau sans éditer de fichier.
 Ce qui reste explicitement à faire, par ordre approximatif de valeur/
 complexité croissante :
 
-1. **Niveau de validation `off`** : `pactole-config` accepte aujourd'hui
-   uniquement `warn` et `error` (voir §8). Passer à `off` demande de rendre
-   le payee optionnel dans la grammaire (régénérer le parseur, mettre à jour
-   le corpus, `GRAMMAR.md` et `ValidationError::PayeeMissing`), puis
-   d'accepter `off` côté configuration, CLI et LSP.
+1. **Payee réellement optionnel** : `[validation] payee = "off"` supprime
+   déjà le diagnostic côté configuration, CLI et LSP, mais la grammaire exige
+   toujours une chaîne de payee. Passer à un payee optionnel demande de
+   régénérer le parseur, de mettre à jour le corpus de tests et
+   `GRAMMAR.md`, puis de retirer l'exigence de payee de la validation
+   métier.
 2. **Autres importeurs** (CSV, QIF...) : `pactole-import` est structuré
    pour cela (parseur de format → `ImportRecord`, puis moteur de règles
    partagé → `Transaction`), mais seul OFX est implémenté. Ajouter un

@@ -49,13 +49,14 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   `initializationOptions` and the layered `pactole.toml` files. Supports
   `journal_file` (path of the root `.pactole` file, resolved against the
   workspace root, or against the server's current working directory if no
-  root is known), `validation` (a `"warn"`/`"error"` string or a
-  `{ "payee": ... }` table) and the `[declaration]` section of
+  root is known), `validation` (a `"warn"`/`"error"` string applied to every
+  configurable check, or a `{ "payee": ..., "unused": ... }` table) and the
+  `[declaration]` section of
   `pactole.toml` (see below). Validation settings follow the CLI layering:
   user-level `pactole.toml`, then project `pactole.toml` (next to
   `journal_file`, or at the workspace root when none is configured), then
-  `initializationOptions`. Broken configuration files and the unsupported
-  `off` level are logged and ignored rather than failing `initialize`.
+  `initializationOptions`. Broken configuration files and invalid levels are
+  logged and ignored rather than failing `initialize`.
 - `server.rs`: the stdio `Connection`, the main loop, and the
   notification handlers. When `journal_file` is configured and loads,
   diagnostics are computed for every file reachable via `include` (via
@@ -130,8 +131,17 @@ Validation levels can be overridden the same way, globally or per check:
 { "journal_file": "main.pactole", "validation": { "payee": "warn" } }
 ```
 
+```json
+{ "journal_file": "main.pactole", "validation": { "unused": "off" } }
+```
+
 Without an override, the server reads the same layered `pactole.toml` as the
 CLI (user-level file, then project file).
+
+Checks at the `warn` level are published as LSP warnings: this is how
+declarations nothing ever uses (`payee-unused`, `account-unused`,
+`commodity-unused`, `[validation] unused`, a warning by default) show up in
+the editor without being reported as errors.
 
 ### Declaration files
 
@@ -190,7 +200,7 @@ Levels used:
   standalone mode).
 - `warn`: fallback from multi-file analysis to standalone analysis of
   the current document (`journal_file` configured but unreadable), an
-  unreadable or invalid `pactole.toml` (or an unsupported `validation`
+  unreadable or invalid `pactole.toml` (or an invalid `validation`
   level) whose settings are then ignored, and clearing of all published
   diagnostics when no analysis is available.
 - `trace`: origin of each file loaded during `include` resolution (open

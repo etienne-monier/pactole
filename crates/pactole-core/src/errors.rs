@@ -144,4 +144,38 @@ pub enum ValidationError {
         /// Allowed difference.
         tolerance: Decimal,
     },
+    /// A payee declaration is never used by any transaction.
+    ///
+    /// This is a cleanup hint rather than a correctness problem: front-ends
+    /// decide its severity (the `unused` key of `[validation]`), so it is
+    /// reported as a warning by default.
+    #[error("payee `{payee}` is declared but never used by any transaction")]
+    PayeeUnused {
+        /// Declared payee that no transaction uses.
+        payee: String,
+    },
+    /// An account is opened but never used by a transaction or a balance
+    /// assertion (merely closing it does not count as a use).
+    ///
+    /// Like [`Self::PayeeUnused`], this is a cleanup hint whose severity is
+    /// decided by front-ends.
+    #[error("account `{account}` is opened on {date} but never used")]
+    AccountUnused {
+        /// Opened account that no transaction nor balance assertion uses.
+        account: AccountName,
+        /// Date of the opening.
+        date: NaiveDate,
+    },
+    /// A commodity is declared but never used by any amount, nor restricted
+    /// to an account by an `open` directive.
+    ///
+    /// Like [`Self::PayeeUnused`], this is a cleanup hint whose severity is
+    /// decided by front-ends.
+    #[error("commodity `{commodity}` is declared on {date} but never used")]
+    CommodityUnused {
+        /// Declared commodity that no amount uses.
+        commodity: CommodityName,
+        /// Date of the declaration.
+        date: NaiveDate,
+    },
 }

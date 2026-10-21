@@ -17,7 +17,7 @@ requires the same context.
   cannot be converted into a domain entry.
 - **Include** diagnostics describe a problem while resolving the file graph.
 - **Business** diagnostics come from journal validation: account lifecycles,
-  declarations, balancing and balance assertions.
+  declarations, balancing, balance assertions and unused declarations.
 
 Every project diagnostic has a source file, a half-open source span, a severity,
 an origin, an optional stable code and a human-readable message. Syntax and
@@ -92,6 +92,28 @@ The following include codes are stable in CLI and LSP output:
 
 `pactole check` fails on errors and accepts warnings by default. Use
 `pactole check --strict` when warnings must also fail, for example in CI.
+
+## Business diagnostic severities
+
+Every business code is an error except the two checks below, whose severity
+is configurable with the `[validation]` section of `pactole.toml` (and with
+the LSP `validation` initialization option). Each level accepts `off` (never
+reported), `warn` (reported as a warning) or `error` (blocking).
+
+| Code | Level key | Default | Meaning |
+|---|---|---|---|
+| `payee-not-declared` | `payee` | error | A transaction uses a payee with no `payee` declaration. |
+| `account-unused` | `unused` | warn | An account is opened but neither a transaction nor a balance assertion uses it. |
+| `commodity-unused` | `unused` | warn | A commodity is declared but no amount uses it, and no `open` restricts an account to it. |
+| `payee-unused` | `unused` | warn | A payee is declared but no transaction uses it. |
+
+These diagnostics point at the declared name itself (the account or
+commodity token, the payee string). Merely `close`ing an account does not
+count as a use: an account opened and closed without ever recording a
+posting or a balance assertion is still reported.
+
+At the default `warn` level they never prevent `validated_journal()` from
+returning a journal: only error-severity diagnostics do.
 
 ## Core validation indices
 

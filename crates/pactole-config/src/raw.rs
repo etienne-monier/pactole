@@ -24,6 +24,7 @@ pub(crate) struct RawFile {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawValidation {
     pub(crate) payee: Option<String>,
+    pub(crate) unused: Option<String>,
 }
 
 /// The `[declaration]` section, unmerged.
@@ -85,12 +86,14 @@ impl RawFile {
     /// absent from `upper` keep their current value. Tables merge per key;
     /// `[[import.rules]]` is replaced in block.
     pub(crate) fn merge(&mut self, upper: RawFile) {
-        if let Some(validation) = upper.validation
-            && let Some(payee) = validation.payee
-        {
-            self.validation
-                .get_or_insert_with(RawValidation::default)
-                .payee = Some(payee);
+        if let Some(validation) = upper.validation {
+            let target = self.validation.get_or_insert_with(RawValidation::default);
+            if let Some(payee) = validation.payee {
+                target.payee = Some(payee);
+            }
+            if let Some(unused) = validation.unused {
+                target.unused = Some(unused);
+            }
         }
 
         if let Some(declaration) = upper.declaration {

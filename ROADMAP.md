@@ -90,6 +90,9 @@ journals.
 - [x] Report an account used before its `open` directive on the invalid use.
 - [x] Report an account used after its `close` directive on the invalid use.
 - [x] Report inconsistent account openings or closings.
+- [x] Report declarations nothing ever uses (`account-unused`,
+  `commodity-unused`, `payee-unused`), with a configurable severity
+  (`[validation] unused`, a warning by default).
 - [ ] Validate directive chronological order and locate the offending entry.
 - [ ] Publish these diagnostics in the CLI `check` command and in the LSP with
   stable diagnostic codes.

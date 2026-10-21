@@ -94,11 +94,12 @@ every transaction balances):
 pactole check path/to/file.pactole
 ```
 
-Every check is reported as an error by default. A configurable check such
-as the mandatory payee declaration can be downgraded to a warning in
-`pactole.toml` (`[validation] payee = "warn"`), or for one run with
-`[validation] payee = "warn"` in `pactole.toml`; `--strict` then still turns
-warnings into a failure.
+Every check is reported as an error by default. Two checks are configurable
+in `pactole.toml`: the mandatory payee declaration (`[validation] payee`,
+an error by default) and never-used declarations (`[validation] unused`, a
+warning by default): an account opened but never posted to, a commodity or
+payee declared but never used. Each accepts `"off"`, `"warn"` or
+`"error"`; `pactole check --strict` turns warnings into a failure.
 
 Generate shell completion scripts to stdout:
 
@@ -222,7 +223,8 @@ changes. Unknown keys are rejected, so typos fail loudly:
 
 ```toml
 [validation]
-payee = "error" # "warn" or "error"
+payee = "error" # undeclared payees: "off", "warn" or "error"
+unused = "warn" # never-used declarations: "off", "warn" or "error"
 
 [format]
 posting_width = 50

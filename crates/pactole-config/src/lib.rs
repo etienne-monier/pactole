@@ -15,7 +15,8 @@
 //!
 //! ```toml
 //! [validation]
-//! payee = "warn" # `warn` or `error`
+//! payee = "warn" # `off`, `warn` or `error`
+//! unused = "warn" # severity of never-used declarations
 //!
 //! [declaration]
 //! payees = "payees.pactole"
@@ -101,6 +102,9 @@ pub struct Overrides {
     /// Overrides the `payee` validation level (CLI `--validation`, LSP
     /// `initializationOptions`). `None` leaves the file layers untouched.
     pub payee: Option<ValidationLevel>,
+    /// Overrides the `unused` validation level (LSP `initializationOptions`).
+    /// `None` leaves the file layers untouched.
+    pub unused: Option<ValidationLevel>,
 }
 
 /// The fully resolved Pactole configuration.
@@ -255,6 +259,14 @@ fn validate_layer(raw: &RawFile, path: &Path) -> Result<(), ConfigError> {
         )));
     }
 
+    if let Some(value) = raw.validation.as_ref().and_then(|v| v.unused.as_deref())
+        && ValidationLevel::parse(value).is_none()
+    {
+        return Err(invalid(format!(
+            "invalid validation level `{value}`: expected `off`, `warn` or `error`"
+        )));
+    }
+
     if let Some(posting_width) = raw.format.as_ref().and_then(|f| f.posting_width)
         && posting_width == 0
     {
@@ -273,9 +285,18 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
         .as_ref()
         .and_then(|v| v.payee.as_deref())
         .and_then(ValidationLevel::parse);
+    let unused = merged
+        .validation
+        .as_ref()
+        .and_then(|v| v.unused.as_deref())
+        .and_then(ValidationLevel::parse);
 
+    // Each key falls back to the default of its own check (`payee` is an
+    // error, `unused` a warning) rather than to a single global default.
+    let defaults = ValidationOptions::default();
     ValidationOptions {
-        payee: overrides.payee.or(payee).unwrap_or_default(),
+        payee: overrides.payee.or(payee).unwrap_or(defaults.payee),
+        unused: overrides.unused.or(unused).unwrap_or(defaults.unused),
     }
 }
 

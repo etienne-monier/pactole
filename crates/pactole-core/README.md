@@ -27,6 +27,14 @@ Re-exported from `src/lib.rs`:
   of each transaction per commodity. On success, it returns the `Journal`
   (sorted chronologically and with self-balanced transactions); on
   failure, it returns a `ValidationError`.
+- **`unused_declarations(journal: &Journal) -> Vec<ValidationIssue>`**
+  (`validation.rs`): reports declarations nothing in the journal ever uses —
+  an `open`ed account with no transaction nor balance assertion (merely
+  `close`ing it does not count), a `commodity` no amount uses (and no `open`
+  restricts an account to), a `payee` no transaction uses — each paired with
+  the index of its declaration. Severity is a front-end decision (the
+  `unused` key of `[validation]` in `pactole.toml`, a warning by default),
+  which is why this is deliberately separate from `validate_journal`.
 - **`register(journal: &Journal, filter: &RegisterFilter) -> Vec<RegisterEntry>`**
   (`register.rs`): computes a "register" report (running balance per
   commodity), filterable by account (including sub-accounts), date range,

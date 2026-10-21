@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Unused declarations are now reported: an `open`ed account that no
+  transaction nor balance assertion uses (merely `close`ing it does not
+  count as a use), a `commodity` that no amount uses (and no `open`
+  restricts an account to), and a `payee` that no transaction uses each
+  produce an `account-unused`, `commodity-unused` or `payee-unused`
+  diagnostic pointing at the declared name itself. The detection lives in
+  the new `pactole_core::unused_declarations`, which only reports and never
+  fails a journal.
+- The severity of those unused-declaration diagnostics is configurable with
+  the new `[validation] unused` key of `pactole.toml` (`off`, `warn` or
+  `error`, default `warn`): by default they show up as warnings in
+  `pactole check` and in the language server, and only block under
+  `--strict` (or when raised to `error`). The LSP accepts the same key
+  through its `validation` `initializationOptions`, either as a single
+  level applied to every configurable check or as a
+  `{ "payee": ..., "unused": ... }` table.
 - Unified `pactole.toml` configuration, resolved by the new
   `pactole-config` crate: a global layer
   (`~/.config/pactole/pactole.toml`, or `$XDG_CONFIG_HOME/pactole/`), a
@@ -25,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`--global` writes it into the user configuration directory instead).
 - The language server reads the same layered configuration files as the CLI
   and accepts a `validation` `initializationOptions` key (a
-  `"warn"`/`"error"` string or a `{ "payee": ... }` table); broken
+  `"warn"`/`"error"` string applied to every configurable check, or a
+  `{ "payee": ..., "unused": ... }` table); broken
   configuration files are logged and ignored instead of failing `initialize`.
 - OFX import supports several bank accounts: map each statement account
   identifier (OFX `ACCTID`) to its Pactole account in an `[import.accounts]`

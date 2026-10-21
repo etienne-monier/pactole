@@ -2,6 +2,7 @@
 
 use crate::errors::ValidationError;
 use crate::models::{AccountName, Amount, CommodityName, Entry, Journal, Transaction};
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -232,6 +233,127 @@ pub fn validate_journal_all(journal: Journal) -> ValidationReport {
 /// declared commodity, and — when the account is restricted to a list of
 /// commodities — that it uses one of them, that its payee (when set) has
 /// been declared, then balances it.
+/// Reports declarations that no entry of the journal ever exercises.
+///
+/// This is the "unused declaration" check behind the `unused` key of the
+/// `[validation]` section of `pactole.toml`. Unlike
+/// [`validate_journal_all`], it does not validate or auto-balance anything:
+/// it only reports declarations nothing depends on, paired with their
+/// position in `journal` so a positioned front-end can point at them.
+///
+/// What counts as a use:
+///
+/// - an `open`ed account is used by a transaction posting or by a `balance`
+///   assertion; merely `close`ing it does not count (an account exists to
+///   hold postings, so opened-then-closed-without-ever-posting is reported);
+/// - a declared commodity is used by a transaction posting amount, by a
+///   `balance` assertion amount, or by the restricted list of an `open`
+///   directive (an explicit reference to the commodity);
+/// - a declared payee is used by a transaction's payee.
+///
+/// A use counts even when the entry carrying it fails another validation
+/// rule: the declaration is referenced either way, and reporting that is
+/// the caller's concern.
+///
+/// The caller decides whether the returned issues matter at all — front-ends
+/// map them to a severity of their own (the `unused` setting, a warning by
+/// default), so this is deliberately not part of [`validate_journal_all`].
+#[must_use = "the unused-declaration issues are only useful when inspected"]
+pub fn unused_declarations(journal: &Journal) -> Vec<ValidationIssue> {
+    // Declaration name -> (position in `journal`, declaration date).
+    let mut opened_accounts: HashMap<AccountName, (usize, NaiveDate)> = HashMap::new();
+    let mut declared_commodities: HashMap<CommodityName, (usize, NaiveDate)> = HashMap::new();
+    let mut declared_payees: HashMap<String, usize> = HashMap::new();
+    let mut used_accounts = HashSet::new();
+    let mut used_commodities = HashSet::new();
+    let mut used_payees = HashSet::new();
+
+    for (input_index, entry) in journal.entries.iter().enumerate() {
+        match entry {
+            Entry::Open(open) => {
+                // The first opening is the one validation considers real
+                // (a duplicate one is reported separately as an error).
+                opened_accounts
+                    .entry(open.account.clone())
+                    .or_insert((input_index, open.date));
+                // Restricting an account to a list of commodities already
+                // references those commodities.
+                used_commodities.extend(open.commodities.iter().cloned());
+            }
+            // A `close` only requires the account to be open, never used.
+            Entry::Close(_) => {}
+            Entry::Commodity(commodity) => {
+                declared_commodities
+                    .entry(commodity.name.clone())
+                    .or_insert((input_index, commodity.date));
+            }
+            Entry::Payee(payee) => {
+                declared_payees
+                    .entry(payee.name.clone())
+                    .or_insert(input_index);
+            }
+            Entry::Balance(balance) => {
+                used_accounts.insert(balance.account.clone());
+                used_commodities.insert(balance.amount.commodity.clone());
+            }
+            Entry::Transaction(transaction) => {
+                if let Some(payee) = &transaction.payee {
+                    used_payees.insert(payee.clone());
+                }
+                for posting in &transaction.postings {
+                    used_accounts.insert(posting.account.clone());
+                    if let Some(amount) = &posting.amount {
+                        used_commodities.insert(amount.commodity.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut unused: Vec<(usize, ValidationError)> = Vec::new();
+
+    for (payee, input_index) in &declared_payees {
+        if !used_payees.contains(payee) {
+            unused.push((
+                *input_index,
+                ValidationError::PayeeUnused {
+                    payee: payee.clone(),
+                },
+            ));
+        }
+    }
+    for (account, (input_index, date)) in &opened_accounts {
+        if !used_accounts.contains(account) {
+            unused.push((
+                *input_index,
+                ValidationError::AccountUnused {
+                    account: account.clone(),
+                    date: *date,
+                },
+            ));
+        }
+    }
+    for (commodity, (input_index, date)) in &declared_commodities {
+        if !used_commodities.contains(commodity) {
+            unused.push((
+                *input_index,
+                ValidationError::CommodityUnused {
+                    commodity: commodity.clone(),
+                    date: *date,
+                },
+            ));
+        }
+    }
+
+    // Hash map iteration order is unspecified: report in journal order so
+    // diagnostics are stable from one run to the next.
+    unused.sort_by_key(|(input_index, _)| *input_index);
+    unused
+        .into_iter()
+        .map(|(input_index, error)| ValidationIssue { input_index, error })
+        .collect()
+}
+
 fn validate_transaction(
     transaction: &mut Transaction,
     open_accounts: &HashMap<AccountName, Vec<CommodityName>>,
@@ -1129,6 +1251,139 @@ mod tests {
                 commodity: CommodityName::new("EUR").unwrap(),
                 date: date(2024, 1, 5),
             })
+        );
+    }
+
+    #[test]
+    fn reports_nothing_when_every_declaration_is_used() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                payee("Test"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Test",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        assert!(unused_declarations(&journal).is_empty());
+    }
+
+    #[test]
+    fn reports_unused_declarations_in_journal_order() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                payee("Jamais"),
+            ],
+        };
+
+        let issues = unused_declarations(&journal);
+
+        assert_eq!(
+            issues,
+            vec![
+                ValidationIssue {
+                    input_index: 0,
+                    error: ValidationError::CommodityUnused {
+                        commodity: CommodityName::new("EUR").unwrap(),
+                        date: date(2024, 1, 1),
+                    },
+                },
+                ValidationIssue {
+                    input_index: 1,
+                    error: ValidationError::AccountUnused {
+                        account: AccountName::new("Actifs:Compte").unwrap(),
+                        date: date(2024, 1, 1),
+                    },
+                },
+                ValidationIssue {
+                    input_index: 2,
+                    error: ValidationError::PayeeUnused {
+                        payee: "Jamais".to_string(),
+                    },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_balance_assertion_and_an_open_restriction_count_as_uses() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "USD"),
+                // Restricting an account to USD references the commodity.
+                open_restricted(date(2024, 1, 1), "Actifs:Compte", &["USD"]),
+                open(date(2024, 1, 1), "Actifs:Vide"),
+                balance(date(2024, 1, 2), "Actifs:Compte", ("0.00", "USD")),
+            ],
+        };
+
+        let issues = unused_declarations(&journal);
+
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].input_index, 2);
+        assert!(matches!(
+            issues[0].error,
+            ValidationError::AccountUnused { .. }
+        ));
+    }
+
+    #[test]
+    fn closing_an_account_without_using_it_is_reported() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                close(date(2024, 6, 1), "Actifs:Compte"),
+            ],
+        };
+
+        let issues = unused_declarations(&journal);
+
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].input_index, 0);
+        assert!(matches!(
+            issues[0].error,
+            ValidationError::AccountUnused { .. }
+        ));
+    }
+
+    #[test]
+    fn a_use_inside_an_otherwise_invalid_transaction_still_counts() {
+        // The transaction is unbalanced (and its payee undeclared): it is
+        // reported by `validate_journal_all`, but it does reference every
+        // declaration below, so none of them is unused.
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                payee("Test"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Test",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("50.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        assert!(unused_declarations(&journal).is_empty());
+        assert!(
+            validate_journal_all(journal)
+                .issues
+                .iter()
+                .any(|issue| matches!(issue.error, ValidationError::TransactionNotBalanced { .. }))
         );
     }
 }

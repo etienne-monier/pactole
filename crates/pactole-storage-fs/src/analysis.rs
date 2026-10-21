@@ -14,7 +14,9 @@
 use std::path::{Path, PathBuf};
 
 use pactole_config::{ValidationLevel, ValidationOptions};
-use pactole_core::{Entry, Journal, ValidationError, validate_journal_all};
+use pactole_core::{
+    Entry, Journal, ValidationError, ValidationIssue, unused_declarations, validate_journal_all,
+};
 use pactole_syntax::{ParsedDocument, Span, SyntaxDiagnostic, parse_document};
 use tree_sitter::Node;
 
@@ -141,6 +143,9 @@ enum BusinessDiagnosticKind {
     TransactionNotBalanced,
     CommodityNotAllowed,
     BalanceAssertionFailed,
+    AccountUnused,
+    CommodityUnused,
+    PayeeUnused,
 }
 
 impl BusinessDiagnosticKind {
@@ -158,24 +163,32 @@ impl BusinessDiagnosticKind {
             Self::TransactionNotBalanced => "transaction-not-balanced",
             Self::CommodityNotAllowed => "commodity-not-allowed",
             Self::BalanceAssertionFailed => "balance-assertion-failed",
+            Self::AccountUnused => "account-unused",
+            Self::CommodityUnused => "commodity-unused",
+            Self::PayeeUnused => "payee-unused",
         }
     }
 
     /// Severity of this diagnostic under the given validation options.
     ///
-    /// Every business issue is an error by default; `PayeeNotDeclared` is
-    /// the one configurable check (the `[validation] payee` setting of
-    /// `pactole.toml`), reported as a warning under
-    /// [`ValidationLevel::Warning`]. All other kinds stay errors whatever the
-    /// configuration says.
+    /// Two business issues are configurable through the `[validation]`
+    /// section of `pactole.toml`: `PayeeNotDeclared` (the `payee` key,
+    /// an error by default) and the unused-declaration kinds (the `unused`
+    /// key, a warning by default), each reported as a warning under
+    /// [`ValidationLevel::Warning`] and dropped entirely under
+    /// [`ValidationLevel::Off`]. Every other kind stays an error whatever
+    /// the configuration says.
     fn severity(self, options: &ValidationOptions) -> Option<DiagnosticSeverity> {
-        match self {
-            Self::PayeeNotDeclared => match options.payee {
-                ValidationLevel::Off => None,
-                ValidationLevel::Warning => Some(DiagnosticSeverity::Warning),
-                ValidationLevel::Error => Some(DiagnosticSeverity::Error),
-            },
-            _ => Some(DiagnosticSeverity::Error),
+        let level = match self {
+            Self::PayeeNotDeclared => options.payee,
+            Self::AccountUnused | Self::CommodityUnused | Self::PayeeUnused => options.unused,
+            _ => return Some(DiagnosticSeverity::Error),
+        };
+
+        match level {
+            ValidationLevel::Off => None,
+            ValidationLevel::Warning => Some(DiagnosticSeverity::Warning),
+            ValidationLevel::Error => Some(DiagnosticSeverity::Error),
         }
     }
 }
@@ -227,6 +240,9 @@ fn business_kind(error: &ValidationError) -> BusinessDiagnosticKind {
         ValidationError::BalanceAssertionFailed { .. } => {
             BusinessDiagnosticKind::BalanceAssertionFailed
         }
+        ValidationError::AccountUnused { .. } => BusinessDiagnosticKind::AccountUnused,
+        ValidationError::CommodityUnused { .. } => BusinessDiagnosticKind::CommodityUnused,
+        ValidationError::PayeeUnused { .. } => BusinessDiagnosticKind::PayeeUnused,
     }
 }
 
@@ -680,9 +696,9 @@ pub fn analyze_file_with_loader(
 /// options.
 ///
 /// This is the same analysis as [`analyze_file_with_loader`], with the
-/// severity of configurable business checks (currently only the undeclared
-/// payee check) driven by `validation`. The default options reproduce
-/// [`analyze_file_with_loader`] exactly.
+/// severity of configurable business checks (the undeclared payee check and
+/// the unused-declaration checks) driven by `validation`. The default
+/// options reproduce [`analyze_file_with_loader`] exactly.
 ///
 /// # Errors
 ///
@@ -789,6 +805,21 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
             })
             .or(entry.spans.account)
             .unwrap_or(entry.span),
+        ValidationError::AccountUnused { .. } | ValidationError::CommodityUnused { .. } => {
+            // The declaration itself is the offending entry: point at the
+            // declared name rather than at the whole directive.
+            match error {
+                ValidationError::AccountUnused { .. } => entry.spans.account.unwrap_or(entry.span),
+                ValidationError::CommodityUnused { .. } => entry
+                    .spans
+                    .commodities
+                    .first()
+                    .copied()
+                    .unwrap_or(entry.span),
+                _ => unreachable!("unused declaration error matched above"),
+            }
+        }
+        ValidationError::PayeeUnused { .. } => entry.spans.payee.unwrap_or(entry.span),
         ValidationError::BalanceAssertionFailed { .. } => entry.span,
         ValidationError::TooManyPostingsWithoutAmount { .. }
         | ValidationError::AmbiguousAutoBalanceCommodity { .. }
@@ -847,21 +878,26 @@ fn validate_project(
             .map(|entry| entry.entry.clone())
             .collect(),
     };
+    // Unused-declaration issues carry positions in that same source-order
+    // journal, so they must be collected before validation consumes it.
+    let unused_issues = unused_declarations(&journal);
     let report = validate_journal_all(journal);
 
-    let diagnostics: Vec<BusinessDiagnostic> = report
-        .issues
-        .iter()
-        .map(|issue| {
-            debug_assert!(issue.input_index < located_entries.len());
-            let entry = &located_entries[issue.input_index];
-            BusinessDiagnostic::from_error(
-                entry.path.clone(),
-                diagnostic_span(entry, &issue.error),
-                &issue.error,
-            )
-        })
-        .collect();
+    let to_diagnostic = |issue: &ValidationIssue| {
+        debug_assert!(issue.input_index < located_entries.len());
+        let entry = &located_entries[issue.input_index];
+        BusinessDiagnostic::from_error(
+            entry.path.clone(),
+            diagnostic_span(entry, &issue.error),
+            &issue.error,
+        )
+    };
+
+    // Validation issues first, then unused declarations: the latter are
+    // cleanup hints, reported after the problems that break the journal.
+    let mut diagnostics: Vec<BusinessDiagnostic> =
+        report.issues.iter().map(to_diagnostic).collect();
+    diagnostics.extend(unused_issues.iter().map(to_diagnostic));
 
     // Warnings do not prevent a validated journal: only error-severity
     // business diagnostics do.
@@ -1183,6 +1219,7 @@ mod tests {
         let (loader, _) = undeclared_payee_project();
         let validation = ValidationOptions {
             payee: ValidationLevel::Warning,
+            unused: ValidationLevel::Warning,
         };
 
         let project = analyze_file_with_loader_with_options(
@@ -1208,6 +1245,7 @@ mod tests {
         let (loader, _) = undeclared_payee_project();
         let validation = ValidationOptions {
             payee: ValidationLevel::Off,
+            unused: ValidationLevel::Warning,
         };
 
         let project = analyze_file_with_loader_with_options(
@@ -1228,6 +1266,115 @@ mod tests {
         assert!(project.validated_journal().is_ok());
     }
 
+    /// A project where only some declarations are unused: `Expenses:Unused`,
+    /// `USD` and the `Never` payee are dead, everything else is exercised.
+    fn unused_declarations_source() -> &'static str {
+        "2026-01-01 open Assets:Checking\n\
+         2026-01-01 open Expenses:Food\n\
+         2026-01-01 open Expenses:Unused\n\
+         2026-01-01 commodity EUR\n\
+         2026-01-01 commodity USD\n\
+         payee \"Used\"\n\
+         payee \"Never\"\n\
+         2026-01-02 * \"Used\"\n\
+         \u{20}\u{20}Assets:Checking -10 EUR\n\
+         \u{20}\u{20}Expenses:Food 10 EUR\n"
+    }
+
+    fn unused_project(validation: &ValidationOptions) -> AnalyzedProject {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", unused_declarations_source());
+        analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            validation,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn unused_declarations_are_warnings_by_default_and_point_at_the_declaration() {
+        let source = unused_declarations_source();
+        let project = unused_project(&ValidationOptions::default());
+        let diagnostics = project.diagnostics();
+
+        let unused: Vec<&Diagnostic> = diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic
+                    .code
+                    .as_deref()
+                    .is_some_and(|code| code.ends_with("-unused"))
+            })
+            .collect();
+        assert_eq!(unused.len(), 3, "{diagnostics:?}");
+        for diagnostic in &unused {
+            assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+            assert_eq!(diagnostic.source, DiagnosticSource::Business);
+            assert_eq!(diagnostic.path, Path::new("/journal/main.pactole"));
+        }
+
+        let codes: Vec<&str> = unused
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_deref().unwrap())
+            .collect();
+        // Journal order: the unused `open`, then the unused commodity, then
+        // the unused payee declaration.
+        assert_eq!(
+            codes,
+            ["account-unused", "commodity-unused", "payee-unused"]
+        );
+
+        let span_of = |code: &str| {
+            unused
+                .iter()
+                .find(|diagnostic| diagnostic.code.as_deref() == Some(code))
+                .map(|diagnostic| source[diagnostic.span.byte_range()].to_string())
+                .unwrap_or_else(|| panic!("missing {code}"))
+        };
+        assert_eq!(span_of("account-unused"), "Expenses:Unused");
+        assert_eq!(span_of("commodity-unused"), "USD");
+        assert_eq!(span_of("payee-unused"), "\"Never\"");
+
+        // Warnings never block: the journal still validates.
+        assert!(!project.has_errors());
+        assert!(project.has_warnings());
+        assert!(project.validated_journal().is_ok());
+    }
+
+    #[test]
+    fn off_level_suppresses_unused_declarations() {
+        let project = unused_project(&ValidationOptions {
+            payee: ValidationLevel::Error,
+            unused: ValidationLevel::Off,
+        });
+
+        assert!(!project.diagnostics().iter().any(|diagnostic| {
+            diagnostic
+                .code
+                .as_deref()
+                .is_some_and(|code| code.ends_with("-unused"))
+        }));
+        assert!(!project.has_warnings());
+        assert!(project.validated_journal().is_ok());
+    }
+
+    #[test]
+    fn error_level_makes_an_unused_declaration_blocking() {
+        let project = unused_project(&ValidationOptions {
+            payee: ValidationLevel::Error,
+            unused: ValidationLevel::Error,
+        });
+
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code.as_deref() == Some("account-unused"))
+            .expect("missing account diagnostic");
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
+        assert!(project.validated_journal().is_err());
+    }
+
     #[test]
     fn warn_level_does_not_downgrade_other_business_errors() {
         let source = "2026-01-01 commodity EUR\n\
@@ -1242,6 +1389,7 @@ mod tests {
             &loader,
             &ValidationOptions {
                 payee: ValidationLevel::Warning,
+                unused: ValidationLevel::Warning,
             },
         )
         .unwrap();

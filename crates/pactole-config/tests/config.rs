@@ -18,6 +18,9 @@ fn empty_layers_yield_defaults() {
     let config = resolve("").unwrap();
 
     assert_eq!(config.validation.payee, ValidationLevel::Error);
+    // Unused declarations are a cleanup hint: a warning by default, unlike
+    // the undeclared-payee check.
+    assert_eq!(config.validation.unused, ValidationLevel::Warning);
     assert_eq!(config.format.posting_width, 50);
     assert_eq!(config.import, None);
     assert!(config.declaration.is_empty());
@@ -40,7 +43,7 @@ fn parses_declaration_files() {
 #[test]
 fn parses_every_section() {
     let config = resolve(
-        "[validation]\npayee = \"warn\"\n\n\
+        "[validation]\npayee = \"warn\"\nunused = \"off\"\n\n\
          [format]\nposting_width = 72\n\n\
          [import]\nbank_account = \"Assets:Checking\"\ncurrency = \"EUR\"\n\
          default_counter_account = \"Expenses:To-Be-Classified\"\n",
@@ -48,6 +51,7 @@ fn parses_every_section() {
     .unwrap();
 
     assert_eq!(config.validation.payee, ValidationLevel::Warning);
+    assert_eq!(config.validation.unused, ValidationLevel::Off);
     assert_eq!(config.format.posting_width, 72);
 
     let import = config.import.unwrap();
@@ -103,10 +107,34 @@ fn overrides_beat_project_which_beats_global() {
         &[global, project],
         &Overrides {
             payee: Some(ValidationLevel::Error),
+            unused: None,
         },
     )
     .unwrap();
     assert_eq!(config.validation.payee, ValidationLevel::Error);
+}
+
+#[test]
+fn validation_keys_merge_per_key_and_overrides_win() {
+    let global = source("[validation]\npayee = \"error\"\nunused = \"error\"\n");
+    // The project redefines only `unused`: the global `payee` survives.
+    let project = source("[validation]\nunused = \"off\"\n");
+
+    let config = Config::resolve(&[global, project], &Overrides::default()).unwrap();
+    assert_eq!(config.validation.payee, ValidationLevel::Error);
+    assert_eq!(config.validation.unused, ValidationLevel::Off);
+
+    // Overrides beat both layers, one key at a time.
+    let config = Config::resolve(
+        &[global, project],
+        &Overrides {
+            payee: Some(ValidationLevel::Warning),
+            unused: Some(ValidationLevel::Error),
+        },
+    )
+    .unwrap();
+    assert_eq!(config.validation.payee, ValidationLevel::Warning);
+    assert_eq!(config.validation.unused, ValidationLevel::Error);
 }
 
 #[test]
@@ -168,6 +196,17 @@ fn rejects_an_unknown_validation_level() {
 }
 
 #[test]
+fn rejects_an_unknown_unused_validation_level() {
+    let error = resolve("[validation]\nunused = \"strict\"\n").unwrap_err();
+
+    assert!(
+        matches!(&error, ConfigError::Invalid { message, .. }
+            if message.contains("`strict`") && message.contains("`off`, `warn` or `error`")),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn rejects_a_zero_posting_width() {
     let error = resolve("[format]\nposting_width = 0\n").unwrap_err();
 
@@ -193,6 +232,7 @@ fn rejects_an_incomplete_import_section() {
 fn rejects_unknown_keys_in_every_section() {
     for contents in [
         "[validation]\npaye = \"warn\"\n",
+        "[validation]\nusued = \"warn\"\n",
         "[declaration]\npayes = \"payees.pactole\"\n",
         "[format]\nposting_widthh = 40\n",
         "[import]\nbankaccount = \"Assets:Checking\"\n",

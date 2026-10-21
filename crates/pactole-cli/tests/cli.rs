@@ -1185,6 +1185,82 @@ fn check_accepts_an_undeclared_payee_when_warned_but_strict_rejects_it() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A journal where every declaration is dead: both accounts, the commodity
+/// and the payee are declared but nothing uses them.
+const UNUSED_DECLARATIONS_JOURNAL: &str = "2024-01-01 open Assets:Checking\n\
+2024-01-01 open Expenses:Food\n\
+2024-01-01 commodity EUR\n\
+payee \"Never\"\n";
+
+#[test]
+fn check_warns_about_unused_declarations_by_default_and_strict_rejects_them() {
+    let dir = unique_temp_dir("check-unused");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, UNUSED_DECLARATIONS_JOURNAL).unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    // Unused declarations are warnings: they never block by themselves.
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "OK\n");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("warning: [account-unused]").count(),
+        2,
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("warning: [commodity-unused]"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("warning: [payee-unused]"),
+        "stderr: {stderr}"
+    );
+
+    let strict = pactole_cmd()
+        .args(["check", "--strict", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(!strict.status.success());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn check_ignores_unused_declarations_when_they_are_turned_off() {
+    let dir = unique_temp_dir("check-unused-off");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, UNUSED_DECLARATIONS_JOURNAL).unwrap();
+    std::fs::write(dir.join("pactole.toml"), "[validation]\nunused = \"off\"\n").unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("-unused]"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn check_reads_the_project_configuration_next_to_the_journal() {
     let dir = unique_temp_dir("check-project-config");

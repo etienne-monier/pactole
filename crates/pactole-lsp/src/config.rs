@@ -9,9 +9,10 @@
 //!   absent, the server falls back to analyzing each open document on its
 //!   own via [`pactole_storage_fs::analyze_file`], without following its
 //!   `include`s.
-//! - `validation`: the severity of configurable business checks (currently
-//!   the undeclared-payee check), as either a single string
-//!   (`"validation": "warn"`) or a table (`"validation": { "payee": "warn" }`).
+//! - `validation`: the severity of configurable business checks (the
+//!   undeclared-payee check and the unused-declaration checks), as either a
+//!   single string applied to every check (`"validation": "warn"`) or a table
+//!   (`"validation": { "payee": "warn", "unused": "off" }`).
 //!
 //! A relative `journal_file` is resolved against the workspace root when one
 //! is known (from `workspace_folders`/`rootUri`/`rootPath`, see
@@ -59,14 +60,27 @@ enum RawValidation {
     Table {
         #[serde(default)]
         payee: Option<String>,
+        #[serde(default)]
+        unused: Option<String>,
     },
 }
 
 impl RawValidation {
+    /// The level of the undeclared-payee check: the single level for the
+    /// string form, the `payee` entry for the table form.
     fn payee(&self) -> Option<&str> {
         match self {
             Self::Level(level) => Some(level),
-            Self::Table { payee } => payee.as_deref(),
+            Self::Table { payee, .. } => payee.as_deref(),
+        }
+    }
+
+    /// The level of the unused-declaration checks: the single level for the
+    /// string form, the `unused` entry for the table form.
+    fn unused(&self) -> Option<&str> {
+        match self {
+            Self::Level(level) => Some(level),
+            Self::Table { unused, .. } => unused.as_deref(),
         }
     }
 }
@@ -93,6 +107,10 @@ pub struct Config {
     /// The `initializationOptions` payee override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
     payee_override: Option<ValidationLevel>,
+
+    /// The `initializationOptions` unused-declaration override, kept so
+    /// [`Config::load_layered`] can apply it on top of the file layers.
+    unused_override: Option<ValidationLevel>,
 
     /// The raw `[declaration]` paths from the layered configuration files,
     /// kept unresolved so [`Config::load_layered`] can resolve them once the
@@ -132,8 +150,7 @@ impl Config {
     ///
     /// A missing or unparsable `initializationOptions` value is treated the
     /// same as an empty configuration, rather than failing `initialize`.
-    /// Invalid validation levels (including the not-yet-supported `off`) are
-    /// logged and ignored.
+    /// Invalid validation levels are logged and ignored.
     pub fn from_initialization_options(
         initialization_options: Option<&serde_json::Value>,
         workspace_root: Option<&Path>,
@@ -164,27 +181,27 @@ impl Config {
             }
         });
 
-        let payee_override = raw.validation.as_ref().and_then(|validation| {
-            let value = validation.payee()?;
-            match ValidationLevel::parse(value) {
-                Some(level) => Some(level),
-                None => {
-                    log::warn!(
-                        "ignoring invalid `validation` initialization option `{value}` \
-                         (expected `off`, `warn` or `error`)"
-                    );
-                    None
-                }
-            }
-        });
+        let payee_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.payee()));
+        let unused_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.unused()));
 
+        // Each check falls back to its own default (an undeclared payee is
+        // an error, an unused declaration a warning), not to a single level.
+        let defaults = ValidationOptions::default();
         Config {
             journal_file,
             validation: ValidationOptions {
-                payee: payee_override.unwrap_or_default(),
+                payee: payee_override.unwrap_or(defaults.payee),
+                unused: unused_override.unwrap_or(defaults.unused),
             },
             declarations: DeclarationTargets::default(),
             payee_override,
+            unused_override,
             declaration_paths: DeclarationOptions::default(),
         }
     }
@@ -206,6 +223,7 @@ impl Config {
         let project = project_dir.map(|dir| dir.join("pactole.toml"));
         let overrides = Overrides {
             payee: self.payee_override,
+            unused: self.unused_override,
         };
 
         match pactole_config::Config::load(None, project.as_deref(), &overrides) {
@@ -253,6 +271,22 @@ impl Config {
             accounts: resolve(&self.declaration_paths.accounts),
             commodities: resolve(&self.declaration_paths.commodities),
         };
+    }
+}
+
+/// Parses one `initializationOptions` validation level, logging and ignoring
+/// an invalid value so that a client-side typo never fails `initialize`.
+fn parse_level(value: Option<&str>) -> Option<ValidationLevel> {
+    let value = value?;
+    match ValidationLevel::parse(value) {
+        Some(level) => Some(level),
+        None => {
+            log::warn!(
+                "ignoring invalid `validation` initialization option `{value}` \
+                 (expected `off`, `warn` or `error`)"
+            );
+            None
+        }
     }
 }
 
@@ -352,6 +386,8 @@ mod tests {
         let config = Config::from_initialization_options(Some(&options), None);
 
         assert_eq!(config.validation.payee, ValidationLevel::Warning);
+        // A single level applies to every configurable check.
+        assert_eq!(config.validation.unused, ValidationLevel::Warning);
     }
 
     #[test]
@@ -359,6 +395,19 @@ mod tests {
         let options = serde_json::json!({ "validation": { "payee": "error" } });
         let config = Config::from_initialization_options(Some(&options), None);
 
+        assert_eq!(config.validation.payee, ValidationLevel::Error);
+    }
+
+    #[test]
+    fn the_unused_level_defaults_to_a_warning_and_can_be_set_per_check() {
+        let config = Config::from_initialization_options(None, None);
+        assert_eq!(config.validation.unused, ValidationLevel::Warning);
+
+        let options = serde_json::json!({ "validation": { "unused": "off" } });
+        let config = Config::from_initialization_options(Some(&options), None);
+
+        assert_eq!(config.validation.unused, ValidationLevel::Off);
+        // The other check keeps its own default.
         assert_eq!(config.validation.payee, ValidationLevel::Error);
     }
 
@@ -385,6 +434,27 @@ mod tests {
         config.load_layered(Some(&dir));
 
         assert_eq!(config.validation.payee, ValidationLevel::Warning);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_layered_applies_the_unused_level_from_the_project_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-lsp-config-unused-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("pactole.toml"), "[validation]\nunused = \"off\"\n").unwrap();
+
+        let options = serde_json::json!({ "journal_file": "main.pactole" });
+        let mut config = Config::from_initialization_options(Some(&options), Some(&dir));
+        config.load_layered(Some(&dir));
+
+        assert_eq!(config.validation.unused, ValidationLevel::Off);
+        // The payee key stays at its own default.
+        assert_eq!(config.validation.payee, ValidationLevel::Error);
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -452,7 +522,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("pactole.toml"),
-            "[validation]\npayee = \"error\"\n",
+            "[validation]\npayee = \"error\"\nunused = \"error\"\n",
         )
         .unwrap();
 
@@ -464,6 +534,8 @@ mod tests {
         config.load_layered(Some(&dir));
 
         assert_eq!(config.validation.payee, ValidationLevel::Warning);
+        // A single `validation` level overrides every check, `unused` too.
+        assert_eq!(config.validation.unused, ValidationLevel::Warning);
 
         std::fs::remove_dir_all(&dir).ok();
     }

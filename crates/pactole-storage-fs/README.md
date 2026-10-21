@@ -45,8 +45,9 @@ Re-exported from `src/lib.rs`:
     inclusion problems (unresolvable path, cycle, unloadable target) —
     never a global failure, unless `entry_path` itself cannot be loaded.
   - `analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)`:
-    the configurable variant, reclassifying the payee check as a warning when
-    `[validation] payee = "warn"`; `validated_journal()` then approves a
+    the configurable variant, giving the payee check and the unused-declaration
+    checks (`payee-unused`, `account-unused`, `commodity-unused`) the severity
+    configured in `[validation]`; `validated_journal()` then approves a
     project whose only diagnostics are warnings.
 - **Configuration-dependent formatting**: `format_with_options(source, &FormatOptions)`
   and `FormatOptions` (re-exported from `pactole-config`) let callers apply
