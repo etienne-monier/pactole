@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as windows-1252 import their accented text correctly.
 - OFX import reads the banking transactions of investment statements
   (`INVSTMTMSGSRSV1`).
+- The language server turns its business diagnostics into quick fixes: an
+  undeclared payee, a not-yet-open account or an undeclared commodity can be
+  declared straight from the diagnostic, inserted above the offending
+  transaction — or into the declaration files configured by the new
+  `[declaration]` section of `pactole.toml` (`payees`, `accounts`,
+  `commodities`) when those files are reachable from the journal.
 - The language server supports navigation: `textDocument/definition` jumps
   from an account, payee or commodity use to its declaration (and from an
   `include` path to the included file), and `textDocument/references` lists
@@ -97,6 +103,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-memory source buffers and include-cycle reporting.
 - `pactole` CLI commands for parsing, checking, formatting, and register
   reports.
+- `pactole init` command to create a starter ledger.
+- `pactole completions <shell>` command to generate shell completion scripts.
+- Right-aligned amounts in `pactole fmt`, with a configurable alignment
+  column.
 - OFX/QFX import support for SGML 1.x and XML 2.x statements.
 - Import rules for mapping external records to balanced Pactole transactions,
   including FITID-based idempotence.
