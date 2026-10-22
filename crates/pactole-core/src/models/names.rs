@@ -44,7 +44,7 @@ impl fmt::Display for MetadataKey {
 /// An account name: colon-separated segments, the first one starting with
 /// an uppercase letter, each made of letters, digits, `_` or `-` (see the
 /// `account` rule in `grammar.js`).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AccountName(String);
 
 impl AccountName {
@@ -75,7 +75,7 @@ impl fmt::Display for AccountName {
 /// starting with an uppercase letter, ending with an uppercase letter or
 /// digit, and made of uppercase letters, digits, `'`, `.`, `_` or `-` in
 /// between (see the `commodity_name` rule in `grammar.js`).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CommodityName(String);
 
 impl CommodityName {

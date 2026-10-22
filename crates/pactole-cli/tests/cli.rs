@@ -174,6 +174,52 @@ fn check_reports_all_independent_business_errors() {
 }
 
 #[test]
+fn check_reports_the_business_errors_of_the_valid_files_of_a_broken_project() {
+    // A broken file must not hide the business errors of the other files:
+    // the checks that do not depend on the missing content still run.
+    let dir = std::env::temp_dir().join(format!(
+        "pactole-check-partial-{}-{}",
+        std::process::id(),
+        "project"
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let main = dir.join("main.pactole");
+    let broken = dir.join("broken.pactole");
+    let valid = dir.join("valid.pactole");
+
+    std::fs::write(
+        &main,
+        "include \"broken.pactole\"\ninclude \"valid.pactole\"\n",
+    )
+    .unwrap();
+    // The date is not a calendar date: the directive cannot be lowered.
+    std::fs::write(&broken, "2024-13-45 open Assets:Checking\n").unwrap();
+    std::fs::write(
+        &valid,
+        "2024-01-01 commodity EUR\n\
+         2024-01-05 * \"Test\"\n\
+         \u{20}\u{20}Assets:Checking -100.00 EUR\n\
+         \u{20}\u{20}Expenses:Divers 100.00 EUR\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", main.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // The broken file is reported as such...
+    assert!(stderr.contains("lowering-error"), "stderr: {stderr}");
+    assert!(stderr.contains("analysis-incomplete"), "stderr: {stderr}");
+    // ...and the business error of the valid file is still reported.
+    assert!(stderr.contains("not declared"), "stderr: {stderr}");
+}
+
+#[test]
 fn payee_declared_after_its_first_use_is_still_accepted() {
     // A `payee` declaration carries no date, so it is not checked
     // chronologically: declaring it anywhere in the file, even after the

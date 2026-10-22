@@ -42,6 +42,11 @@ pub enum DiagnosticCode {
     /// Resolving the include would revisit a file already being analyzed.
     IncludeCycle,
 
+    // ---- Analysis completeness ----
+    /// Part of the project could not be analyzed, so the business checks
+    /// that depend on the missing content were skipped.
+    AnalysisIncomplete,
+
     // ---- Business validation ----
     /// An account is opened while it is already open.
     AccountAlreadyOpen,
@@ -89,6 +94,7 @@ impl DiagnosticCode {
         Self::IncludeNoBaseDirectory,
         Self::IncludeDepthExceeded,
         Self::IncludeCycle,
+        Self::AnalysisIncomplete,
         Self::AccountAlreadyOpen,
         Self::AccountNotOpen,
         Self::CommodityAlreadyDeclared,
@@ -115,6 +121,7 @@ impl DiagnosticCode {
             Self::IncludeNoBaseDirectory => "include-no-base-directory",
             Self::IncludeDepthExceeded => "include-depth-exceeded",
             Self::IncludeCycle => "include-cycle",
+            Self::AnalysisIncomplete => "analysis-incomplete",
             Self::AccountAlreadyOpen => "account-already-open",
             Self::AccountNotOpen => "account-not-open",
             Self::CommodityAlreadyDeclared => "commodity-already-declared",

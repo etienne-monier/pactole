@@ -7,7 +7,7 @@ use std::fmt;
 ///
 /// The `column` is a byte offset within its `row`, matching tree-sitter's
 /// [`tree_sitter::Point`] semantics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Point {
     /// Zero-indexed byte offset of the position within the whole source text.
     pub byte: usize,
@@ -38,7 +38,7 @@ impl fmt::Display for Point {
 ///
 /// The range is half-open: `start` is inclusive and `end` is exclusive, mirroring
 /// tree-sitter's node range semantics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Span {
     /// Inclusive start position of the span.
     pub start: Point,

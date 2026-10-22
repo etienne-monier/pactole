@@ -4,7 +4,7 @@ use crate::errors::ValidationError;
 use crate::models::{AccountName, Amount, CommodityName, Entry, Journal, Transaction};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// A complete validation result, including the normalized journal and all
 /// non-cascading issues found while walking it.
@@ -38,6 +38,85 @@ pub struct ValidationIssue {
     pub error: ValidationError,
 }
 
+/// What a journal may be missing, when it was assembled from a project that
+/// could not be analyzed completely.
+///
+/// Business validation uses it to tell a real problem apart from an artefact
+/// of the missing data: a check whose outcome depends on the missing content
+/// is not reported, while a check that does not depend on it — the balancing
+/// of a transaction, for instance — still is.
+///
+/// The two axes are distinct:
+///
+/// - the *declaration* axis (`accounts`, `commodities`, `payees`) lists the
+///   names whose declaration may be missing. The checks that depend on it
+///   (`account-not-open`, `commodity-not-declared`, `payee-not-declared`,
+///   `commodity-not-allowed`) are suppressed for those names only, and the
+///   names are treated as if they had been declared;
+/// - the *usage* axis (`used_accounts`, `used_commodities`, `used_payees`)
+///   lists the names a missing transaction or balance assertion may have
+///   used. The checks that depend on it (`balance-assertion-failed`,
+///   `account-unused`, `commodity-unused`, `payee-unused`) are suppressed for
+///   those names only.
+///
+/// The default value describes a complete journal: every check is reported.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MissingData {
+    /// Whether an unknown amount of content is missing — an include whose
+    /// target could not be loaded, for instance.
+    ///
+    /// Every check that depends on the completeness of the journal is then
+    /// uncertain, whatever the names below.
+    pub everything: bool,
+    /// Accounts whose `open` directive may be missing.
+    pub accounts: BTreeSet<AccountName>,
+    /// Commodities whose `commodity` directive may be missing.
+    pub commodities: BTreeSet<CommodityName>,
+    /// Payees whose `payee` directive may be missing.
+    pub payees: BTreeSet<String>,
+    /// Accounts whose postings or balance assertions may be missing.
+    pub used_accounts: BTreeSet<AccountName>,
+    /// Commodities whose amounts may be missing.
+    pub used_commodities: BTreeSet<CommodityName>,
+    /// Payees whose transactions may be missing.
+    pub used_payees: BTreeSet<String>,
+}
+
+impl MissingData {
+    /// Whether the account's `open` directive may be missing.
+    fn account_may_be_open(&self, account: &AccountName) -> bool {
+        self.everything || self.accounts.contains(account)
+    }
+
+    /// Whether the commodity's `commodity` directive may be missing.
+    fn commodity_may_be_declared(&self, commodity: &CommodityName) -> bool {
+        self.everything || self.commodities.contains(commodity)
+    }
+
+    /// Whether the payee's `payee` directive may be missing.
+    fn payee_may_be_declared(&self, payee: &str) -> bool {
+        self.everything || self.payees.contains(payee)
+    }
+
+    /// Whether the account may have postings or balance assertions that the
+    /// journal does not contain.
+    fn account_may_be_used(&self, account: &AccountName) -> bool {
+        self.everything || self.used_accounts.contains(account)
+    }
+
+    /// Whether the commodity may have amounts that the journal does not
+    /// contain.
+    fn commodity_may_be_used(&self, commodity: &CommodityName) -> bool {
+        self.everything || self.used_commodities.contains(commodity)
+    }
+
+    /// Whether the payee may have transactions that the journal does not
+    /// contain.
+    fn payee_may_be_used(&self, payee: &str) -> bool {
+        self.everything || self.used_payees.contains(payee)
+    }
+}
+
 /// Validates a journal and returns the first business error, if any.
 ///
 /// On success, returns the journal sorted chronologically and with inferable
@@ -60,7 +139,35 @@ pub fn validate_journal(journal: Journal) -> Result<Journal, ValidationError> {
 /// dated entries. Validation checks account lifecycles, declarations,
 /// transaction balancing and balance assertions; at most one missing posting
 /// amount is inferred when its commodity is unambiguous.
+///
+/// This is the complete-journal entry point: use
+/// [`validate_journal_all_with`] to validate a journal that may be missing
+/// some of its content.
 pub fn validate_journal_all(journal: Journal) -> ValidationReport {
+    validate_journal_all_with(journal, &MissingData::default())
+}
+
+/// Validates every entry of a journal that may be missing some of its
+/// content, and returns all errors that can be diagnosed without aborting the
+/// journal walk.
+///
+/// `missing` describes what the journal may be missing. A check whose outcome
+/// depends on the missing content is suppressed, so that a partial analysis
+/// reports the problems it can prove instead of staying silent:
+///
+/// - the checks that only depend on the entry they are about — the balancing
+///   of a transaction, a duplicated declaration — are always reported;
+/// - `account-not-open`, `commodity-not-declared`, `payee-not-declared` and
+///   `commodity-not-allowed` are reported unless the name they are about may
+///   have been declared in the missing content; a name that may have been
+///   declared is treated as if it had been, so that the entries using it are
+///   still validated (and still contribute to the running balances);
+/// - `balance-assertion-failed` is reported unless the account may have
+///   postings in the missing content.
+///
+/// The returned journal is chronologically sorted with stable ordering for
+/// equal dates.
+pub fn validate_journal_all_with(journal: Journal, missing: &MissingData) -> ValidationReport {
     let mut indexed_entries: Vec<(usize, Entry)> =
         journal.entries.into_iter().enumerate().collect();
     indexed_entries.sort_by_key(|(_, entry)| entry.date());
@@ -93,7 +200,9 @@ pub fn validate_journal_all(journal: Journal) -> ValidationReport {
                 open_accounts.insert(open.account.clone(), open.commodities.clone());
             }
             Entry::Close(close) => {
-                if open_accounts.remove(&close.account).is_none() {
+                if open_accounts.remove(&close.account).is_none()
+                    && !missing.account_may_be_open(&close.account)
+                {
                     let error = ValidationError::AccountNotOpen {
                         account: close.account.clone(),
                         date: close.date,
@@ -131,19 +240,31 @@ pub fn validate_journal_all(journal: Journal) -> ValidationReport {
                 }
             }
             Entry::Balance(balance) => {
-                let Some(allowed_commodities) = open_accounts.get(&balance.account) else {
-                    let error = ValidationError::AccountNotOpen {
-                        account: balance.account.clone(),
-                        date: balance.date,
+                let allowed_commodities: &[CommodityName] =
+                    match open_accounts.get(&balance.account) {
+                        Some(allowed) => allowed.as_slice(),
+                        None => {
+                            if !missing.account_may_be_open(&balance.account) {
+                                let error = ValidationError::AccountNotOpen {
+                                    account: balance.account.clone(),
+                                    date: balance.date,
+                                };
+                                issues.push(ValidationIssue {
+                                    input_index: *input_index,
+                                    error,
+                                });
+                                continue;
+                            }
+                            // The account may be open, but the commodities it is
+                            // restricted to are unknown: it is treated as
+                            // unrestricted.
+                            &[]
+                        }
                     };
-                    issues.push(ValidationIssue {
-                        input_index: *input_index,
-                        error,
-                    });
-                    continue;
-                };
 
-                if !declared_commodities.contains(&balance.amount.commodity) {
+                if !declared_commodities.contains(&balance.amount.commodity)
+                    && !missing.commodity_may_be_declared(&balance.amount.commodity)
+                {
                     let error = ValidationError::CommodityNotDeclared {
                         commodity: balance.amount.commodity.clone(),
                         date: balance.date,
@@ -167,6 +288,13 @@ pub fn validate_journal_all(journal: Journal) -> ValidationReport {
                         input_index: *input_index,
                         error,
                     });
+                    continue;
+                }
+
+                // Postings missing from the journal may have changed the
+                // running balance of the account: the assertion cannot be
+                // checked.
+                if missing.account_may_be_used(&balance.account) {
                     continue;
                 }
 
@@ -196,6 +324,7 @@ pub fn validate_journal_all(journal: Journal) -> ValidationReport {
                     &open_accounts,
                     &declared_commodities,
                     &declared_payees,
+                    missing,
                 );
                 let has_transaction_errors = !transaction_errors.is_empty();
                 for error in transaction_errors {
@@ -258,8 +387,22 @@ pub fn validate_journal_all(journal: Journal) -> ValidationReport {
 /// The caller decides whether the returned issues matter at all — front-ends
 /// map them to a severity of their own (the `unused` setting, a warning by
 /// default), so this is deliberately not part of [`validate_journal_all`].
+///
+/// This is the complete-journal entry point: use [`unused_declarations_with`]
+/// for a journal that may be missing some of its content.
 #[must_use = "the unused-declaration issues are only useful when inspected"]
 pub fn unused_declarations(journal: &Journal) -> Vec<ValidationIssue> {
+    unused_declarations_with(journal, &MissingData::default())
+}
+
+/// Reports the declarations of `journal` that nothing uses, ignoring the
+/// declarations a missing transaction or balance assertion may have used.
+///
+/// `missing` describes what the journal may be missing. A declaration whose
+/// name may have been used by the missing content is not reported: the
+/// missing content is exactly what could have used it.
+#[must_use = "the unused-declaration issues are only useful when inspected"]
+pub fn unused_declarations_with(journal: &Journal, missing: &MissingData) -> Vec<ValidationIssue> {
     // Declaration name -> (position in `journal`, declaration date).
     let mut opened_accounts: HashMap<AccountName, (usize, NaiveDate)> = HashMap::new();
     let mut declared_commodities: HashMap<CommodityName, (usize, NaiveDate)> = HashMap::new();
@@ -313,7 +456,7 @@ pub fn unused_declarations(journal: &Journal) -> Vec<ValidationIssue> {
     let mut unused: Vec<(usize, ValidationError)> = Vec::new();
 
     for (payee, input_index) in &declared_payees {
-        if !used_payees.contains(payee) {
+        if !used_payees.contains(payee) && !missing.payee_may_be_used(payee) {
             unused.push((
                 *input_index,
                 ValidationError::PayeeUnused {
@@ -323,7 +466,7 @@ pub fn unused_declarations(journal: &Journal) -> Vec<ValidationIssue> {
         }
     }
     for (account, (input_index, date)) in &opened_accounts {
-        if !used_accounts.contains(account) {
+        if !used_accounts.contains(account) && !missing.account_may_be_used(account) {
             unused.push((
                 *input_index,
                 ValidationError::AccountUnused {
@@ -334,7 +477,7 @@ pub fn unused_declarations(journal: &Journal) -> Vec<ValidationIssue> {
         }
     }
     for (commodity, (input_index, date)) in &declared_commodities {
-        if !used_commodities.contains(commodity) {
+        if !used_commodities.contains(commodity) && !missing.commodity_may_be_used(commodity) {
             unused.push((
                 *input_index,
                 ValidationError::CommodityUnused {
@@ -359,10 +502,12 @@ fn validate_transaction(
     open_accounts: &HashMap<AccountName, Vec<CommodityName>>,
     declared_commodities: &HashSet<CommodityName>,
     declared_payees: &HashSet<String>,
+    missing: &MissingData,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     if let Some(payee) = &transaction.payee
         && !declared_payees.contains(payee)
+        && !missing.payee_may_be_declared(payee)
     {
         errors.push(ValidationError::PayeeNotDeclared {
             payee: payee.clone(),
@@ -371,7 +516,9 @@ fn validate_transaction(
     }
 
     for posting in &transaction.postings {
-        if !open_accounts.contains_key(&posting.account) {
+        if !open_accounts.contains_key(&posting.account)
+            && !missing.account_may_be_open(&posting.account)
+        {
             errors.push(ValidationError::AccountNotOpen {
                 account: posting.account.clone(),
                 date: transaction.date,
@@ -379,6 +526,7 @@ fn validate_transaction(
         }
         if let Some(amount) = &posting.amount
             && !declared_commodities.contains(&amount.commodity)
+            && !missing.commodity_may_be_declared(&amount.commodity)
         {
             errors.push(ValidationError::CommodityNotDeclared {
                 commodity: amount.commodity.clone(),
@@ -401,6 +549,9 @@ fn validate_transaction(
     for posting in &transaction.postings {
         let allowed = match open_accounts.get(&posting.account) {
             Some(allowed) => allowed,
+            // The account may be open, but the commodities it is restricted
+            // to are unknown: it is treated as unrestricted.
+            None if missing.account_may_be_open(&posting.account) => continue,
             None => unreachable!("account presence was checked before commodity restrictions"),
         };
         if allowed.is_empty() {
@@ -1384,6 +1535,415 @@ mod tests {
                 .issues
                 .iter()
                 .any(|issue| matches!(issue.error, ValidationError::TransactionNotBalanced { .. }))
+        );
+    }
+
+    fn missing_account(account: &str) -> MissingData {
+        let mut missing = MissingData::default();
+        missing.accounts.insert(AccountName::new(account).unwrap());
+        missing
+    }
+
+    fn missing_commodity(commodity: &str) -> MissingData {
+        let mut missing = MissingData::default();
+        missing
+            .commodities
+            .insert(CommodityName::new(commodity).unwrap());
+        missing
+    }
+
+    fn missing_payee(payee: &str) -> MissingData {
+        let mut missing = MissingData::default();
+        missing.payees.insert(payee.to_string());
+        missing
+    }
+
+    fn missing_used_account(account: &str) -> MissingData {
+        let mut missing = MissingData::default();
+        missing
+            .used_accounts
+            .insert(AccountName::new(account).unwrap());
+        missing
+    }
+
+    fn errors_of(report: &ValidationReport) -> Vec<&ValidationError> {
+        report.issues.iter().map(|issue| &issue.error).collect()
+    }
+
+    #[test]
+    fn an_empty_missing_data_reproduces_the_complete_journal_behaviour() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Test",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("50.00", "EUR"))),
+                    ],
+                )),
+                balance(date(2024, 1, 10), "Actifs:Compte", ("0.00", "EUR")),
+            ],
+        };
+
+        let complete = validate_journal_all(journal.clone());
+        let partial = validate_journal_all_with(journal, &MissingData::default());
+
+        assert_eq!(complete, partial);
+    }
+
+    #[test]
+    fn a_missing_declaration_suppresses_only_the_check_that_depends_on_it() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Test",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("50.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        let report = validate_journal_all_with(journal.clone(), &missing_account("Actifs:Compte"));
+        let errors = errors_of(&report);
+
+        // The account may have been opened in the missing content: the
+        // `account-not-open` error is not reported for it.
+        assert!(
+            !errors.iter().any(|error| matches!(
+                error,
+                ValidationError::AccountNotOpen { account, .. } if account.as_str() == "Actifs:Compte"
+            )),
+            "unexpected errors: {errors:?}"
+        );
+        // The payee and the other account are still checked.
+        assert!(
+            errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::PayeeNotDeclared { .. })),
+            "unexpected errors: {errors:?}"
+        );
+        assert!(
+            errors.iter().any(|error| matches!(
+                error,
+                ValidationError::AccountNotOpen { account, .. } if account.as_str() == "Depenses:Divers"
+            )),
+            "unexpected errors: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn a_missing_commodity_declaration_suppresses_the_commodity_check() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 5),
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        let report = validate_journal_all_with(journal.clone(), &missing_commodity("EUR"));
+        let errors = errors_of(&report);
+
+        assert!(
+            !errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::CommodityNotDeclared { .. })),
+            "unexpected errors: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn a_missing_payee_declaration_suppresses_the_payee_check() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Test",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        let report = validate_journal_all_with(journal.clone(), &missing_payee("Test"));
+        let errors = errors_of(&report);
+
+        assert!(
+            !errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::PayeeNotDeclared { .. })),
+            "unexpected errors: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn a_missing_open_suppresses_the_commodity_restriction_check() {
+        let journal = Journal {
+            entries: vec![
+                open_restricted(date(2024, 1, 1), "Actifs:Compte", &["USD"]),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 5),
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        let report = validate_journal_all_with(journal.clone(), &missing_account("Actifs:Compte"));
+        let errors = errors_of(&report);
+
+        assert!(
+            !errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::CommodityNotAllowed { .. })),
+            "unexpected errors: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn a_missing_posting_suppresses_the_balance_assertion_check() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 5),
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+                balance(date(2024, 1, 10), "Actifs:Compte", ("0.00", "EUR")),
+            ],
+        };
+
+        let report =
+            validate_journal_all_with(journal.clone(), &missing_used_account("Actifs:Compte"));
+        let errors = errors_of(&report);
+
+        assert!(
+            !errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::BalanceAssertionFailed { .. })),
+            "unexpected errors: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn a_partial_analysis_still_reports_the_independent_checks() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 5),
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("50.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        let report = validate_journal_all_with(
+            journal,
+            &MissingData {
+                everything: true,
+                ..MissingData::default()
+            },
+        );
+        let errors = errors_of(&report);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::AccountAlreadyOpen { .. })),
+            "unexpected errors: {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::TransactionNotBalanced { .. })),
+            "unexpected errors: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn a_possibly_open_account_is_still_validated_and_still_balances() {
+        // The account is used but never opened: the transaction is invalid
+        // and its postings are left out of the running balances, which makes
+        // the balance assertion fail.
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 5),
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("100.00", "EUR"))),
+                    ],
+                )),
+                balance(date(2024, 1, 10), "Actifs:Compte", ("-100.00", "EUR")),
+            ],
+        };
+
+        let complete_report = validate_journal_all(journal.clone());
+        let complete = errors_of(&complete_report);
+        assert!(
+            complete
+                .iter()
+                .any(|error| matches!(error, ValidationError::AccountNotOpen { .. })),
+            "unexpected errors: {complete:?}"
+        );
+        // The balance assertion is rejected before its amount is compared,
+        // so it does not report a spurious mismatch either.
+        assert!(
+            !complete
+                .iter()
+                .any(|error| matches!(error, ValidationError::BalanceAssertionFailed { .. })),
+            "unexpected errors: {complete:?}"
+        );
+
+        // The account may have been opened in the missing content: the
+        // transaction is validated, and its postings count towards the
+        // running balances, so the balance assertion holds.
+        let report = validate_journal_all_with(journal, &missing_account("Actifs:Compte"));
+        let partial = errors_of(&report);
+        assert!(
+            !partial
+                .iter()
+                .any(|error| matches!(error, ValidationError::AccountNotOpen { .. })),
+            "unexpected errors: {partial:?}"
+        );
+        assert!(
+            !partial
+                .iter()
+                .any(|error| matches!(error, ValidationError::BalanceAssertionFailed { .. })),
+            "unexpected errors: {partial:?}"
+        );
+    }
+
+    #[test]
+    fn a_possibly_open_account_does_not_hide_a_duplicated_open() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                open(date(2024, 1, 2), "Actifs:Compte"),
+            ],
+        };
+
+        let report = validate_journal_all_with(journal, &missing_account("Actifs:Compte"));
+        let errors = errors_of(&report);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::AccountAlreadyOpen { .. })),
+            "unexpected errors: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn unused_declarations_ignore_the_names_the_missing_content_may_have_used() {
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Actifs:Compte"),
+                commodity(date(2024, 1, 1), "EUR"),
+                payee("Test"),
+            ],
+        };
+
+        let complete = unused_declarations(&journal);
+        assert_eq!(complete.len(), 3);
+
+        let mut missing = MissingData::default();
+        missing
+            .used_accounts
+            .insert(AccountName::new("Actifs:Compte").unwrap());
+        missing
+            .used_commodities
+            .insert(CommodityName::new("EUR").unwrap());
+        missing.used_payees.insert("Test".to_string());
+
+        let partial = unused_declarations_with(&journal, &missing);
+        assert!(partial.is_empty());
+    }
+
+    #[test]
+    fn an_unbounded_loss_suppresses_every_completeness_dependent_check() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction_with_payee(
+                    date(2024, 1, 5),
+                    "Test",
+                    vec![
+                        posting("Actifs:Compte", Some(("-100.00", "EUR"))),
+                        posting("Depenses:Divers", Some(("50.00", "EUR"))),
+                    ],
+                )),
+                balance(date(2024, 1, 10), "Actifs:Compte", ("0.00", "EUR")),
+            ],
+        };
+
+        let report = validate_journal_all_with(
+            journal.clone(),
+            &MissingData {
+                everything: true,
+                ..MissingData::default()
+            },
+        );
+        let errors = errors_of(&report);
+
+        assert!(
+            !errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::AccountNotOpen { .. })),
+            "unexpected errors: {errors:?}"
+        );
+        assert!(
+            !errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::PayeeNotDeclared { .. })),
+            "unexpected errors: {errors:?}"
+        );
+        assert!(
+            !errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::BalanceAssertionFailed { .. })),
+            "unexpected errors: {errors:?}"
+        );
+        // The transaction's own balancing does not depend on the missing
+        // content: it is still reported.
+        assert!(
+            errors
+                .iter()
+                .any(|error| matches!(error, ValidationError::TransactionNotBalanced { .. })),
+            "unexpected errors: {errors:?}"
         );
     }
 }

@@ -17,11 +17,12 @@ pub mod errors;
 pub mod loader;
 mod parser;
 mod printer;
+mod uncertainty;
 
 pub use crate::analysis::{
     AnalyzedFile, AnalyzedProject, Diagnostic, DiagnosticSeverity, DiagnosticSource, EntrySpans,
-    LoweringDiagnostic, ParsedEntry, ParsedFile, ParsedInclude, PostingSpans, analyze_file,
-    analyze_file_with_loader, analyze_file_with_loader_with_options,
+    FileLoss, LoweringDiagnostic, ParsedEntry, ParsedFile, ParsedInclude, PartialAnalysis,
+    PostingSpans, analyze_file, analyze_file_with_loader, analyze_file_with_loader_with_options,
 };
 pub use crate::errors::PactoleFsStorageError;
 pub use crate::loader::{FsSourceLoader, InMemorySourceLoader, SourceLoadError, SourceLoader};
@@ -29,7 +30,7 @@ pub use crate::printer::{
     FormatOptions, format, format_transactions, format_transactions_with_options,
     format_with_options,
 };
-pub use pactole_core::DiagnosticCode;
+pub use pactole_core::{DiagnosticCode, MissingData};
 
 /// Formats a list of syntax diagnostics into a single human-readable string,
 /// prefixed with the position of the first diagnostic (line:column) so callers

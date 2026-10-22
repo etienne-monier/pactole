@@ -21,5 +21,6 @@ pub use crate::models::{
 pub use crate::register::{RegisterEntry, RegisterFilter, register};
 pub use crate::traits::ReadableStorage;
 pub use crate::validation::{
-    ValidationIssue, ValidationReport, unused_declarations, validate_journal, validate_journal_all,
+    MissingData, ValidationIssue, ValidationReport, unused_declarations, unused_declarations_with,
+    validate_journal, validate_journal_all, validate_journal_all_with,
 };

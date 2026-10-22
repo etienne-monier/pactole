@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Partial analyses: business validation now survives a broken file. When a
+  directive cannot be lowered (or a chunk of source cannot be parsed), the
+  checks that do not depend on the missing content are still reported, and
+  the ones that do are suppressed instead of losing every business
+  diagnostic. The two axes of the uncertainty are the *declaration* axis (the
+  names whose `open`/`commodity`/`payee` declaration may be missing) and the
+  *usage* axis (the names the missing content may have used).
+- `pactole_core::MissingData` describes what a journal may be missing. The
+  new `validate_journal_all_with` and `unused_declarations_with` validate a
+  possibly incomplete journal; `validate_journal_all` and
+  `unused_declarations` keep validating complete journals.
+- `pactole_storage_fs::AnalyzedProject::is_partial()` and `::partial()`
+  expose the result explicitly, through the new `PartialAnalysis` type
+  (the aggregate uncertainty and the per-file `FileLoss` breakdown).
+- A new `analysis-incomplete` diagnostic code (a warning, with the new
+  `analysis` diagnostic origin) reports that part of a project could not be
+  analyzed, and that some of the checks depending on it were skipped.
 - `pactole-lsp` now reports its name and version: `pactole-lsp --version`
   prints `pactole-lsp <version>`, and the server announces the same in its
   `initialize` response (`serverInfo`), so editors can display it in their
@@ -39,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A project with a broken file no longer loses every business diagnostic: the
+  reliable entries of the other files are still validated, and only the checks
+  whose outcome depends on the missing content are suppressed.
 - Two integration tests now guard the documentation against drift:
   `pactole-cli`'s `docs_sync` compares the CLI surface with the reference and
   the README, and `pactole-storage-fs`'s `workspace_docs_sync` compares the

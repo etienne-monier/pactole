@@ -166,12 +166,12 @@ features.*
 
 ### 0.3 — Support partial analyses
 
-- [ ] When a file fails to parse or to lower, still validate the reliable
+- [x] When a file fails to parse or to lower, still validate the reliable
   entries of the other files.
-- [ ] Distinguish the diagnostics that depend on the missing data and
+- [x] Distinguish the diagnostics that depend on the missing data and
   suppress them, instead of losing all business diagnostics.
-- [ ] Represent a partial analysis explicitly in the public API.
-- [ ] Add regression tests for a broken file next to a valid one.
+- [x] Represent a partial analysis explicitly in the public API.
+- [x] Add regression tests for a broken file next to a valid one.
 
 ### 0.4 — Strengthen the test suite
 

@@ -119,6 +119,11 @@ Errors include syntax errors, lowering errors, business validation errors and
 includes whose content could not be loaded. Include cycles are warnings because
 all files involved have still been loaded and validated.
 
+A broken file does not hide the problems of the other files: the business
+checks that do not depend on the missing content are still reported, and the
+ones that do are skipped. Each partial file gets an `analysis-incomplete`
+warning explaining what was left out.
+
 See [Diagnostics and project analysis](/reference/diagnostics/) for the
 distinction between standalone and project analysis, diagnostic severities and
 the include error codes.

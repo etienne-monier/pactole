@@ -15,14 +15,15 @@ use std::path::{Path, PathBuf};
 
 use pactole_config::{ValidationLevel, ValidationOptions};
 use pactole_core::{
-    DiagnosticCode, Entry, Journal, ValidationError, ValidationIssue, unused_declarations,
-    validate_journal_all,
+    DiagnosticCode, Entry, Journal, MissingData, ValidationError, ValidationIssue,
+    unused_declarations_with, validate_journal_all_with,
 };
 use pactole_syntax::{ParsedDocument, Span, SyntaxDiagnostic, parse_document};
 use tree_sitter::Node;
 
 use crate::loader::{SourceLoadError, SourceLoader};
 use crate::parser::{AstBuilder, DirectiveOutcome};
+use crate::uncertainty;
 
 /// A single top-level entry successfully lowered from a directive, together
 /// with the span of the `directive` node it was built from.
@@ -111,6 +112,8 @@ pub enum DiagnosticSource {
     Include,
     /// Core journal validation.
     Business,
+    /// Completeness of the project analysis.
+    Analysis,
 }
 
 /// A source-positioned diagnostic ready for consumption by a CLI or editor.
@@ -191,6 +194,8 @@ pub struct ParsedFile {
     entries: Vec<ParsedEntry>,
     includes: Vec<ParsedInclude>,
     lowering_diagnostics: Vec<LoweringDiagnostic>,
+    missing: MissingData,
+    lost_directives: usize,
 }
 
 impl ParsedFile {
@@ -233,6 +238,23 @@ impl ParsedFile {
     pub fn diagnostics(&self, path: &Path) -> Vec<Diagnostic> {
         file_diagnostics(path, self)
     }
+
+    /// The names this file's analysis could neither confirm nor rule out.
+    ///
+    /// A directive that could not be lowered, or that contains a syntax
+    /// error, may have declared or used any of the names it mentions: the
+    /// business checks that depend on those facts are uncertain for this
+    /// file.
+    pub(crate) fn missing(&self) -> &MissingData {
+        &self.missing
+    }
+
+    /// The number of top-level chunks of this file's source that could not be
+    /// turned into a reliable domain entry: either the directive did not
+    /// lower at all, or it holds a syntax error.
+    pub(crate) fn lost_directives(&self) -> usize {
+        self.lost_directives
+    }
 }
 
 /// Analyzes `source` directive-by-directive, producing a positioned
@@ -249,6 +271,10 @@ pub fn analyze_file(source: &str) -> ParsedFile {
     let mut entries = Vec::new();
     let mut includes = Vec::new();
     let mut lowering_diagnostics = Vec::new();
+    // What this file's analysis could neither confirm nor rule out: the
+    // names the lost content may have declared or used.
+    let mut missing = MissingData::default();
+    let mut lost_directives = 0;
 
     // Even on a syntactically invalid document, tree-sitter still produces a
     // best-effort tree: attempt lowering whatever directives are well-formed
@@ -259,22 +285,50 @@ pub fn analyze_file(source: &str) -> ParsedFile {
         let mut cursor = document.root_node().walk();
         for child in document.root_node().named_children(&mut cursor) {
             if child.kind() != "directive" {
+                // The parser could not make sense of this part of the file:
+                // its content is unknown, so the names it mentions may have
+                // been declared or used there.
+                lost_directives += 1;
+                uncertainty::record_unknown(&mut missing, child, document.source());
                 continue;
             }
 
             let span = Span::from_node(&child);
+            // A directive holding a syntax error is not reliable, even when
+            // it lowers: the error may have swallowed part of a name.
+            let degraded = uncertainty::is_degraded(child);
 
             match builder.build_directive_outcome(child) {
-                Ok(DirectiveOutcome::Entry(entry)) => entries.push(ParsedEntry {
-                    span,
-                    entry,
-                    spans: entry_spans(child),
-                }),
-                Ok(DirectiveOutcome::Include(path)) => includes.push(ParsedInclude { span, path }),
-                Err(err) => lowering_diagnostics.push(LoweringDiagnostic {
-                    span,
-                    message: err.to_string(),
-                }),
+                Ok(DirectiveOutcome::Entry(entry)) => {
+                    if degraded {
+                        lost_directives += 1;
+                        uncertainty::record_unknown(&mut missing, child, document.source());
+                    }
+                    entries.push(ParsedEntry {
+                        span,
+                        entry,
+                        spans: entry_spans(child),
+                    });
+                }
+                Ok(DirectiveOutcome::Include(path)) => {
+                    if degraded {
+                        lost_directives += 1;
+                        uncertainty::record_unknown(&mut missing, child, document.source());
+                    }
+                    includes.push(ParsedInclude { span, path });
+                }
+                Err(err) => {
+                    lost_directives += 1;
+                    if degraded {
+                        uncertainty::record_unknown(&mut missing, child, document.source());
+                    } else {
+                        uncertainty::record_lost_directive(&mut missing, child, document.source());
+                    }
+                    lowering_diagnostics.push(LoweringDiagnostic {
+                        span,
+                        message: err.to_string(),
+                    });
+                }
             }
         }
     }
@@ -284,6 +338,8 @@ pub fn analyze_file(source: &str) -> ParsedFile {
         entries,
         includes,
         lowering_diagnostics,
+        missing,
+        lost_directives,
     }
 }
 
@@ -403,6 +459,37 @@ fn include_severity(code: DiagnosticCode) -> DiagnosticSeverity {
     }
 }
 
+/// What a project analysis could not recover.
+///
+/// A project analysis is *partial* when part of its content could not be
+/// turned into a domain entry: a file with a syntax or lowering error, or an
+/// include whose target could not be loaded.
+///
+/// A partial analysis is not a failed one: the business checks that do not
+/// depend on the missing content are still reported. The checks that do
+/// depend on it are suppressed, and the names they were about are listed
+/// here.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PartialAnalysis {
+    /// The aggregate uncertainty, as handed to the validator.
+    pub missing: MissingData,
+    /// The per-file breakdown of the losses.
+    pub files: Vec<FileLoss>,
+}
+
+/// What a single file's analysis could not recover.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileLoss {
+    /// The file the loss comes from.
+    pub path: PathBuf,
+    /// The number of top-level chunks of the file's source that could not be
+    /// turned into a reliable domain entry: either the directive did not
+    /// lower at all, or it holds a syntax error.
+    pub lost_directives: usize,
+    /// The names this file's loss leaves uncertain.
+    pub missing: MissingData,
+}
+
 /// The result of a multi-file, directive-by-directive analysis rooted at an
 /// entry path, following `include` directives via a [`SourceLoader`].
 ///
@@ -419,6 +506,7 @@ pub struct AnalyzedProject {
     source_order: Vec<EntryRef>,
     validated_journal: Option<Journal>,
     validation: ValidationOptions,
+    partial: Option<PartialAnalysis>,
 }
 
 impl AnalyzedProject {
@@ -438,6 +526,23 @@ impl AnalyzedProject {
     /// Returns whether at least one warning diagnostic is present.
     pub fn has_warnings(&self) -> bool {
         self.diagnostics().iter().any(Diagnostic::is_warning)
+    }
+
+    /// Returns whether the analysis could recover the whole project.
+    ///
+    /// A partial analysis is one where part of the content could not be
+    /// turned into a domain entry: the business checks that depend on the
+    /// missing content were skipped. See [`AnalyzedProject::partial`] for the
+    /// details.
+    pub fn is_partial(&self) -> bool {
+        self.partial.is_some()
+    }
+
+    /// Returns what the analysis could not recover, when it is partial.
+    ///
+    /// `None` means the whole project was analyzed: every business check ran.
+    pub fn partial(&self) -> Option<&PartialAnalysis> {
+        self.partial.as_ref()
     }
 
     /// Returns the structurally valid journal in source order.
@@ -505,8 +610,12 @@ impl AnalyzedProject {
         diagnostics
     }
 
-    /// Returns syntax, lowering and include diagnostics, excluding business
-    /// validation diagnostics.
+    /// Returns syntax, lowering, include and completeness diagnostics,
+    /// excluding business validation diagnostics.
+    ///
+    /// The completeness notices are warnings: they report that part of a
+    /// file could not be analyzed, and therefore that some of the checks
+    /// depending on it were skipped. They never make the project invalid.
     pub fn structural_diagnostics(&self) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
@@ -582,7 +691,52 @@ fn file_diagnostics(path: &Path, file: &ParsedFile) -> Vec<Diagnostic> {
             }),
     );
 
+    // The completeness notice comes last: it qualifies the checks that are
+    // missing because of what could not be analyzed.
+    diagnostics.extend(analysis_incomplete_diagnostic(path, file));
+
     diagnostics
+}
+
+/// Builds the notice reporting that part of a file could not be analyzed.
+///
+/// It is a warning: it never prevents the journal from being validated, it
+/// only explains why some of the checks that depend on the missing content
+/// were skipped.
+fn analysis_incomplete_diagnostic(path: &Path, file: &ParsedFile) -> Option<Diagnostic> {
+    let count = file.lost_directives();
+    if count == 0 {
+        return None;
+    }
+
+    // Point at the first piece of source that could not be analyzed.
+    let span = file
+        .lowering_diagnostics()
+        .first()
+        .map(|diagnostic| diagnostic.span)
+        .or_else(|| {
+            file.syntax_diagnostics()
+                .first()
+                .map(|diagnostic| diagnostic.span)
+        })
+        .unwrap_or_default();
+
+    let (noun, pronoun) = if count == 1 {
+        ("directive", "it")
+    } else {
+        ("directives", "them")
+    };
+
+    Some(Diagnostic {
+        path: path.to_path_buf(),
+        span,
+        severity: DiagnosticSeverity::Warning,
+        source: DiagnosticSource::Analysis,
+        code: DiagnosticCode::AnalysisIncomplete,
+        message: format!(
+            "{count} {noun} could not be analyzed: the checks that depend on {pronoun} were skipped"
+        ),
+    })
 }
 
 /// Analyzes `entry_path` and, recursively, every file it (transitively)
@@ -645,8 +799,11 @@ pub fn analyze_file_with_loader_with_options(
         0,
     )?;
 
+    let missing = aggregate_missing_data(&files, &include_issues);
+    let partial = build_partial_analysis(&files, &missing);
+
     let (business_diagnostics, validated_journal) =
-        validate_project(&files, &include_issues, &source_order, validation);
+        validate_project(&files, &source_order, validation, &missing);
 
     Ok(AnalyzedProject {
         files,
@@ -655,6 +812,7 @@ pub fn analyze_file_with_loader_with_options(
         source_order,
         validated_journal,
         validation: *validation,
+        partial,
     })
 }
 
@@ -765,17 +923,10 @@ enum SourceItem {
 
 fn validate_project(
     files: &[AnalyzedFile],
-    include_issues: &[IncludeIssue],
     source_order: &[EntryRef],
     validation: &ValidationOptions,
+    missing: &MissingData,
 ) -> (Vec<BusinessDiagnostic>, Option<Journal>) {
-    // Do not report business errors from a partial lowering. The source
-    // structure may be incomplete and would otherwise produce misleading
-    // secondary diagnostics.
-    if !can_validate(files, include_issues) {
-        return (Vec::new(), None);
-    }
-
     let located_entries: Vec<LocatedEntry> = source_order
         .iter()
         .map(|entry_ref| {
@@ -798,8 +949,8 @@ fn validate_project(
     };
     // Unused-declaration issues carry positions in that same source-order
     // journal, so they must be collected before validation consumes it.
-    let unused_issues = unused_declarations(&journal);
-    let report = validate_journal_all(journal);
+    let unused_issues = unused_declarations_with(&journal, missing);
+    let report = validate_journal_all_with(journal, missing);
 
     let to_diagnostic = |issue: &ValidationIssue| {
         debug_assert!(issue.input_index < located_entries.len());
@@ -830,12 +981,69 @@ fn validate_project(
     (diagnostics, validated_journal)
 }
 
-fn can_validate(files: &[AnalyzedFile], include_issues: &[IncludeIssue]) -> bool {
-    !files.iter().any(|file| {
-        !file.file.syntax_diagnostics().is_empty() || !file.file.lowering_diagnostics().is_empty()
-    }) && !include_issues
+/// Aggregates the uncertainty of every analyzed file into a single
+/// [`MissingData`].
+///
+/// An include whose target could not be loaded drops an unknown amount of
+/// content: every completeness-dependent check is then uncertain.
+fn aggregate_missing_data(files: &[AnalyzedFile], include_issues: &[IncludeIssue]) -> MissingData {
+    let mut missing = MissingData {
+        everything: include_issues
+            .iter()
+            .any(|issue| include_drops_content(issue.code)),
+        ..MissingData::default()
+    };
+
+    for file in files {
+        let file_missing = file.file.missing();
+        missing
+            .accounts
+            .extend(file_missing.accounts.iter().cloned());
+        missing
+            .commodities
+            .extend(file_missing.commodities.iter().cloned());
+        missing.payees.extend(file_missing.payees.iter().cloned());
+        missing
+            .used_accounts
+            .extend(file_missing.used_accounts.iter().cloned());
+        missing
+            .used_commodities
+            .extend(file_missing.used_commodities.iter().cloned());
+        missing
+            .used_payees
+            .extend(file_missing.used_payees.iter().cloned());
+    }
+
+    missing
+}
+
+/// Builds the per-file breakdown of what the project analysis could not
+/// recover, or `None` when the whole project was analyzed.
+fn build_partial_analysis(
+    files: &[AnalyzedFile],
+    missing: &MissingData,
+) -> Option<PartialAnalysis> {
+    let losses: Vec<FileLoss> = files
         .iter()
-        .any(|issue| include_drops_content(issue.code))
+        .filter(|file| file.file.lost_directives() > 0)
+        .map(|file| FileLoss {
+            path: file.path.clone(),
+            lost_directives: file.file.lost_directives(),
+            missing: file.file.missing().clone(),
+        })
+        .collect();
+
+    // An include that dropped its content leaves nothing to point at, but
+    // the project is still a partial analysis.
+    let incomplete = !losses.is_empty() || missing.everything;
+    if !incomplete {
+        return None;
+    }
+
+    Some(PartialAnalysis {
+        missing: missing.clone(),
+        files: losses,
+    })
 }
 
 /// A hard cap on include recursion depth, as a safety net against pathological
@@ -1744,6 +1952,248 @@ mod tests {
             project.include_issues()[0]
                 .message
                 .contains("base directory")
+        );
+    }
+
+    /// A project whose `broken.pactole` cannot be lowered (its date is not
+    /// a calendar date) and whose `valid.pactole` holds a transaction.
+    fn partial_project() -> AnalyzedProject {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"broken.pactole\"\n\
+             include \"valid.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/broken.pactole",
+            "2026-13-45 open Assets:Checking\n",
+        );
+        loader.insert(
+            "/journal/valid.pactole",
+            "2026-01-01 commodity EUR\n\
+             2026-01-02 * \"Shop\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap()
+    }
+
+    #[test]
+    fn a_broken_file_does_not_hide_the_business_errors_of_the_other_files() {
+        let project = partial_project();
+
+        let codes: Vec<DiagnosticCode> = project
+            .business_diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect();
+
+        assert!(
+            codes.contains(&DiagnosticCode::PayeeNotDeclared),
+            "unexpected business diagnostics: {codes:?}"
+        );
+        assert!(
+            codes.contains(&DiagnosticCode::AccountNotOpen),
+            "unexpected business diagnostics: {codes:?}"
+        );
+    }
+
+    #[test]
+    fn a_partial_project_reports_its_completeness() {
+        let project = partial_project();
+
+        assert!(project.is_partial());
+        let partial = project.partial().expect("the project is partial");
+        assert_eq!(partial.files.len(), 1);
+        let loss = &partial.files[0];
+        assert_eq!(loss.path, PathBuf::from("/journal/broken.pactole"));
+        assert_eq!(loss.lost_directives, 1);
+        // The lost directive was an `open`: the account it opened may be
+        // missing from the journal.
+        assert!(
+            loss.missing
+                .accounts
+                .contains(&pactole_core::AccountName::new("Assets:Checking").unwrap()),
+            "unexpected missing accounts: {:?}",
+            loss.missing.accounts
+        );
+    }
+
+    #[test]
+    fn a_complete_project_is_not_partial() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", "2026-01-01 open Assets:Checking\n");
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        assert!(!project.is_partial());
+        assert!(project.partial().is_none());
+    }
+
+    #[test]
+    fn the_completeness_notice_is_reported_as_a_warning() {
+        let project = partial_project();
+
+        let notice = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::AnalysisIncomplete)
+            .expect("the project reports its incompleteness");
+
+        assert_eq!(notice.severity, DiagnosticSeverity::Warning);
+        assert_eq!(notice.source, DiagnosticSource::Analysis);
+        assert_eq!(notice.path, PathBuf::from("/journal/broken.pactole"));
+    }
+
+    #[test]
+    fn a_lost_open_suppresses_the_account_not_open_error_of_the_other_files() {
+        // The `open Assets:Checking` directive of the broken file is lost:
+        // the account may have been opened there, so the transaction of the
+        // valid file must not be reported as using an unopened account.
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"broken.pactole\"\n\
+             include \"valid.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/broken.pactole",
+            "2026-13-45 open Assets:Checking\n",
+        );
+        loader.insert(
+            "/journal/valid.pactole",
+            "2026-01-02 * \"Shop\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        let not_open: Vec<&str> = project
+            .business_diagnostics()
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::AccountNotOpen)
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect();
+
+        assert!(
+            !not_open
+                .iter()
+                .any(|message| message.contains("Assets:Checking")),
+            "unexpected diagnostics: {not_open:?}"
+        );
+        assert!(
+            not_open
+                .iter()
+                .any(|message| message.contains("Expenses:Food")),
+            "unexpected diagnostics: {not_open:?}"
+        );
+    }
+
+    #[test]
+    fn a_lost_transaction_suppresses_the_unused_declaration_warnings() {
+        // The lost transaction may have used the account, the commodity and
+        // the payee declared by the other file: none of them may be
+        // reported as unused.
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"broken.pactole\"\n\
+             include \"valid.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/broken.pactole",
+            "2026-01-02 * \"Shop\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n",
+        );
+        loader.insert(
+            "/journal/valid.pactole",
+            "2026-01-01 open Assets:Checking\n\
+             2026-01-01 commodity EUR\n\
+             payee \"Shop\"\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        let unused: Vec<DiagnosticCode> = project
+            .business_diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .filter(|code| is_unused(*code))
+            .collect();
+
+        assert!(unused.is_empty(), "unexpected diagnostics: {unused:?}");
+    }
+
+    #[test]
+    fn a_lost_declaration_suppresses_the_already_declared_error() {
+        // The lost `open` directive may have opened the account a second
+        // time: the duplicate must not be reported.
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"broken.pactole\"\n\
+             include \"valid.pactole\"\n",
+        );
+        loader.insert(
+            "/journal/broken.pactole",
+            "2026-13-45 open Assets:Checking\n",
+        );
+        loader.insert(
+            "/journal/valid.pactole",
+            "2026-01-01 open Assets:Checking\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        let already_open: Vec<DiagnosticCode> = project
+            .business_diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .filter(|code| *code == DiagnosticCode::AccountAlreadyOpen)
+            .collect();
+
+        assert!(
+            already_open.is_empty(),
+            "unexpected diagnostics: {already_open:?}"
+        );
+    }
+
+    #[test]
+    fn an_include_that_drops_content_makes_the_whole_project_uncertain() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"missing.pactole\"\n\
+             2026-01-02 * \"Shop\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        assert!(project.is_partial());
+        let partial = project.partial().expect("the project is partial");
+        assert!(partial.missing.everything);
+        // Every check that depends on the completeness of the journal is
+        // uncertain, but the transaction's own balancing is not.
+        assert!(
+            project
+                .business_diagnostics()
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::AccountNotOpen),
+            "unexpected business diagnostics: {:?}",
+            project
+                .business_diagnostics()
+                .iter()
+                .map(|diagnostic| diagnostic.code)
+                .collect::<Vec<_>>()
         );
     }
 }

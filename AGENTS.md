@@ -49,9 +49,10 @@ pactole/
    - **Key modules**:
      - `models/`: Domain structs (`Journal`, `Entry`, `Transaction`, `Posting`, `Amount`, `Balance`, `Open`, `Close`, `Commodity`, `Payee`, etc.), the `TransactionStatus` enum (`Cleared`/`Pending`/`Uncleared`) and newtypes (`AccountName`, `CommodityName`, `MetadataKey`).
      - `validation.rs`: Invariant checks on `Journal` (chronological ordering, account lifecycles, declared commodities, declared payees, transaction balancing), plus `unused_declarations(&Journal)`, reporting `open`/`commodity`/`payee` declarations that nothing in the journal ever uses (severity decided by front-ends via `[validation] unused`). The entry points are `validate_journal` (returns the first error) and `validate_journal_all` (returns a `ValidationReport` holding the normalized `Journal` and every `ValidationIssue`, i.e. the error and the index of the offending entry in the input journal).
+     - `validation.rs` (partial analysis): `MissingData` describes what a journal may be missing when it was assembled from a project that could not be analyzed completely. It has two axes — the *declaration* axis (`accounts`, `commodities`, `payees`: the names whose declaration may be missing) and the *usage* axis (`used_accounts`, `used_commodities`, `used_payees`: the names the missing content may have used) — plus an `everything` flag for an unknown amount of lost content. `validate_journal_all_with(&Journal, &MissingData)` and `unused_declarations_with(&Journal, &MissingData)` validate a possibly incomplete journal: the checks whose outcome depends on the missing content are suppressed, the others are still reported. `validate_journal_all` and `unused_declarations` are the complete-journal entry points (they use the default `MissingData`).
      - `register.rs`: Register report computation (running balance per commodity, filtering by account, date range, payee, narration, status, tag): `RegisterFilter` (the criteria), `RegisterEntry` (one matched posting with its running balance) and the listing function.
      - `traits.rs`: Storage abstractions like `ReadableStorage`.
-     - `diagnostics.rs`: `DiagnosticCode`, the stable catalogue of every Pactole diagnostic code. The enum spans the syntax, lowering, include and business families, but `pactole-core` only *produces* the business ones (see `ValidationError::code`); `pactole-storage-fs` maps the others onto the remaining variants. `DiagnosticCode::as_str` is the single definition of the wire text printed by the CLI and published by the LSP, `DiagnosticCode::parse` reads a code back (the LSP does this for the codes an editor sends it), and `DiagnosticCode::ALL` is the exhaustive list the documentation is checked against.
+     - `diagnostics.rs`: `DiagnosticCode`, the stable catalogue of every Pactole diagnostic code. The enum spans the syntax, lowering, include, analysis-completeness and business families, but `pactole-core` only *produces* the business ones (see `ValidationError::code`); `pactole-storage-fs` maps the others onto the remaining variants. `DiagnosticCode::as_str` is the single definition of the wire text printed by the CLI and published by the LSP, `DiagnosticCode::parse` reads a code back (the LSP does this for the codes an editor sends it), and `DiagnosticCode::ALL` is the exhaustive list the documentation is checked against.
      - `errors.rs`: `ModelError`, `ValidationError`, and `ValidationError::code()`, which returns the `DiagnosticCode` of each business variant.
    - **Arithmetic**: Always uses `rust_decimal::Decimal` (never floating-point numbers).
 
@@ -113,10 +114,10 @@ pactole/
       `pactole-syntax`.
     - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `EntrySpans`,
       `PostingSpans`, `ParsedInclude`, `LoweringDiagnostic`, `Diagnostic`, `DiagnosticSeverity`,
-      `DiagnosticSource`): a positioned, directive-by-directive analysis for tooling (editors, a
+      `DiagnosticSource`, `PartialAnalysis`, `FileLoss`): a positioned, directive-by-directive analysis for tooling (editors, a
      future `pactole-lsp`) that needs spans and per-directive diagnostics instead of an
      all-or-nothing `Journal`. Every `Diagnostic` carries a typed `code: DiagnosticCode`
-     (re-exported by this crate from `pactole-core`); syntax, lowering, include and business
+     (re-exported by this crate from `pactole-core`); syntax, lowering, include, analysis and business
      issues are all mapped onto that single catalogue, and only the CLI and LSP turn a code
      into text. `analyze_file` never fails, even on syntactically invalid or
      partially invalid input:
@@ -177,6 +178,25 @@ pactole/
        - Include diagnostics are exposed through `AnalyzedProject::diagnostics()` and
          `structural_diagnostics()` as positioned `Diagnostic` values; the internal include issue
          representation is not part of the public API.
+       - **Partial analysis** (public API: `PartialAnalysis`, `FileLoss`, and the
+         `AnalyzedProject::is_partial()`/`AnalyzedProject::partial()` accessors): business
+         validation survives a broken file. When part of the project cannot be turned into a
+         domain entry, the checks that do not depend on the missing content are still reported and
+         the ones that do are skipped.
+         - `uncertainty.rs` (crate-private) recovers, from the CST of the lost directives, the
+           names the missing content may have *declared* (an account that may have been opened, a
+           commodity or a payee that may have been declared) or *used* (the accounts, commodities
+           and payees of a lost transaction or balance assertion). Tree-sitter's error recovery
+           is directive-local, so the tree of a broken directive still holds the `account`,
+           `commodity_name` and `string` nodes it recognized.
+         - The per-file uncertainties are aggregated into a `pactole_core::MissingData`, which is
+           handed to `pactole_core::validate_journal_all_with` and
+           `pactole_core::unused_declarations_with`. An include that drops its content sets the
+           `everything` flag: every completeness-dependent check becomes uncertain.
+         - `PartialAnalysis` holds that aggregate `MissingData` and the per-file breakdown
+           (`FileLoss { path, lost_directives, missing }`). A partial file also gets an
+           `analysis-incomplete` warning (`DiagnosticCode::AnalysisIncomplete`, a new
+           `DiagnosticSource::Analysis` origin).
        - Kept intentionally minimal: no caching, no incremental re-analysis, and no attempt to
          track which loaded files a given analysis depends on for invalidation — a future
          `pactole-lsp` is expected to build that on top of this contract rather than this crate

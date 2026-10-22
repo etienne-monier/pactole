@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-Pactole distinguishes four kinds of diagnostics. The distinction matters for
+Pactole distinguishes five kinds of diagnostics. The distinction matters for
 tools such as the CLI and the language server, because not every diagnostic
 requires the same context.
 
@@ -18,6 +18,8 @@ requires the same context.
 - **Include** diagnostics describe a problem while resolving the file graph.
 - **Business** diagnostics come from journal validation: account lifecycles,
   declarations, balancing, balance assertions and unused declarations.
+- **Analysis** diagnostics report that part of the project could not be
+  analyzed, and that some of the checks depending on it were skipped.
 
 Every project diagnostic has a source file, a half-open source span, a severity,
 an origin, a stable code and a human-readable message. Syntax and
@@ -46,12 +48,35 @@ File analysis is directive-by-directive. A syntax or lowering error does not
 prevent later directives from being inspected, so a `ParsedFile` can contain
 both successfully lowered entries and diagnostics.
 
-Project-level business validation is more conservative. If an include cannot
-be loaded, the project is incomplete and business validation is suspended to
-avoid reporting misleading follow-up errors caused by missing declarations or
-transactions. The include error itself is still reported. An include cycle is
-a warning: all reachable content remains available and business validation can
-continue.
+Project-level business validation survives a broken file. When part of the
+project cannot be turned into a domain entry — a directive that fails to
+lower, a chunk of source the parser cannot make sense of, an include whose
+target cannot be loaded — the analysis becomes **partial**: the checks that do
+not depend on the missing content are still reported, and the ones that do are
+skipped.
+
+Two axes drive this. The **declaration** axis covers the names whose
+declaration may be missing (an account that may have been opened, a commodity
+or a payee that may have been declared). The **usage** axis covers the names
+the missing content may have used (the accounts, commodities and payees of a
+lost transaction or balance assertion).
+
+| Checks | Skipped when |
+|---|---|
+| `account-not-open`, `commodity-not-declared`, `payee-not-declared`, `commodity-not-allowed` | the name they are about may have been declared in the missing content |
+| `balance-assertion-failed`, `account-unused`, `commodity-unused`, `payee-unused` | the name they are about may have been used by the missing content |
+
+The checks that only depend on the entry they are about — the balancing of a
+transaction, a duplicated declaration — are always reported.
+
+An `AnalyzedProject` exposes the result with `is_partial()` and `partial()`.
+The latter returns a `PartialAnalysis`, holding the aggregate uncertainty (a
+`pactole_core::MissingData`) and the per-file breakdown (a list of
+`FileLoss`). Every partial file also gets an `analysis-incomplete` warning,
+pointing at the first piece of source that could not be analyzed.
+
+An include cycle is a warning: all reachable content remains available, and
+business validation continues.
 
 ## `AnalyzedProject` journal methods
 
@@ -118,6 +143,12 @@ and the messages may change, the strings in brackets may not.
 |---|---|
 | `syntax-error` | The tolerant Tree-sitter parser found an `ERROR` or a `MISSING` node. |
 | `lowering-error` | A syntactically recognizable directive could not be converted into a domain entry. |
+
+### Analysis completeness
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `analysis-incomplete` | warning | Part of the project could not be analyzed, so the checks depending on the missing content were skipped. |
 
 ### Business
 

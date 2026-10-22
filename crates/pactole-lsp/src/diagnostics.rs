@@ -45,6 +45,7 @@ fn to_lsp_diagnostic(diagnostic: &ProjectDiagnostic, source: &str) -> Diagnostic
                 DiagnosticSource::Lowering => "pactole-lowering",
                 DiagnosticSource::Include => "pactole-include",
                 DiagnosticSource::Business => "pactole-business",
+                DiagnosticSource::Analysis => "pactole-analysis",
             }
             .to_string(),
         ),
@@ -244,5 +245,58 @@ mod tests {
         );
         assert_eq!(diagnostics[0].source.as_deref(), Some("pactole-business"));
         assert_eq!(diagnostics[0].range.start, lsp_types::Position::new(0, 13));
+    }
+
+    #[test]
+    fn a_broken_file_does_not_hide_the_business_diagnostics_of_the_other_files() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "include \"broken.pactole\"\ninclude \"valid.pactole\"\n",
+        );
+        // The date is not a calendar date: the directive cannot be lowered.
+        loader.insert(
+            "/journal/broken.pactole",
+            "2026-13-45 open Assets:Checking\n",
+        );
+        loader.insert(
+            "/journal/valid.pactole",
+            "2026-01-01 commodity EUR\n\
+             2026-01-02 * \"Unknown\"\n\
+             \u{20}\u{20}Assets:Checking -10 EUR\n\
+             \u{20}\u{20}Expenses:Food 10 EUR\n",
+        );
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let by_path = project_diagnostics(&project);
+
+        // The broken file reports the lowering error and the completeness
+        // notice...
+        let broken = &by_path[Path::new("/journal/broken.pactole")];
+        assert!(
+            broken.iter().any(|diagnostic| diagnostic.code
+                == Some(lsp_types::NumberOrString::String(
+                    "lowering-error".to_string()
+                ))),
+            "{broken:?}"
+        );
+        assert!(
+            broken.iter().any(|diagnostic| diagnostic.code
+                == Some(lsp_types::NumberOrString::String(
+                    "analysis-incomplete".to_string()
+                ))),
+            "{broken:?}"
+        );
+
+        // ...and the valid file still carries its business diagnostic.
+        let valid = &by_path[Path::new("/journal/valid.pactole")];
+        assert!(
+            valid.iter().any(|diagnostic| diagnostic.code
+                == Some(lsp_types::NumberOrString::String(
+                    "payee-not-declared".to_string()
+                ))),
+            "{valid:?}"
+        );
     }
 }
