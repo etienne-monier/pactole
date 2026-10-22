@@ -6,10 +6,7 @@ pub(crate) fn print(diagnostics: &[Diagnostic]) {
             DiagnosticSeverity::Error => "error",
             DiagnosticSeverity::Warning => "warning",
         };
-        let code = diagnostic
-            .code
-            .as_deref()
-            .map_or(String::new(), |code| format!(" [{code}]"));
+        let code = format!(" [{}]", diagnostic.code);
         eprintln!(
             "{}:{}:{}: {severity}:{code} {}",
             diagnostic.path.display(),

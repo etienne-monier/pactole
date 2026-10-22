@@ -15,7 +15,8 @@ use std::path::{Path, PathBuf};
 
 use pactole_config::{ValidationLevel, ValidationOptions};
 use pactole_core::{
-    Entry, Journal, ValidationError, ValidationIssue, unused_declarations, validate_journal_all,
+    DiagnosticCode, Entry, Journal, ValidationError, ValidationIssue, unused_declarations,
+    validate_journal_all,
 };
 use pactole_syntax::{ParsedDocument, Span, SyntaxDiagnostic, parse_document};
 use tree_sitter::Node;
@@ -123,74 +124,10 @@ pub struct Diagnostic {
     pub severity: DiagnosticSeverity,
     /// Layer that produced the diagnostic.
     pub source: DiagnosticSource,
-    /// Stable machine-readable code, when the source provides one.
-    pub code: Option<String>,
+    /// Stable machine-readable code for this diagnostic.
+    pub code: DiagnosticCode,
     /// Human-readable explanation of the problem.
     pub message: String,
-}
-
-/// Stable category for a business validation diagnostic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BusinessDiagnosticKind {
-    AccountAlreadyOpen,
-    AccountNotOpen,
-    CommodityAlreadyDeclared,
-    CommodityNotDeclared,
-    PayeeAlreadyDeclared,
-    PayeeNotDeclared,
-    TooManyPostingsWithoutAmount,
-    AmbiguousAutoBalanceCommodity,
-    TransactionNotBalanced,
-    CommodityNotAllowed,
-    BalanceAssertionFailed,
-    AccountUnused,
-    CommodityUnused,
-    PayeeUnused,
-}
-
-impl BusinessDiagnosticKind {
-    /// Stable identifier suitable for CLI and LSP output.
-    const fn code(self) -> &'static str {
-        match self {
-            Self::AccountAlreadyOpen => "account-already-open",
-            Self::AccountNotOpen => "account-not-open",
-            Self::CommodityAlreadyDeclared => "commodity-already-declared",
-            Self::CommodityNotDeclared => "commodity-not-declared",
-            Self::PayeeAlreadyDeclared => "payee-already-declared",
-            Self::PayeeNotDeclared => "payee-not-declared",
-            Self::TooManyPostingsWithoutAmount => "too-many-postings-without-amount",
-            Self::AmbiguousAutoBalanceCommodity => "ambiguous-auto-balance-commodity",
-            Self::TransactionNotBalanced => "transaction-not-balanced",
-            Self::CommodityNotAllowed => "commodity-not-allowed",
-            Self::BalanceAssertionFailed => "balance-assertion-failed",
-            Self::AccountUnused => "account-unused",
-            Self::CommodityUnused => "commodity-unused",
-            Self::PayeeUnused => "payee-unused",
-        }
-    }
-
-    /// Severity of this diagnostic under the given validation options.
-    ///
-    /// Two business issues are configurable through the `[validation]`
-    /// section of `pactole.toml`: `PayeeNotDeclared` (the `payee` key,
-    /// an error by default) and the unused-declaration kinds (the `unused`
-    /// key, a warning by default), each reported as a warning under
-    /// [`ValidationLevel::Warning`] and dropped entirely under
-    /// [`ValidationLevel::Off`]. Every other kind stays an error whatever
-    /// the configuration says.
-    fn severity(self, options: &ValidationOptions) -> Option<DiagnosticSeverity> {
-        let level = match self {
-            Self::PayeeNotDeclared => options.payee,
-            Self::AccountUnused | Self::CommodityUnused | Self::PayeeUnused => options.unused,
-            _ => return Some(DiagnosticSeverity::Error),
-        };
-
-        match level {
-            ValidationLevel::Off => None,
-            ValidationLevel::Warning => Some(DiagnosticSeverity::Warning),
-            ValidationLevel::Error => Some(DiagnosticSeverity::Error),
-        }
-    }
 }
 
 /// A business validation error positioned in its originating source file.
@@ -198,7 +135,7 @@ impl BusinessDiagnosticKind {
 struct BusinessDiagnostic {
     path: PathBuf,
     span: Span,
-    kind: BusinessDiagnosticKind,
+    code: DiagnosticCode,
     message: String,
 }
 
@@ -207,42 +144,36 @@ impl BusinessDiagnostic {
         Self {
             path,
             span,
-            kind: business_kind(error),
+            code: error.code(),
             message: error.to_string(),
         }
     }
 }
 
-fn business_kind(error: &ValidationError) -> BusinessDiagnosticKind {
-    match error {
-        ValidationError::AccountAlreadyOpen { .. } => BusinessDiagnosticKind::AccountAlreadyOpen,
-        ValidationError::AccountNotOpen { .. } => BusinessDiagnosticKind::AccountNotOpen,
-        ValidationError::CommodityAlreadyDeclared { .. } => {
-            BusinessDiagnosticKind::CommodityAlreadyDeclared
-        }
-        ValidationError::CommodityNotDeclared { .. } => {
-            BusinessDiagnosticKind::CommodityNotDeclared
-        }
-        ValidationError::PayeeAlreadyDeclared { .. } => {
-            BusinessDiagnosticKind::PayeeAlreadyDeclared
-        }
-        ValidationError::PayeeNotDeclared { .. } => BusinessDiagnosticKind::PayeeNotDeclared,
-        ValidationError::TooManyPostingsWithoutAmount { .. } => {
-            BusinessDiagnosticKind::TooManyPostingsWithoutAmount
-        }
-        ValidationError::AmbiguousAutoBalanceCommodity { .. } => {
-            BusinessDiagnosticKind::AmbiguousAutoBalanceCommodity
-        }
-        ValidationError::TransactionNotBalanced { .. } => {
-            BusinessDiagnosticKind::TransactionNotBalanced
-        }
-        ValidationError::CommodityNotAllowed { .. } => BusinessDiagnosticKind::CommodityNotAllowed,
-        ValidationError::BalanceAssertionFailed { .. } => {
-            BusinessDiagnosticKind::BalanceAssertionFailed
-        }
-        ValidationError::AccountUnused { .. } => BusinessDiagnosticKind::AccountUnused,
-        ValidationError::CommodityUnused { .. } => BusinessDiagnosticKind::CommodityUnused,
-        ValidationError::PayeeUnused { .. } => BusinessDiagnosticKind::PayeeUnused,
+/// Severity of a business diagnostic under the given validation options.
+///
+/// Two business checks are configurable through the `[validation]` section of
+/// `pactole.toml`: `PayeeNotDeclared` (the `payee` key, an error by default)
+/// and the unused-declaration kinds (the `unused` key, a warning by default),
+/// each reported as a warning under [`ValidationLevel::Warning`] and dropped
+/// entirely under [`ValidationLevel::Off`]. Every other kind stays an error
+/// whatever the configuration says.
+fn business_severity(
+    code: DiagnosticCode,
+    options: &ValidationOptions,
+) -> Option<DiagnosticSeverity> {
+    let level = match code {
+        DiagnosticCode::PayeeNotDeclared => options.payee,
+        DiagnosticCode::AccountUnused
+        | DiagnosticCode::CommodityUnused
+        | DiagnosticCode::PayeeUnused => options.unused,
+        _ => return Some(DiagnosticSeverity::Error),
+    };
+
+    match level {
+        ValidationLevel::Off => None,
+        ValidationLevel::Warning => Some(DiagnosticSeverity::Warning),
+        ValidationLevel::Error => Some(DiagnosticSeverity::Error),
     }
 }
 
@@ -446,42 +377,29 @@ struct IncludeIssue {
     path: PathBuf,
     /// The `include` directive itself (raw path and span within `path`).
     include: ParsedInclude,
-    kind: IncludeIssueKind,
+    /// The stable code identifying why this include could not be resolved.
+    code: DiagnosticCode,
     /// A human-readable description of why this include could not be
     /// resolved.
     message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum IncludeIssueKind {
-    MissingBaseDirectory,
-    Cycle,
-    DepthExceeded,
-    SourceNotFound,
-    SourceLoadFailed,
+/// Returns whether an include issue means part of the project is missing, so
+/// that business validation would be unsound.
+///
+/// An include cycle is the only non-dropping issue: every reachable file was
+/// still analyzed, so validation can continue.
+fn include_drops_content(code: DiagnosticCode) -> bool {
+    !matches!(code, DiagnosticCode::IncludeCycle)
 }
 
-impl IncludeIssueKind {
-    const fn drops_content(self) -> bool {
-        !matches!(self, Self::Cycle)
-    }
-
-    const fn severity(self) -> DiagnosticSeverity {
-        if self.drops_content() {
-            DiagnosticSeverity::Error
-        } else {
-            DiagnosticSeverity::Warning
-        }
-    }
-
-    const fn code(self) -> &'static str {
-        match self {
-            Self::MissingBaseDirectory => "include-no-base-directory",
-            Self::Cycle => "include-cycle",
-            Self::DepthExceeded => "include-depth-exceeded",
-            Self::SourceNotFound => "include-not-found",
-            Self::SourceLoadFailed => "include-load-failed",
-        }
+/// Severity of an include issue: dropping content is an error, a cycle is a
+/// warning.
+fn include_severity(code: DiagnosticCode) -> DiagnosticSeverity {
+    if include_drops_content(code) {
+        DiagnosticSeverity::Error
+    } else {
+        DiagnosticSeverity::Warning
     }
 }
 
@@ -546,7 +464,7 @@ impl AnalyzedProject {
             return Err(structural);
         }
         if self.business_diagnostics.iter().any(|diagnostic| {
-            diagnostic.kind.severity(&self.validation) == Some(DiagnosticSeverity::Error)
+            business_severity(diagnostic.code, &self.validation) == Some(DiagnosticSeverity::Error)
         }) {
             return Err(self.diagnostics());
         }
@@ -577,9 +495,9 @@ impl AnalyzedProject {
             Some(Diagnostic {
                 path: diagnostic.path.clone(),
                 span: diagnostic.span,
-                severity: diagnostic.kind.severity(&self.validation)?,
+                severity: business_severity(diagnostic.code, &self.validation)?,
                 source: DiagnosticSource::Business,
-                code: Some(diagnostic.kind.code().to_string()),
+                code: diagnostic.code,
                 message: diagnostic.message.clone(),
             })
         }));
@@ -600,9 +518,9 @@ impl AnalyzedProject {
             diagnostics.push(Diagnostic {
                 path: issue.path.clone(),
                 span: issue.include.span,
-                severity: issue.kind.severity(),
+                severity: include_severity(issue.code),
                 source: DiagnosticSource::Include,
-                code: Some(issue.kind.code().to_string()),
+                code: issue.code,
                 message: issue.message.clone(),
             });
         }
@@ -646,7 +564,7 @@ fn file_diagnostics(path: &Path, file: &ParsedFile) -> Vec<Diagnostic> {
             span: diagnostic.span,
             severity: DiagnosticSeverity::Error,
             source: DiagnosticSource::Syntax,
-            code: Some("syntax-error".to_string()),
+            code: DiagnosticCode::SyntaxError,
             message: diagnostic.message.clone(),
         })
         .collect::<Vec<_>>();
@@ -659,7 +577,7 @@ fn file_diagnostics(path: &Path, file: &ParsedFile) -> Vec<Diagnostic> {
                 span: diagnostic.span,
                 severity: DiagnosticSeverity::Error,
                 source: DiagnosticSource::Lowering,
-                code: Some("lowering-error".to_string()),
+                code: DiagnosticCode::LoweringError,
                 message: diagnostic.message.clone(),
             }),
     );
@@ -901,10 +819,9 @@ fn validate_project(
 
     // Warnings do not prevent a validated journal: only error-severity
     // business diagnostics do.
-    let validated_journal = if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.kind.severity(validation) == Some(DiagnosticSeverity::Error))
-    {
+    let validated_journal = if diagnostics.iter().any(|diagnostic| {
+        business_severity(diagnostic.code, validation) == Some(DiagnosticSeverity::Error)
+    }) {
         None
     } else {
         Some(report.journal)
@@ -918,7 +835,7 @@ fn can_validate(files: &[AnalyzedFile], include_issues: &[IncludeIssue]) -> bool
         !file.file.syntax_diagnostics().is_empty() || !file.file.lowering_diagnostics().is_empty()
     }) && !include_issues
         .iter()
-        .any(|issue| issue.kind.drops_content())
+        .any(|issue| include_drops_content(issue.code))
 }
 
 /// A hard cap on include recursion depth, as a safety net against pathological
@@ -1052,7 +969,7 @@ fn visit(
                 None => {
                     include_issues.push(IncludeIssue {
                         path: path.clone(),
-                        kind: IncludeIssueKind::MissingBaseDirectory,
+                        code: DiagnosticCode::IncludeNoBaseDirectory,
                         message: format!(
                             "cannot resolve relative include `{}` without a base directory",
                             include.path
@@ -1069,7 +986,7 @@ fn visit(
         if in_progress.contains(&resolved) {
             include_issues.push(IncludeIssue {
                 path: path.clone(),
-                kind: IncludeIssueKind::Cycle,
+                code: DiagnosticCode::IncludeCycle,
                 message: format!(
                     "include cycle detected: `{}` is already being analyzed",
                     resolved.display()
@@ -1082,7 +999,7 @@ fn visit(
         if depth + 1 >= MAX_INCLUDE_DEPTH {
             include_issues.push(IncludeIssue {
                 path: path.clone(),
-                kind: IncludeIssueKind::DepthExceeded,
+                code: DiagnosticCode::IncludeDepthExceeded,
                 message: format!(
                     "include depth limit ({MAX_INCLUDE_DEPTH}) exceeded while resolving `{}`",
                     resolved.display()
@@ -1105,7 +1022,7 @@ fn visit(
             Err(SourceLoadError::NotFound(missing)) => {
                 include_issues.push(IncludeIssue {
                     path: path.clone(),
-                    kind: IncludeIssueKind::SourceNotFound,
+                    code: DiagnosticCode::IncludeNotFound,
                     message: format!("included file not found: `{}`", missing.display()),
                     include,
                 });
@@ -1113,7 +1030,7 @@ fn visit(
             Err(err) => {
                 include_issues.push(IncludeIssue {
                     path: path.clone(),
-                    kind: IncludeIssueKind::SourceLoadFailed,
+                    code: DiagnosticCode::IncludeLoadFailed,
                     message: err.to_string(),
                     include,
                 });
@@ -1131,6 +1048,16 @@ mod tests {
     use super::*;
     use crate::loader::InMemorySourceLoader;
     use pactole_core::Entry;
+
+    /// Whether `code` is one of the configurable unused-declaration codes.
+    fn is_unused(code: DiagnosticCode) -> bool {
+        matches!(
+            code,
+            DiagnosticCode::AccountUnused
+                | DiagnosticCode::CommodityUnused
+                | DiagnosticCode::PayeeUnused
+        )
+    }
 
     #[test]
     fn valid_source_yields_entries_with_spans() {
@@ -1174,12 +1101,9 @@ mod tests {
             diagnostics[0].path,
             Path::new("/journal/transactions.pactole")
         );
-        assert_eq!(
-            diagnostics[0].kind,
-            BusinessDiagnosticKind::PayeeNotDeclared
-        );
+        assert_eq!(diagnostics[0].code, DiagnosticCode::PayeeNotDeclared);
         assert_eq!(diagnostics[0].span.start.row, 0);
-        assert_eq!(diagnostics[0].kind.code(), "payee-not-declared");
+        assert_eq!(diagnostics[0].code.as_str(), "payee-not-declared");
     }
 
     fn undeclared_payee_project() -> (InMemorySourceLoader, &'static str) {
@@ -1208,7 +1132,7 @@ mod tests {
         let diagnostic = project
             .diagnostics()
             .into_iter()
-            .find(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::PayeeNotDeclared)
             .expect("missing payee diagnostic");
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
         assert!(project.validated_journal().is_err());
@@ -1232,7 +1156,7 @@ mod tests {
         let diagnostic = project
             .diagnostics()
             .into_iter()
-            .find(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::PayeeNotDeclared)
             .expect("missing payee diagnostic");
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
         assert!(project.has_warnings());
@@ -1259,7 +1183,7 @@ mod tests {
             !project
                 .diagnostics()
                 .iter()
-                .any(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::PayeeNotDeclared)
         );
         assert!(!project.has_warnings());
         assert!(!project.has_errors());
@@ -1300,12 +1224,7 @@ mod tests {
 
         let unused: Vec<&Diagnostic> = diagnostics
             .iter()
-            .filter(|diagnostic| {
-                diagnostic
-                    .code
-                    .as_deref()
-                    .is_some_and(|code| code.ends_with("-unused"))
-            })
+            .filter(|diagnostic| is_unused(diagnostic.code))
             .collect();
         assert_eq!(unused.len(), 3, "{diagnostics:?}");
         for diagnostic in &unused {
@@ -1314,27 +1233,28 @@ mod tests {
             assert_eq!(diagnostic.path, Path::new("/journal/main.pactole"));
         }
 
-        let codes: Vec<&str> = unused
-            .iter()
-            .map(|diagnostic| diagnostic.code.as_deref().unwrap())
-            .collect();
+        let codes: Vec<DiagnosticCode> = unused.iter().map(|diagnostic| diagnostic.code).collect();
         // Journal order: the unused `open`, then the unused commodity, then
         // the unused payee declaration.
         assert_eq!(
             codes,
-            ["account-unused", "commodity-unused", "payee-unused"]
+            [
+                DiagnosticCode::AccountUnused,
+                DiagnosticCode::CommodityUnused,
+                DiagnosticCode::PayeeUnused
+            ]
         );
 
-        let span_of = |code: &str| {
+        let span_of = |code: DiagnosticCode| {
             unused
                 .iter()
-                .find(|diagnostic| diagnostic.code.as_deref() == Some(code))
+                .find(|diagnostic| diagnostic.code == code)
                 .map(|diagnostic| source[diagnostic.span.byte_range()].to_string())
                 .unwrap_or_else(|| panic!("missing {code}"))
         };
-        assert_eq!(span_of("account-unused"), "Expenses:Unused");
-        assert_eq!(span_of("commodity-unused"), "USD");
-        assert_eq!(span_of("payee-unused"), "\"Never\"");
+        assert_eq!(span_of(DiagnosticCode::AccountUnused), "Expenses:Unused");
+        assert_eq!(span_of(DiagnosticCode::CommodityUnused), "USD");
+        assert_eq!(span_of(DiagnosticCode::PayeeUnused), "\"Never\"");
 
         // Warnings never block: the journal still validates.
         assert!(!project.has_errors());
@@ -1349,12 +1269,12 @@ mod tests {
             unused: ValidationLevel::Off,
         });
 
-        assert!(!project.diagnostics().iter().any(|diagnostic| {
-            diagnostic
-                .code
-                .as_deref()
-                .is_some_and(|code| code.ends_with("-unused"))
-        }));
+        assert!(
+            !project
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| is_unused(diagnostic.code))
+        );
         assert!(!project.has_warnings());
         assert!(project.validated_journal().is_ok());
     }
@@ -1369,7 +1289,7 @@ mod tests {
         let diagnostic = project
             .diagnostics()
             .into_iter()
-            .find(|diagnostic| diagnostic.code.as_deref() == Some("account-unused"))
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::AccountUnused)
             .expect("missing account diagnostic");
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
         assert!(project.validated_journal().is_err());
@@ -1397,7 +1317,7 @@ mod tests {
         let account = project
             .diagnostics()
             .into_iter()
-            .find(|diagnostic| diagnostic.code.as_deref() == Some("account-not-open"))
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::AccountNotOpen)
             .expect("missing account diagnostic");
         assert_eq!(account.severity, DiagnosticSeverity::Error);
         assert!(project.has_errors());
@@ -1419,35 +1339,35 @@ mod tests {
             analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
         let diagnostics = project.diagnostics();
 
-        let diagnostic = |code: &str| {
+        let diagnostic = |code: DiagnosticCode| {
             diagnostics
                 .iter()
-                .find(|diagnostic| diagnostic.code.as_deref() == Some(code))
+                .find(|diagnostic| diagnostic.code == code)
                 .unwrap_or_else(|| panic!("missing diagnostic {code}: {diagnostics:?}"))
         };
 
-        let payee = diagnostic("payee-not-declared");
+        let payee = diagnostic(DiagnosticCode::PayeeNotDeclared);
         let payee_start = source.find("\"Unknown\"").unwrap();
         assert_eq!(
             payee.span.byte_range(),
             payee_start..payee_start + "\"Unknown\"".len()
         );
 
-        let account = diagnostic("account-not-open");
+        let account = diagnostic(DiagnosticCode::AccountNotOpen);
         let account_start = source.find("Assets:Missing").unwrap();
         assert_eq!(
             account.span.byte_range(),
             account_start..account_start + "Assets:Missing".len()
         );
 
-        let commodity = diagnostic("commodity-not-declared");
+        let commodity = diagnostic(DiagnosticCode::CommodityNotDeclared);
         let commodity_start = source.find("GBP").unwrap();
         assert_eq!(
             commodity.span.byte_range(),
             commodity_start..commodity_start + "GBP".len()
         );
 
-        let balance = diagnostic("balance-assertion-failed");
+        let balance = diagnostic(DiagnosticCode::BalanceAssertionFailed);
         let balance_start = source.find("2026-01-03 balance").unwrap();
         let balance_end = source[balance_start..].find('\n').unwrap() + balance_start + 1;
         assert_eq!(balance.span.byte_range(), balance_start..balance_end);
@@ -1502,7 +1422,7 @@ mod tests {
             project
                 .diagnostics()
                 .iter()
-                .any(|diagnostic| diagnostic.code.as_deref() == Some("account-not-open"))
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::AccountNotOpen)
         );
     }
 
@@ -1614,7 +1534,7 @@ mod tests {
 
         let diagnostics = project.diagnostics();
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code.as_deref(), Some("include-not-found"));
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IncludeNotFound);
         assert!(project.business_diagnostics().is_empty());
     }
 
@@ -1658,22 +1578,24 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|diagnostic| diagnostic.code.as_deref() == Some("include-cycle"))
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::IncludeCycle)
         );
         assert!(
             diagnostics
                 .iter()
-                .any(|diagnostic| diagnostic.code.as_deref() == Some("payee-not-declared"))
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::PayeeNotDeclared)
         );
     }
 
     #[test]
     fn only_content_dropping_include_issues_block_validation() {
-        assert!(IncludeIssueKind::MissingBaseDirectory.drops_content());
-        assert!(IncludeIssueKind::SourceNotFound.drops_content());
-        assert!(IncludeIssueKind::SourceLoadFailed.drops_content());
-        assert!(IncludeIssueKind::DepthExceeded.drops_content());
-        assert!(!IncludeIssueKind::Cycle.drops_content());
+        assert!(include_drops_content(
+            DiagnosticCode::IncludeNoBaseDirectory
+        ));
+        assert!(include_drops_content(DiagnosticCode::IncludeNotFound));
+        assert!(include_drops_content(DiagnosticCode::IncludeLoadFailed));
+        assert!(include_drops_content(DiagnosticCode::IncludeDepthExceeded));
+        assert!(!include_drops_content(DiagnosticCode::IncludeCycle));
     }
 
     #[test]

@@ -36,10 +36,9 @@ fn to_lsp_diagnostic(diagnostic: &ProjectDiagnostic, source: &str) -> Diagnostic
             ProjectDiagnosticSeverity::Error => DiagnosticSeverity::ERROR,
             ProjectDiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
         }),
-        code: diagnostic
-            .code
-            .clone()
-            .map(lsp_types::NumberOrString::String),
+        code: Some(lsp_types::NumberOrString::String(
+            diagnostic.code.as_str().to_string(),
+        )),
         source: Some(
             match diagnostic.source {
                 DiagnosticSource::Syntax => "pactole-syntax",

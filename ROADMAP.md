@@ -156,13 +156,13 @@ features.*
 
 ### 0.2 — Type the diagnostic codes
 
-- [ ] Introduce a `DiagnosticCode` enum in `pactole-core` (or
+- [x] Introduce a `DiagnosticCode` enum in `pactole-core` (or
   `pactole-storage-fs`, depending on where the codes are produced) covering
   syntax, lowering, include, account lifecycle, payee, commodity, balancing
   and balance-assertion issues.
-- [ ] Convert the code to text only at the CLI and LSP boundaries.
-- [ ] Document the catalogue and declare the codes as a stable public API.
-- [ ] Replace every free-form `Option<String>` code in the tree.
+- [x] Convert the code to text only at the CLI and LSP boundaries.
+- [x] Document the catalogue and declare the codes as a stable public API.
+- [x] Replace every free-form `Option<String>` code in the tree.
 
 ### 0.3 — Support partial analyses
 

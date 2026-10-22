@@ -29,6 +29,7 @@ pub use crate::printer::{
     FormatOptions, format, format_transactions, format_transactions_with_options,
     format_with_options,
 };
+pub use pactole_core::DiagnosticCode;
 
 /// Formats a list of syntax diagnostics into a single human-readable string,
 /// prefixed with the position of the first diagnostic (line:column) so callers

@@ -7,13 +7,14 @@
 //! - a new public item in a library crate, and not mentioned in `AGENTS.md`.
 //!
 //! The tests below compare the documentation with the sources of truth
-//! (the generated grammar, the diagnostic code mappings and the crates
+//! (the generated grammar, the diagnostic code catalogue and the crates
 //! themselves). When the repository's markdown files are not available — for
 //! instance when the crate is tested from a published tarball — the tests
 //! skip instead of failing, so `cargo test` still passes outside a checkout.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+
+use pactole_storage_fs::DiagnosticCode;
 
 /// Path of the directives reference, relative to the repository root.
 const DIRECTIVES_REFERENCE: &str = "docs/src/content/docs/reference/directives.md";
@@ -119,79 +120,6 @@ fn grammar_directives(grammar: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-/// Returns the string literals of a Rust source file.
-fn string_literals(source: &str) -> Vec<String> {
-    let mut literals = Vec::new();
-    let mut rest = source;
-
-    while let Some(start) = rest.find('"') {
-        rest = &rest[start + 1..];
-        let Some(end) = rest.find('"') else {
-            break;
-        };
-        literals.push(rest[..end].to_string());
-        rest = &rest[end + 1..];
-    }
-
-    literals
-}
-
-/// Returns the body of the block starting at `start` (the index of its
-/// opening brace).
-fn block_at(source: &str, start: usize) -> Option<&str> {
-    let bytes = source.as_bytes();
-    let mut depth = 0usize;
-
-    for (index, byte) in bytes.iter().enumerate().skip(start) {
-        match byte {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(&source[start..=index]);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-
-/// Returns the stable diagnostic codes produced by a source file.
-///
-/// The codes are the string literals of the `code()` mapping functions and
-/// of the `code: Some("...")` assignments.
-fn diagnostic_codes(source: &str) -> BTreeSet<String> {
-    let mut codes = BTreeSet::new();
-
-    let mut rest = source;
-    while let Some(index) = rest.find("fn code(self) -> &'static str") {
-        let after = &rest[index..];
-        let Some(open) = after.find('{') else {
-            break;
-        };
-        if let Some(body) = block_at(after, open) {
-            for literal in string_literals(body) {
-                codes.insert(literal);
-            }
-        }
-        rest = &rest[index + 1..];
-    }
-
-    let mut rest = source;
-    while let Some(index) = rest.find("code: Some(\"") {
-        let after = &rest[index + "code: Some(\"".len()..];
-        let Some(end) = after.find('"') else {
-            break;
-        };
-        codes.insert(after[..end].to_string());
-        rest = &rest[index + 1..];
-    }
-
-    codes
-}
-
 /// Returns the top-level public items of a Rust source file.
 ///
 /// Only the items declared at the module level are considered: the methods of
@@ -287,24 +215,49 @@ fn every_diagnostic_code_is_documented() {
     let Some(reference) = read_repo_file(DIAGNOSTICS_REFERENCE) else {
         return;
     };
+
+    assert!(
+        !DiagnosticCode::ALL.is_empty(),
+        "the diagnostic code catalogue is empty"
+    );
+
+    for code in DiagnosticCode::ALL {
+        assert!(
+            reference.contains(&format!("`{}`", code.as_str())),
+            "the diagnostic code `{}` is not documented in {DIAGNOSTICS_REFERENCE}",
+            code.as_str()
+        );
+    }
+}
+
+#[test]
+fn no_diagnostic_code_is_a_free_form_string() {
     let Some(root) = repo_root() else {
         return;
     };
 
-    let Ok(source) =
-        std::fs::read_to_string(root.join("crates/pactole-storage-fs/src/analysis.rs"))
-    else {
-        return;
-    };
+    for crate_name in LIBRARY_CRATES {
+        let crate_dir = root.join("crates").join(crate_name).join("src");
+        if !crate_dir.is_dir() {
+            continue;
+        }
 
-    let codes = diagnostic_codes(&source);
-    assert!(!codes.is_empty(), "no diagnostic code found in the source");
+        for file in rust_files(&crate_dir) {
+            let Ok(source) = std::fs::read_to_string(&file) else {
+                continue;
+            };
 
-    for code in codes {
-        assert!(
-            reference.contains(&format!("`{code}`")),
-            "the diagnostic code `{code}` is not documented in {DIAGNOSTICS_REFERENCE}"
-        );
+            assert!(
+                !source.contains("code: Option<String>"),
+                "{} still declares an optional string diagnostic code; use DiagnosticCode",
+                file.display()
+            );
+            assert!(
+                !source.contains("code: Some(\""),
+                "{} still assigns a free-form diagnostic code; use a DiagnosticCode variant",
+                file.display()
+            );
+        }
     }
 }
 

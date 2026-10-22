@@ -51,7 +51,8 @@ pactole/
      - `validation.rs`: Invariant checks on `Journal` (chronological ordering, account lifecycles, declared commodities, declared payees, transaction balancing), plus `unused_declarations(&Journal)`, reporting `open`/`commodity`/`payee` declarations that nothing in the journal ever uses (severity decided by front-ends via `[validation] unused`). The entry points are `validate_journal` (returns the first error) and `validate_journal_all` (returns a `ValidationReport` holding the normalized `Journal` and every `ValidationIssue`, i.e. the error and the index of the offending entry in the input journal).
      - `register.rs`: Register report computation (running balance per commodity, filtering by account, date range, payee, narration, status, tag): `RegisterFilter` (the criteria), `RegisterEntry` (one matched posting with its running balance) and the listing function.
      - `traits.rs`: Storage abstractions like `ReadableStorage`.
-     - `errors.rs`: `ModelError`, `ValidationError`.
+     - `diagnostics.rs`: `DiagnosticCode`, the stable catalogue of every Pactole diagnostic code. The enum spans the syntax, lowering, include and business families, but `pactole-core` only *produces* the business ones (see `ValidationError::code`); `pactole-storage-fs` maps the others onto the remaining variants. `DiagnosticCode::as_str` is the single definition of the wire text printed by the CLI and published by the LSP, `DiagnosticCode::parse` reads a code back (the LSP does this for the codes an editor sends it), and `DiagnosticCode::ALL` is the exhaustive list the documentation is checked against.
+     - `errors.rs`: `ModelError`, `ValidationError`, and `ValidationError::code()`, which returns the `DiagnosticCode` of each business variant.
    - **Arithmetic**: Always uses `rust_decimal::Decimal` (never floating-point numbers).
 
 2. **`tree-sitter-pactole`**:
@@ -114,7 +115,10 @@ pactole/
       `PostingSpans`, `ParsedInclude`, `LoweringDiagnostic`, `Diagnostic`, `DiagnosticSeverity`,
       `DiagnosticSource`): a positioned, directive-by-directive analysis for tooling (editors, a
      future `pactole-lsp`) that needs spans and per-directive diagnostics instead of an
-     all-or-nothing `Journal`. `analyze_file` never fails, even on syntactically invalid or
+     all-or-nothing `Journal`. Every `Diagnostic` carries a typed `code: DiagnosticCode`
+     (re-exported by this crate from `pactole-core`); syntax, lowering, include and business
+     issues are all mapped onto that single catalogue, and only the CLI and LSP turn a code
+     into text. `analyze_file` never fails, even on syntactically invalid or
      partially invalid input:
       - It reuses `pactole-syntax::parse_document` for tolerant parsing and the
         shared `AstBuilder::build_directive_outcome` lowering logic — there is

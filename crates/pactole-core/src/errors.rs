@@ -1,3 +1,4 @@
+use crate::diagnostics::DiagnosticCode;
 use crate::models::{AccountName, CommodityName};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
@@ -178,4 +179,129 @@ pub enum ValidationError {
         /// Date of the declaration.
         date: NaiveDate,
     },
+}
+
+impl ValidationError {
+    /// Returns the stable diagnostic code identifying this kind of error.
+    ///
+    /// The code is independent of the message and of the severity a front-end
+    /// gives it (the `[validation]` levels), so it is safe to expose to
+    /// scripts and editors.
+    pub fn code(&self) -> DiagnosticCode {
+        match self {
+            Self::AccountAlreadyOpen { .. } => DiagnosticCode::AccountAlreadyOpen,
+            Self::AccountNotOpen { .. } => DiagnosticCode::AccountNotOpen,
+            Self::CommodityAlreadyDeclared { .. } => DiagnosticCode::CommodityAlreadyDeclared,
+            Self::CommodityNotDeclared { .. } => DiagnosticCode::CommodityNotDeclared,
+            Self::PayeeAlreadyDeclared { .. } => DiagnosticCode::PayeeAlreadyDeclared,
+            Self::PayeeNotDeclared { .. } => DiagnosticCode::PayeeNotDeclared,
+            Self::TooManyPostingsWithoutAmount { .. } => {
+                DiagnosticCode::TooManyPostingsWithoutAmount
+            }
+            Self::AmbiguousAutoBalanceCommodity { .. } => {
+                DiagnosticCode::AmbiguousAutoBalanceCommodity
+            }
+            Self::TransactionNotBalanced { .. } => DiagnosticCode::TransactionNotBalanced,
+            Self::CommodityNotAllowed { .. } => DiagnosticCode::CommodityNotAllowed,
+            Self::BalanceAssertionFailed { .. } => DiagnosticCode::BalanceAssertionFailed,
+            Self::AccountUnused { .. } => DiagnosticCode::AccountUnused,
+            Self::CommodityUnused { .. } => DiagnosticCode::CommodityUnused,
+            Self::PayeeUnused { .. } => DiagnosticCode::PayeeUnused,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DiagnosticCode, ValidationError};
+    use crate::models::{AccountName, CommodityName};
+    use chrono::NaiveDate;
+    use rust_decimal::Decimal;
+    use std::collections::HashSet;
+
+    /// One error of every business variant.
+    fn every_validation_error() -> Vec<ValidationError> {
+        let account = AccountName::new("Assets:Checking").unwrap();
+        let commodity = CommodityName::new("EUR").unwrap();
+        let date = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let payee = "Shop".to_string();
+
+        vec![
+            ValidationError::AccountAlreadyOpen {
+                account: account.clone(),
+                date,
+            },
+            ValidationError::AccountNotOpen {
+                account: account.clone(),
+                date,
+            },
+            ValidationError::CommodityAlreadyDeclared {
+                commodity: commodity.clone(),
+                date,
+            },
+            ValidationError::CommodityNotDeclared {
+                commodity: commodity.clone(),
+                date,
+            },
+            ValidationError::PayeeAlreadyDeclared {
+                payee: payee.clone(),
+            },
+            ValidationError::PayeeNotDeclared {
+                payee: payee.clone(),
+                date,
+            },
+            ValidationError::TooManyPostingsWithoutAmount { count: 2, date },
+            ValidationError::AmbiguousAutoBalanceCommodity {
+                commodities: vec!["EUR".to_string(), "USD".to_string()],
+                date,
+            },
+            ValidationError::TransactionNotBalanced {
+                commodity: "EUR".to_string(),
+                sum: Decimal::ONE,
+                date,
+            },
+            ValidationError::CommodityNotAllowed {
+                account: account.clone(),
+                commodity: commodity.clone(),
+                date,
+            },
+            ValidationError::BalanceAssertionFailed {
+                account: account.clone(),
+                commodity: commodity.clone(),
+                date,
+                expected: Decimal::ZERO,
+                actual: Decimal::ONE,
+                tolerance: Decimal::ZERO,
+            },
+            ValidationError::AccountUnused { account, date },
+            ValidationError::CommodityUnused { commodity, date },
+            ValidationError::PayeeUnused { payee },
+        ]
+    }
+
+    #[test]
+    fn every_business_error_has_a_distinct_business_code() {
+        let codes: Vec<DiagnosticCode> = every_validation_error()
+            .iter()
+            .map(ValidationError::code)
+            .collect();
+
+        let unique: HashSet<DiagnosticCode> = codes.iter().copied().collect();
+        assert_eq!(unique.len(), codes.len(), "two errors share a code");
+
+        // Every code is a business one, never a syntax, lowering or include
+        // code.
+        assert!(codes.iter().all(|code| {
+            !matches!(
+                code,
+                DiagnosticCode::SyntaxError
+                    | DiagnosticCode::LoweringError
+                    | DiagnosticCode::IncludeNotFound
+                    | DiagnosticCode::IncludeLoadFailed
+                    | DiagnosticCode::IncludeNoBaseDirectory
+                    | DiagnosticCode::IncludeDepthExceeded
+                    | DiagnosticCode::IncludeCycle
+            )
+        }));
+    }
 }

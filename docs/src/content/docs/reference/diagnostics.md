@@ -20,7 +20,7 @@ requires the same context.
   declarations, balancing, balance assertions and unused declarations.
 
 Every project diagnostic has a source file, a half-open source span, a severity,
-an origin, an optional stable code and a human-readable message. Syntax and
+an origin, a stable code and a human-readable message. Syntax and
 lowering diagnostics are available even when the source is incomplete.
 
 ## Standalone analysis and project analysis
@@ -97,6 +97,20 @@ The following include codes are stable in CLI and LSP output:
 
 Every diagnostic carries a stable code, printed by the CLI and by the
 language server.
+
+The catalogue is the public enum `pactole_core::DiagnosticCode`
+(re-exported as `pactole_storage_fs::DiagnosticCode`):
+
+- `DiagnosticCode::as_str()` is the single definition of the text written
+  in the tables below;
+- `DiagnosticCode::ALL` is the exhaustive list, checked against this page by
+  the documentation-sync test;
+- `DiagnosticCode::parse()` reads a code back, which is how the language
+  server recognises the codes an editor sends it (an unknown code is simply
+  ignored).
+
+The text form is a stable contract across releases: the Rust variant names
+and the messages may change, the strings in brackets may not.
 
 ### Syntax and lowering
 

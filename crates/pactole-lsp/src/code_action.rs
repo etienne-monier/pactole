@@ -24,7 +24,7 @@ use lsp_types::{
     DocumentChanges, OptionalVersionedTextDocumentIdentifier, Position, Range, TextDocumentEdit,
     TextEdit, Url, WorkspaceEdit,
 };
-use pactole_storage_fs::AnalyzedProject;
+use pactole_storage_fs::{AnalyzedProject, DiagnosticCode};
 
 use crate::config::Config;
 use crate::conversion::text_at_range;
@@ -74,11 +74,16 @@ enum DeclarationKind {
 
 impl DeclarationKind {
     /// Maps a business diagnostic code to the declaration it requires.
+    ///
+    /// The code arrives as text from the editor (it is the one this server
+    /// published earlier), so it is parsed back through the stable
+    /// [`DiagnosticCode`] catalogue; an unknown or non-business code simply
+    /// offers no fix.
     fn from_code(code: Option<&str>) -> Option<Self> {
-        match code? {
-            "payee-not-declared" => Some(Self::Payee),
-            "account-not-open" => Some(Self::Account),
-            "commodity-not-declared" => Some(Self::Commodity),
+        match DiagnosticCode::parse(code?)? {
+            DiagnosticCode::PayeeNotDeclared => Some(Self::Payee),
+            DiagnosticCode::AccountNotOpen => Some(Self::Account),
+            DiagnosticCode::CommodityNotDeclared => Some(Self::Commodity),
             _ => None,
         }
     }

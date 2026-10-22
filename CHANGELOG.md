@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `initialize` response (`serverInfo`), so editors can display it in their
   language server log. The `--stdio` flag is accepted and ignored, so
   editor configurations passing `args = ["--stdio"]` keep working.
+- `pactole_core::DiagnosticCode` is the new stable catalogue of every Pactole
+  diagnostic code (syntax, lowering, include and business). `as_str()` defines
+  the text printed by the CLI and published by the LSP, `parse()` reads a code
+  back, `ALL` lists the catalogue, and `ValidationError::code()` maps each
+  business error onto it. `pactole-storage-fs` re-exports the enum.
 
 ### Documentation
 
@@ -39,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the README, and `pactole-storage-fs`'s `workspace_docs_sync` compares the
   directives, the diagnostic codes and the public API with the documentation.
   They are skipped when the repository's markdown files are not available.
+- `pactole_storage_fs::Diagnostic::code` is now a non-optional
+  `DiagnosticCode` instead of an `Option<String>`: every diagnostic is
+  produced from the catalogue, and only the CLI and the LSP turn a code into
+  text. The printed and published strings are unchanged.
 
 ## [0.3.0] - 2026-10-21
 
