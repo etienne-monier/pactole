@@ -1,8 +1,7 @@
 # Pactole Roadmap
 
-This roadmap describes the product directions and concrete implementation
-tasks to prioritize in order to make Pactole a reliable, pleasant-to-use,
-text-based accounting tool.
+This roadmap describes where Pactole stands today, the product directions it
+is heading towards, and the concrete tasks to implement them.
 
 Priorities are classified as follows:
 
@@ -15,322 +14,454 @@ Tasks are intentionally small and should ideally result in one focused PR with
 targeted tests. Checked items describe the known state when this document was
 written; update this list as features evolve.
 
-## General directions
+This document is the single source of truth for the planned work. The
+delivered history lives in `CHANGELOG.md` and in the git history, not here:
+when an item ships, tick its box and record the change in the changelog.
 
-### 1. Accounting correctness and trust
+The five product directions are described in
+[Product directions](#product-directions). The implementation phases below are
+ordered by dependency, not by size: a phase unlocks the next one.
 
-Pactole should detect not only whether a file is syntactically valid, but also
-whether the journal respects accounting invariants and account lifecycles.
-Errors should be localized, understandable, and reproducible in both the CLI
-and the LSP.
+---
 
-### 2. Everyday editing experience
+## Where Pactole stands today
 
-The target workflow is: edit, receive immediate diagnostics, navigate symbols,
-format, then check or inspect a report. The LSP and CLI should expose the same
-concepts without duplicating business logic.
+Pactole 0.3.0 is a working plain-text, double-entry accounting tool. The
+foundation is in place and should be preserved:
 
-### 3. Useful accounting reports
+- **A clean crate architecture** with enforced boundaries: `pactole-core` is
+  pure domain logic with no I/O and no tree-sitter, `pactole-syntax` is
+  purely syntactic and tolerant, `pactole-config` is a leaf crate owning the
+  `pactole.toml` schema, `pactole-storage-fs` lowers a CST into domain models,
+  `pactole-import` is a zero-I/O edge adapter, and the `pactole-cli` and
+  `pactole-lsp` front-ends only consume the public APIs of those crates.
+- **A unified project analysis**: `analyze_file_with_loader` resolves
+  `include` directives, detects cycles, deduplicates diamonds, and returns
+  positioned diagnostics. The CLI and the LSP share it.
+- **Business validation**: account lifecycle, declared payees and commodities,
+  unused declarations, transaction balancing, and balance assertions — all
+  reported as positioned diagnostics with configurable severity.
+- **An editor integration** with diagnostics, completion, hover, go-to-definition,
+  find-references, rename, and declaration quick fixes.
+- **A CLI** with `parse`, `fmt`, `check`, `register`, `init`, `import-ofx` and
+  `completions`.
+- **An OFX import pipeline** handling encodings, multiple accounts, and
+  idempotence through FITIDs.
 
-The register is the first detailed view. Pactole should also provide summary
-views: balance sheet, income statement, cash flow, spending by category, and
-period-over-period evolution, with output formats suitable for both the
-terminal and external tools.
+The main gaps, in order of impact:
 
-### 4. Imports and interoperability
+1. **Reporting.** The only report is the register. There is no shared reporting
+   API, no balance sheet, no income statement, no spending breakdown. This
+   blocks the CLI, the web interface, and budgets alike.
+2. **Multi-currency.** Postings are single-commodity and transactions must
+   balance *per commodity*. A transaction that exchanges currencies therefore
+   cannot balance today, and there is no price, cost, or conversion concept.
+3. **Grammar coverage.** `pad`, `price`, `note`, `document`, tags and
+   `custom` are missing, and strings cannot contain a double quote.
+4. **Budgeting.** Nothing exists yet, in any form.
+5. **Debt in the current code.** Two things are known to be unfinished: a
+   syntactically broken file still suspends business validation for the whole
+   project, and diagnostic codes are still free-form strings instead of a
+   typed catalogue. Both are addressed in Phase 0.
 
-The `foreign format -> ImportRecord -> Pactole model` pipeline should make it
-possible to add CSV, QIF, and other formats without duplicating the
-categorization engine. Imports should support previewing, idempotence, and
-provenance tracking.
+---
 
-### 5. Project analysis and performance
+## Product directions
 
-Multi-file journals should preserve the provenance of every entry and remain
-responsive. A cache and targeted invalidation are preferable to prematurely
-complicating LSP synchronization.
+### 1. Multi-currency support
 
-### 6. Controlled evolution of the accounting model
+Pactole must be able to record a journal that mixes currencies without
+lying about the balances. Today it cannot: a transaction exchanging EUR for
+USD cannot balance, because balancing is per commodity and no price exists.
 
-Before adding prices, conversions, securities, or lots, Pactole should clearly
-distinguish amount, commodity, price, cost, value, and tolerance. Model choices
-should allow future extensions without requiring a complex accounting system
-immediately.
+This direction is the deepest one, because it touches the domain model, the
+grammar, the balancing rules, the reports, and the import pipeline. It is
+also the one that most blocks the other directions: budgets and reports would
+have to be redone once currency conversion exists.
 
-### 7. Ecosystem and reusable APIs
+Target model:
 
-The domain, analysis, reporting, and import libraries should remain reusable by
-the CLI, the LSP, and future tools. Editor integrations should build on these
-APIs instead of maintaining independent heuristics.
+- a `price` directive carrying a dated conversion rate between two commodities;
+- `@` (unit price) and `@@` (total price) annotations on postings;
+- balancing computed on the converted weight, with explicit rounding and
+  tolerance rules;
+- a `Price` and `Cost` type distinct from `Amount`;
+- reports able to express a report currency and a valuation date.
 
-## Atomic implementations by priority
+Deliberately out of scope: lot tracking (`{cost}`), and the notion of a
+security or a market price feed.
 
-## P0 — Domain reliability and diagnostics
+### 2. Grammar convergence with Beancount
 
-The public diagnostic and project-analysis contracts are documented in the
-[diagnostics reference](/reference/diagnostics/), including standalone versus
-project analysis, include severity, source-order journals and validated
-journals.
+Pactole is inspired by Beancount but is deliberately smaller. The goal here is
+not to clone Beancount: it is to remove the friction that makes migrating
+from Beancount painful, one directive at a time, in order of real usage.
 
-### P0.1 — Stabilize the business diagnostic contract
+Each directive must arrive as a complete unit: grammar, tree-sitter
+regeneration, corpus tests, lowering, canonical printing, LSP support
+(hover, completion, symbols, quick fixes), and documentation.
 
-- [x] Define a business diagnostic type with `kind`, `message`, severity, file,
-  and `Span`.
-- [x] Document the distinction between syntax, lowering, include, and business
-  validation diagnostics.
-- [x] Define how an error is attached to an entry, posting, account, or
-  directive.
-- [ ] Add tests converting business diagnostics to UTF-16 LSP diagnostics,
-  including non-ASCII text.
+Out of scope: `event`, `query`, `plugin`, and lot annotations.
 
-### P0.2 — Add the simplest positioned business validations
+### 3. Envelope budgeting
 
-- [x] Report a used but undeclared payee on the transaction payee.
-- [x] Report a used but undeclared commodity on its occurrence.
-- [x] Report an account used before its `open` directive on the invalid use.
-- [x] Report an account used after its `close` directive on the invalid use.
-- [x] Report inconsistent account openings or closings.
-- [x] Report declarations nothing ever uses (`account-unused`,
-  `commodity-unused`, `payee-unused`), with a configurable severity
-  (`[validation] unused`, a warning by default).
-- [ ] Validate directive chronological order and locate the offending entry.
-- [ ] Publish these diagnostics in the CLI `check` command and in the LSP with
-  stable diagnostic codes.
+Budgeting is what turns an accounting tool into a daily companion. Two models
+are possible, and the choice must be made before any code is written:
 
-### P0.3 — Diagnose transaction balancing
+- **Budget over the ledger** (recommended first step): a declarative budget
+  per account and period, compared against the actual spending already
+  recorded. This is a report plus a directive, and it reuses the double-entry
+  model as-is.
+- **True envelopes** (deferred): dedicated accounts or a dedicated mechanism
+  to hold funds, with transfers between envelopes and a "carried over"
+  balance. This is closer to YNAB, but it either pollutes the account tree or
+  requires a new accounting concept.
 
-- [x] Expose the balancing difference per commodity in a structured error.
-- [ ] Attach the error to the transaction and, when possible, to the posting
-  that should be completed.
-- [x] Distinguish a missing inferable amount, multiple implicit amounts, and a
-  genuinely unbalanced transaction.
-- [x] Test single-commodity, multi-commodity, implicit-amount, and tolerance
-  cases.
-- [x] Ensure analysis continues with subsequent transactions after an invalid
-  transaction.
+Recommendation: ship the first model, learn from real usage, and only then
+decide whether envelopes need their own model.
 
-### P0.4 — Validate balance assertions
+### 4. Web server for reports
 
-- [x] Calculate the balance at an assertion date without losing posting
-  provenance.
-- [x] Report the difference between the calculated and expected balance.
-- [x] Position the error on the `balance` directive.
-- [x] Cover assertions by commodity, unknown accounts, and boundary dates.
+A read-only web interface would make the reports pleasant to consult, and
+would let charts and period comparisons live outside the terminal.
 
-### P0.5 — Strengthen regression tests
+This direction is a *facade over the reporting API*, not a product of its
+own. It must come after the reports exist and are stable, and it must not
+introduce its own accounting logic. Scope: local, read-only, no write-back to
+the ledger.
 
-- [ ] Add realistic multi-file journal fixtures.
-- [x] Add CLI integration tests for each validation family.
-- [x] Add LSP tests for publishing and clearing diagnostics.
-- [ ] Add property tests for balancing and idempotent formatting.
-- [x] Run `cargo fmt`, `cargo clippy --workspace --all-targets`, and
-  `cargo test --workspace` consistently in CI.
+### 5. Complete the CLI reports
 
-## P1 — Editing and checking experience
+The CLI is the primary interface today. It should be able to answer the
+questions a user actually asks: what do I have, what did I earn and spend,
+where did my money go, and am I on budget.
 
-### P1.1 — Expose formatting through the LSP
+This direction is the most visible and the cheapest, but it must be built on
+a shared reporting API rather than on ad-hoc commands, so the web interface
+and the budget reports can reuse it.
 
-- [ ] Advertise `textDocument/formatting` in server capabilities.
-- [ ] Call the existing canonical formatter without duplicating its logic.
-- [ ] Return a document-wide `TextEdit` when formatting succeeds.
-- [ ] Return a useful error when the document is too invalid to format.
-- [ ] Add request-level tests and tests preserving already canonical text.
+---
 
-### P1.2 — Build a positioned symbol index
+## Phase 0 — Consolidate the foundation (P0)
 
-- [ ] Index accounts, payees, commodities, tags, and links with their
-  definitions and occurrences.
-- [ ] Store the file path and `Span` for every symbol.
-- [ ] Merge symbols from all files reachable through `include`.
-- [ ] Define behavior for duplicate or conflicting declarations.
-- [ ] Replace completion's `BTreeSet<String>` values with this index where
-  appropriate.
+*Goal: make the roadmap trustworthy and the diagnostics stable before adding
+features.*
 
-### P1.3 — Add LSP navigation and rename
+### 0.1 — Refresh the project documentation
 
-- [ ] Implement `textDocument/documentSymbol`.
-- [x] Implement `textDocument/definition` for accounts, payees, and
-  commodities (also on `include` paths, which jump to the included file).
-- [x] Implement `textDocument/references` for the same symbols.
-- [x] Add navigation tests across included files.
-- [x] Return an empty result, rather than an error, when no definition exists.
-- [x] Implement `textDocument/rename` and `textDocument/prepareRename` for
-  accounts and payees, reusing the navigation occurrence index and scope.
+- [ ] Update `differences-from-beancount.md` whenever a directive is added.
+- [ ] Keep the user documentation and the CLI `--help` in sync with the
+  actual feature set.
+- [ ] Keep `AGENTS.md` aligned with the public API of the crates.
 
-Note: definition and references currently re-scan each file's CST per
-request; the positioned index of P1.2 can later replace that shared
-occurrence layer without changing the LSP behavior.
+### 0.2 — Type the diagnostic codes
 
-### P1.4 — Improve the existing completion and hover features
+- [ ] Introduce a `DiagnosticCode` enum in `pactole-core` (or
+  `pactole-storage-fs`, depending on where the codes are produced) covering
+  syntax, lowering, include, account lifecycle, payee, commodity, balancing
+  and balance-assertion issues.
+- [ ] Convert the code to text only at the CLI and LSP boundaries.
+- [ ] Document the catalogue and declare the codes as a stable public API.
+- [ ] Replace every free-form `Option<String>` code in the tree.
 
-- [ ] Use the positioned index for definitions and provenance.
-- [ ] Only suggest accounts usable on the current date.
-- [ ] Do not suggest a closed account for a transaction after its closing date.
-- [ ] Complete `include` paths in subdirectories consistently.
-- [ ] Show account opening and closing dates in hover information.
-- [ ] Show the declaration file and line for a symbol.
-- [ ] Document and test behavior for syntactically incomplete files.
+### 0.3 — Support partial analyses
 
-### P1.5 — Add useful quick fixes
+- [ ] When a file fails to parse or to lower, still validate the reliable
+  entries of the other files.
+- [ ] Distinguish the diagnostics that depend on the missing data and
+  suppress them, instead of losing all business diagnostics.
+- [ ] Represent a partial analysis explicitly in the public API.
+- [ ] Add regression tests for a broken file next to a valid one.
 
-- [ ] Turn business diagnostics into structured LSP quick fixes.
-- [ ] Offer to create a missing payee declaration.
-- [ ] Offer to create a missing commodity declaration.
-- [ ] Offer to insert an inferred amount when there is only one possible
-  implicit posting.
-- [ ] Keep the existing date-insertion quick fix and associate it with the
-  relevant diagnostic when possible.
+### 0.4 — Strengthen the test suite
 
-### P1.6 — Improve the CLI workflow
+- [ ] Add realistic multi-file journal fixtures (bank statements, savings,
+  salary, rent, a few currencies).
+- [ ] Add property tests for balancing and for the idempotence of the
+  canonical formatter.
+- [ ] Add end-to-end tests converting business diagnostics to UTF-16 LSP
+  diagnostics, including non-ASCII text.
+- [ ] Keep `cargo fmt --check`, `cargo clippy --workspace --all-targets` and
+  `cargo test --workspace` green in CI.
 
-- [x] Display `check` errors as `file:line:column`.
-- [ ] Add a structured JSON output option for diagnostics.
-- [ ] Add an option or command to explicitly check the complete include graph.
-- [x] Keep text output stable for scripts and CI.
-- [ ] Extend `pactole init` with a journal skeleton and minimal explanations.
+---
 
-## P1 — Essential accounting reports
+## Phase 1 — Reporting API and CLI reports (P1, v0.4)
 
-### P1.7 — Introduce a shared reporting API
+*Goal: a shared, render-agnostic reporting layer, and the first complete
+reports on top of it.*
 
-- [ ] Define a period and reference-date abstraction.
-- [ ] Define a result structure independent from text rendering.
-- [ ] Preserve the commodity in every report line.
-- [ ] Support text, JSON, and CSV rendering from the same result.
+### 1.1 — Introduce the reporting API
+
+- [ ] Define a `Period` and a reference-date abstraction (inclusive bounds).
+- [ ] Define result structures that do not depend on any text rendering.
+- [ ] Keep the commodity on every report line, and define how a multi-commodity
+  total is represented.
+- [ ] Aggregate into parent accounts (a configurable depth, or the full prefix
+  hierarchy).
+- [ ] Provide text, JSON and CSV renderings of the same result.
 - [ ] Add tests for inclusive dates, parent accounts, and multiple commodities.
 
-### P1.8 — Implement a balance sheet
+*Placement: `pactole-core` (pure domain logic). The CLI and any future web
+front-end only render the results.*
 
-- [ ] Produce account balances at a given date.
+### 1.2 — Implement the balance sheet
+
+- [ ] Compute account balances at a given date.
 - [ ] Group accounts by hierarchical prefix.
-- [ ] Separate assets, liabilities, and equity using a documented convention or
-  configuration.
-- [ ] Add the corresponding CLI command.
-- [ ] Add fixtures and compare results against known journals.
+- [ ] Separate assets, liabilities and equity, using a documented convention
+  with an explicit configuration override.
+- [ ] Add the `pactole balance` command, with `--date` and `--format`.
+- [ ] Add fixtures and compare the output against known journals.
 
-### P1.9 — Implement an income statement
+### 1.3 — Implement the income statement
 
-- [ ] Calculate income and expenses over a period.
-- [ ] Support grouping by account, payee, and tag.
-- [ ] Add period filters to the CLI.
-- [ ] Produce readable text and JSON/CSV output.
-- [ ] Document multi-commodity income statement behavior.
+- [ ] Compute income and expenses over a period.
+- [ ] Group by account, payee and tag.
+- [ ] Add `pactole income --from --to`, with `--format`.
+- [ ] Document the multi-commodity behaviour (per-commodity totals, no
+  implicit conversion until Phase 2).
 
-## P2 — Imports, exports, and projects
+### 1.4 — Implement spending breakdowns
 
-### P2.1 — Add configurable CSV import
+- [ ] `pactole expenses --by account|payee|tag|month`.
+- [ ] Report uncategorized transactions and inactive accounts.
+- [ ] Compare two periods (same length, relative or absolute difference).
 
-- [ ] Define configuration for columns, separator, encoding, and date format.
-- [ ] Convert each row to an `ImportRecord` without depending on the CLI.
-- [ ] Reuse the `pactole-import` rules engine.
-- [ ] Preserve a source line reference and provenance metadata.
-- [ ] Add a `--preview` mode that does not modify a file.
-- [ ] Add fixtures for several bank statement variants.
+### 1.5 — Improve the CLI output
 
-### P2.2 — Improve import idempotence and provenance
+- [ ] Add a `--format json` option to `check`, and to every report.
+- [ ] Add a command to display the `include` graph, and to report cycles and
+  files included more than once.
+- [ ] Report `.pactole` files unreachable from the root journal.
+- [ ] Keep the text output stable for scripts and CI.
 
-- [ ] Define a key strategy when the source format has no FITID.
-- [ ] Report imported, skipped, and ambiguous transactions separately.
-- [ ] Allow an import to be replayed without creating duplicates.
-- [ ] Preserve the source filename and external identifier in metadata.
-- [ ] Add a command to diagnose potential duplicates.
+---
 
-### P2.3 — Introduce project configuration
+## Phase 2 — Multi-currency (P1, v0.5)
 
-- [ ] Define a project-local configuration file.
-- [ ] Configure the root journal file and shared LSP options in it.
-- [ ] Define explicit resolution rules for relative paths.
-- [ ] Allow the CLI and LSP to reuse this configuration.
-- [ ] Document precedence between CLI options, project settings, and defaults.
+*Goal: a journal that mixes currencies balances correctly, and reports that can
+be valued.*
 
-### P2.4 — Add project analysis commands
-
-- [ ] Display the `include` graph.
-- [ ] Report cycles and files included more than once.
-- [ ] Report `.pactole` files unreachable from the root.
-- [ ] Expose project dependencies as JSON for external tools.
-- [ ] Add tests for diamond includes and cycles.
-
-### P2.5 — Add an analysis cache
-
-- [ ] Cache file text, analysis results, and file dependencies.
-- [ ] Invalidate a file when an open buffer changes.
-- [ ] Invalidate dependents when an `include` resolution changes.
-- [ ] Measure gains on multi-file journals before complicating the synchronization
-  protocol.
-- [ ] Keep the cache outside `pactole-storage-fs` if that better preserves its
-  current responsibility.
-
-## P2 — Accounting model and advanced ergonomics
-
-### P2.6 — Formalize commodities, prices, and conversions
+### 2.1 — Specify the model first
 
 - [ ] Document the current commodity semantics precisely.
-- [ ] Decide whether prices and conversions are in scope for the model.
-- [ ] Add separate models for amount, price, cost, and value if needed.
-- [ ] Define rounding and tolerance rules.
-- [ ] Add multi-currency validations and reports before advanced user
-  interfaces.
+- [ ] Specify `Amount`, `Price`, `Cost` and `Value` as distinct concepts, and
+  decide what actually goes into the domain model.
+- [ ] Define the rounding and tolerance rules for a converted transaction.
+- [ ] Define the behaviour when a required price is missing.
+- [ ] Write the specification in `GRAMMAR.md` before touching the grammar.
 
-### P2.7 — Enrich interactive reports
+### 2.2 — Add the `price` directive
 
-- [ ] Show an account's current balance in LSP hover information.
-- [ ] Add spending reports by payee and tag.
-- [ ] Add reports for inactive accounts and uncategorized transactions.
-- [ ] Add period-over-period comparisons.
-- [ ] Evaluate Markdown or HTML output for shareable reports.
+- [ ] Extend the grammar and regenerate the tree-sitter parser.
+- [ ] Lower the directive into a domain model, and print it canonically.
+- [ ] Validate: unknown commodities, contradictory prices on the same day,
+  prices before the first use.
+- [ ] Add LSP support (hover, completion, navigation).
 
-### P2.8 — Extend editor integrations
+### 2.3 — Add price annotations on postings
 
-- [ ] Maintain a complete and tested Helix configuration.
-- [ ] Document Neovim integration and supported LSP capabilities.
-- [ ] Document Zed or VS Code support based on actual user demand.
-- [ ] Add snippets for common directives and transactions.
-- [ ] Test LSP positions with several clients, especially UTF-16 clients.
+- [ ] Support `@ unit_price` and `@@ total_price` on postings.
+- [ ] Infer the missing side of the price pair, as for implicit amounts.
+- [ ] Keep the canonical printing deterministic.
 
-## P3 — Explorations to start only after stabilization
+### 2.4 — Balance on converted weights
 
-### P3.1 — Incremental LSP synchronization
+- [ ] Compute the converted weight of each posting, and balance the
+  transaction on it.
+- [ ] Report a dedicated diagnostic for an unbalanced multi-commodity
+  transaction, and for a missing price.
+- [ ] Apply the documented tolerance and rounding rules.
+- [ ] Keep single-commodity transactions byte-for-byte identical to today.
 
-- [ ] Measure the size and analysis time of real journals.
-- [ ] Introduce `TextDocumentSyncKind::INCREMENTAL` only if full synchronization
+### 2.5 — Value the reports
+
+- [ ] Add a report currency and a valuation date to the reporting API.
+- [ ] Report the price used for each conversion, and flag missing prices.
+- [ ] Add `--convert-to` and `--at` to the report commands.
+- [ ] Keep the unconverted (per-commodity) view available.
+
+### 2.6 — Follow through in the rest of the toolchain
+
+- [ ] Import OFX statements in their own currency (`CURDEF`, `ORIGCURRENCY`),
+  and convert them with the journal's prices.
+- [ ] Show the balance of a foreign-currency account in hover.
+- [ ] Handle commodity restrictions in `open` directives with a price.
+
+---
+
+## Phase 3 — Grammar convergence with Beancount (P2, v0.6)
+
+*Goal: remove the friction of migrating from Beancount, one directive at a
+time, in order of real usage.*
+
+Each directive is a complete unit: grammar, tree-sitter regeneration, corpus
+tests, lowering, canonical printing, LSP support, documentation.
+
+### 3.1 — Escape sequences in strings
+
+- [ ] Allow `\"` inside a quoted string, without breaking the current
+  "a string cannot contain a double quote" rule elsewhere.
+- [ ] Define the escaping rules for the payee, the narration, and the
+  metadata values.
+- [ ] Cover the round trip in the formatter tests.
+
+### 3.2 — `pad`
+
+- [ ] Add the `pad` directive, with the account and the amount to pad to.
+- [ ] Generate the corresponding opening entry.
+- [ ] Validate the padded account and the date ordering.
+
+### 3.3 — `note` and `document`
+
+- [ ] Add the two directives, as purely declarative entries.
+- [ ] Surface them in the LSP (document symbols, navigation).
+- [ ] Keep them out of the reports.
+
+### 3.4 — `pushtag` and `poptag`
+
+- [ ] Add the two directives, and make the tags visible in the reports.
+- [ ] Decide how they interact with the tags already carried by transactions.
+
+### 3.5 — `option` and `custom`
+
+- [ ] Add `option`, with a documented set of known keys.
+- [ ] Add `custom`, as an extension point carrying structured metadata.
+- [ ] Decide whether `custom` becomes the carrier for the budget directive
+  (Phase 4).
+
+### 3.6 — Explicitly out of scope
+
+- [ ] `event`, `query`, `plugin`: rejected with an explicit diagnostic, not
+  a silent parse error.
+
+---
+
+## Phase 4 — Envelope budgeting (P2, v0.7)
+
+*Goal: answer "am I on budget?" from the ledger, without a second accounting
+model.*
+
+### 4.1 — Decide the model
+
+- [ ] Write a short design note comparing the two models, and pick one.
+- [ ] Define the period semantics (monthly, annual, and what happens to an
+  unused amount).
+- [ ] Define the interaction with a partially-elapsed month.
+
+### 4.2 — Declare budgets
+
+- [ ] Add the budget declaration (a `budget` directive, or `custom "budget"`).
+- [ ] Support an amount, a commodity, a period and a target account.
+- [ ] Validate the target account, the commodity, and the period.
+- [ ] Add LSP support.
+
+### 4.3 — Report budgets
+
+- [ ] `pactole budget [--month YYYY-MM]`: planned, actual, remaining, and the
+  deviation.
+- [ ] Show the actual spending of the budgeted account, restricted to the
+  relevant postings.
+- [ ] Report the budget as a warning (or an error, when configured) when it is
+  exceeded.
+- [ ] Reuse the Phase 1 reporting API; do not write a second accounting path.
+
+### 4.4 — Envelopes, if the design note asks for them
+
+- [ ] Define how an envelope is represented, without polluting the account
+  tree if possible.
+- [ ] Define the transfers between envelopes, and the carried-over balance.
+- [ ] Report the envelope balances over time.
+
+---
+
+## Phase 5 — Web server for reports (P3)
+
+*Goal: a pleasant, local, read-only view of the reports.*
+
+### 5.1 — Define the use cases
+
+- [ ] List what the web interface must do that the CLI and the LSP do not
+  (overview, charts, period comparison, sharing).
+- [ ] Confirm the reports it needs are all available from Phase 1.
+
+### 5.2 — Build the server
+
+- [ ] New crate `pactole-web`, depending only on the public APIs of
+  `pactole-core`, `pactole-storage-fs` and `pactole-config`.
+- [ ] Reuse the project analysis and the reporting API; no accounting logic of
+  its own.
+- [ ] Serve the reports as JSON, and the UI as static assets.
+- [ ] Bind to `127.0.0.1` by default, read-only, with no write-back to the
+  ledger.
+- [ ] Reload when the ledger files change on disk.
+
+### 5.3 — Build the interface
+
+- [ ] Dashboard: current balances, month-to-date income and expenses.
+- [ ] Balance sheet, income statement, spending breakdowns.
+- [ ] Budget view, once Phase 4 exists.
+- [ ] Charts over time, and period comparison.
+- [ ] Ship the front-end as static assets, without a Node build chain.
+
+---
+
+## Continuous work
+
+These items improve the existing product without waiting for a phase:
+
+- [ ] Expose formatting through the LSP (`textDocument/formatting`), by
+  calling the canonical formatter.
+- [ ] Implement `textDocument/documentSymbol`.
+- [ ] Build a positioned symbol index (accounts, payees, commodities, tags,
+  links), shared by completion, hover, navigation and rename.
+- [ ] Only suggest accounts that are usable on the current date, and never
+  suggest a closed account after its closing date.
+- [ ] Show the current balance of an account in hover.
+- [ ] Add a quick fix inserting an inferred amount when a transaction has a
+  single possible implicit posting.
+- [ ] Add a configurable CSV import, reusing the `ImportRecord` pipeline and
+  the rule engine, with a `--preview` mode and a documented deduplication key.
+- [ ] Improve import idempotence and provenance: report imported, skipped and
+  ambiguous transactions separately.
+- [ ] Add an analysis cache, only after measuring the analysis time on real
+  journals; keep it outside `pactole-storage-fs` if that preserves its
+  current responsibility.
+- [ ] Extend the editor integrations: a tested Helix configuration, Neovim
+  documentation, and snippets for the common directives.
+- [ ] Test the LSP against several clients, especially UTF-16 ones.
+- [ ] Introduce incremental LSP synchronization only if full synchronization
   becomes a measured problem.
-- [ ] Add tests for successive edits and UTF-16 positions.
+- [ ] Keep `pactole-core` free of I/O, `pactole-syntax` free of domain
+  models, and `pactole-import` free of file-format knowledge.
 
-### P3.2 — Alternative storage backends
+---
 
-- [ ] Stabilize storage traits and models before implementing another persistent
-  backend.
-- [ ] Define entry provenance and identity outside the filesystem.
-- [ ] Evaluate a database storage crate only after reports and imports have
-  stabilized.
-- [ ] Do not create an empty storage crate or stub in advance.
+## Explicitly out of scope
 
-### P3.3 — Graphical or web interface
+- Lot tracking and securities (`{cost}`, `{}`).
+- A graph of "value" independent of a price.
+- A hosted or multi-user service; the web interface stays local.
+- Writing back to the ledger from the web interface.
+- Beancount's `event`, `query` and `plugin` directives.
+- A graphical desktop application.
 
-- [ ] Reuse the existing domain, analysis, reporting, and import APIs.
-- [ ] First define the use cases not covered by the CLI and LSP.
-- [ ] Avoid turning Pactole into a graphical application before the format and
-  accounting model are stable.
+---
 
 ## Recommended delivery order
 
-For the next iterations, the recommended order is:
+1. **Phase 0** — refresh the documentation, type the diagnostic codes, support
+   partial analyses, strengthen the tests.
+2. **Phase 1** — the reporting API, then the balance sheet, the income
+   statement, the spending breakdowns and the CLI output options.
+3. **Phase 2** — the multi-currency model, then the `price` directive, the
+   price annotations, the converted balancing, and the valued reports.
+4. **Phase 3** — the grammar, selectively, in order of real usage.
+5. **Phase 4** — the design note, then the budget declaration and the budget
+   report.
+6. **Phase 5** — the web server, last, as a facade over stable reports.
 
-1. positioned business diagnostics;
-2. transaction balancing and balance assertions;
-3. structured CLI output and validation tests;
-4. LSP formatting;
-5. positioned symbol index;
-6. definitions, references, and document symbols;
-7. business quick fixes;
-8. balance sheet and income statement;
-9. CSV import with preview and idempotence;
-10. project configuration and project analysis;
-11. analysis cache;
-12. advanced multi-currency features, alternative storage, and a graphical
-    interface.
-
-This sequence maximizes user value while reusing the foundations already in
+This order maximizes user value while reusing the foundations already in
 place: tolerant analysis, spans, include resolution, the domain model, the
-canonical formatter, and the import pipeline.
+canonical formatter, the import pipeline, and the layered configuration.
