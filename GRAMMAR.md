@@ -53,7 +53,7 @@ never as metadata of the directive itself.
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                    |
 | `payee`       | `payee "name"`                                                      |
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`         |
-| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS "payee" ["narration"] TAGS/LINKS [(reference)]` |
+| `transaction` | `DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]` |
 | `include`     | `include "path"`                                                    |
 
 Note `payee` is the only directive with no leading date: unlike an
@@ -147,8 +147,7 @@ property := key ":" value
 ```
 
 - `key`: lowercase letters, `_` or `-` only (`[a-z_\-]+`) — no digits and
-  no uppercase letters after the first character, unlike Beancount, which
-  is more permissive.
+  no uppercase letters at all, unlike Beancount, which is more permissive.
 - `value`: a string, a date, or a number — a subset of Beancount's richer
   value types (which also accepts accounts, currencies, tags, booleans,
   `None`, etc.).
@@ -349,10 +348,10 @@ For reference, a summary of the deliberate deviations from Beancount:
 ## Implementation
 
 - The tree-sitter grammar: [`crates/tree-sitter-pactole/grammar.js`](crates/tree-sitter-pactole/grammar.js).
-- Grammar tests (expected trees): [`crates/tree-sitter-pactole/test/corpus/test.txt`](crates/tree-sitter-pactole/test/corpus/test.txt).
+- Grammar tests (expected trees): [`crates/tree-sitter-pactole/test/corpus/`](crates/tree-sitter-pactole/test/corpus/).
 - Building Rust objects (`pactole_core::Entry` and friends) from the
   syntax tree: [`crates/pactole-storage-fs/src/parser.rs`](crates/pactole-storage-fs/src/parser.rs).
 - To explore the tree produced for a given file:
   ```sh
-  cargo run -- parse my-file.pactole
+  cargo run -p pactole-cli -- parse my-file.pactole
   ```

@@ -205,6 +205,8 @@ default counter account for transactions that still need review.
 
 ## Related
 
+- [Configuration reference](/reference/configuration/) — the whole `pactole.toml`
+  schema, its layers and the merge rules.
 - [Command-line reference](/reference/cli/) — all `import-ofx` options.
 - [Record a transaction](/how-to/record-a-transaction/) — the transaction
   format produced by the importer.

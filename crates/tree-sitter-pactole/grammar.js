@@ -89,9 +89,9 @@ export default grammar({
       ),
     // Beancount-style optional list of commodities an account is
     // meant to be restricted to, e.g. `EUR` or `EUR,USD`: comma-separated,
-    // no spaces around the comma. This is currently only parsed and
-    // stored; it is not enforced (postings using other commodities are
-    // not rejected).
+    // no spaces around the comma. The restriction is enforced by
+    // `pactole-core`'s validation (a posting using another commodity is
+    // rejected with `commodity-not-allowed`).
     commodity_list: ($) =>
       seq($.commodity_name, repeat(seq(",", $.commodity_name))),
     close: ($) =>

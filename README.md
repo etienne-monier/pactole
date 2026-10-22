@@ -245,4 +245,4 @@ payees = "payees.pactole"
 accounts = "accounts.pactole"
 ```
 
-More commands (querying balances, reports, etc.) are coming.
+More commands (balance sheets, income statements, budgets) are coming.

@@ -15,6 +15,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   language server log. The `--stdio` flag is accepted and ignored, so
   editor configurations passing `args = ["--stdio"]` keep working.
 
+### Documentation
+
+- The documentation site gained a **configuration reference**
+  (`/reference/configuration/`) consolidating the whole `pactole.toml` schema:
+  the layers and their discovery order, the merge semantics, and the
+  `[validation]`, `[format]`, `[declaration]` and `[import]` sections.
+- The **diagnostics reference** now lists every diagnostic code
+  (`syntax-error`, `lowering-error`, the business codes and the include codes)
+  with its default severity and its meaning.
+- The **differences from Beancount** page now contrasts the default status
+  (`?` in Pactole, `*` in Beancount), the unsupported `commodity` label, the
+  unsupported `open` booking metadata, and the `payee:`/`narration:` metadata
+  that silently becomes free-form metadata when migrating a Beancount journal.
+- `AGENTS.md` is now the single architecture reference: it documents the
+  public API of every crate, and the orphaned `ARCHITECTURE.md` (and the links
+  to it) has been removed.
+
+### Changed
+
+- Two integration tests now guard the documentation against drift:
+  `pactole-cli`'s `docs_sync` compares the CLI surface with the reference and
+  the README, and `pactole-storage-fs`'s `workspace_docs_sync` compares the
+  directives, the diagnostic codes and the public API with the documentation.
+  They are skipped when the repository's markdown files are not available.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

@@ -63,7 +63,7 @@ Unit tests for domain and validation logic live in this crate (see the
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — the role of
+- [`../../AGENTS.md`](../../AGENTS.md) — the role of
   `pactole-core` in the overall architecture and its boundaries with the
   other crates.
 - [`../../GRAMMAR.md`](../../GRAMMAR.md) — the language specification of

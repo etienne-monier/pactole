@@ -286,6 +286,6 @@ amounts and indentation to be freely aligned:
 
 - The tree-sitter grammar: `crates/tree-sitter-pactole/grammar.js`.
 - Grammar tests (expected trees):
-  `crates/tree-sitter-pactole/test/corpus/test.txt`.
+  `crates/tree-sitter-pactole/test/corpus/`.
 - Building Rust objects from the syntax tree:
   `crates/pactole-storage-fs/src/parser.rs`.

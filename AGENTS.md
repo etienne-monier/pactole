@@ -32,8 +32,13 @@ pactole/
 │   ├── pactole-import/        # Import external formats (OFX) into domain models
 │   ├── pactole-lsp/           # Minimal stdio Language Server Protocol server
 │   └── pactole-cli/           # Command-line binary (`pactole`) and CLI tests
+├── docs/                      # Astro/Starlight documentation site
+├── editors/                   # Editor integrations (Zed extension, outside the workspace)
 ├── GRAMMAR.md                 # Specification of the .pactole syntax
 ├── HELIX.md                   # Integration guide for the Helix editor
+├── README.md                  # User-facing installation and usage guide
+├── CHANGELOG.md               # Delivered history
+├── ROADMAP.md                 # Planned work (single source of truth for it)
 └── Taskfile.yml               # Task runner definitions (e.g., documentation)
 ```
 
@@ -42,9 +47,9 @@ pactole/
 1. **`pactole-core`**:
    - **Zero I/O and Zero Tree-sitter**: Contains only domain entities, business validation, and financial calculations. Must never depend on `pactole-storage-fs`, `pactole-syntax`, `tree-sitter`, or filesystem operations.
    - **Key modules**:
-     - `models/`: Domain structs (`Journal`, `Entry`, `Transaction`, `Posting`, `Amount`, `Balance`, `Open`, `Close`, `Commodity`, `Payee`, etc.) and newtypes (`AccountName`, `CommodityName`, `MetadataKey`).
-     - `validation.rs`: Invariant checks on `Journal` (chronological ordering, account lifecycles, declared commodities, declared payees, transaction balancing), plus `unused_declarations(&Journal)`, reporting `open`/`commodity`/`payee` declarations that nothing in the journal ever uses (severity decided by front-ends via `[validation] unused`).
-     - `register.rs`: Register report computation (running balance per commodity, filtering by account, date range, payee, narration, status, tag).
+     - `models/`: Domain structs (`Journal`, `Entry`, `Transaction`, `Posting`, `Amount`, `Balance`, `Open`, `Close`, `Commodity`, `Payee`, etc.), the `TransactionStatus` enum (`Cleared`/`Pending`/`Uncleared`) and newtypes (`AccountName`, `CommodityName`, `MetadataKey`).
+     - `validation.rs`: Invariant checks on `Journal` (chronological ordering, account lifecycles, declared commodities, declared payees, transaction balancing), plus `unused_declarations(&Journal)`, reporting `open`/`commodity`/`payee` declarations that nothing in the journal ever uses (severity decided by front-ends via `[validation] unused`). The entry points are `validate_journal` (returns the first error) and `validate_journal_all` (returns a `ValidationReport` holding the normalized `Journal` and every `ValidationIssue`, i.e. the error and the index of the offending entry in the input journal).
+     - `register.rs`: Register report computation (running balance per commodity, filtering by account, date range, payee, narration, status, tag): `RegisterFilter` (the criteria), `RegisterEntry` (one matched posting with its running balance) and the listing function.
      - `traits.rs`: Storage abstractions like `ReadableStorage`.
      - `errors.rs`: `ModelError`, `ValidationError`.
    - **Arithmetic**: Always uses `rust_decimal::Decimal` (never floating-point numbers).
@@ -52,7 +57,11 @@ pactole/
 2. **`tree-sitter-pactole`**:
    - Syntax definition in `grammar.js`.
    - Generated parser files (`src/parser.c`, `src/grammar.json`, `src/node-types.json`).
-   - Rust binding via `bindings/rust/lib.rs` and `bindings/rust/build.rs`.
+   - Rust binding via `bindings/rust/lib.rs` and `bindings/rust/build.rs`; its public API is the
+     `LANGUAGE` constant (the `LanguageFn` to register in a `tree_sitter::Parser`), the
+     `NODE_TYPES` constant (the contents of `src/node-types.json`), and the `HIGHLIGHTS_QUERY`,
+     `INJECTIONS_QUERY`, `LOCALS_QUERY` and `TAGS_QUERY` constants (the editor queries, behind
+     their `with_*_query` cargo features).
    - Editor highlight queries in `queries/highlights.scm`.
    - Corpus and test files under `test/`.
 
@@ -67,9 +76,12 @@ pactole/
        `DiagnosticKind` (`Error` for tree-sitter `ERROR` nodes, `Missing` for "missing" nodes).
      - `document.rs`: `ParsedDocument` (source + tree-sitter `Tree` + collected diagnostics),
        `parse_document`/`analyze` (tolerant parsing entry points), and `collect_error_nodes`
-       (walks a tree-sitter `Tree` and collects `ERROR`/`MISSING` nodes as `SyntaxDiagnostic`s).
+       (walks a tree-sitter `Tree` and collects `ERROR`/`MISSING` nodes as `SyntaxDiagnostic`s),
+       with `collect_error_nodes_with_source` quoting the unexpected text when the source is
+       available.
    - **Scope for now**: purely syntactic. It does **not** convert CST nodes into `pactole-core`
-     domain models — that conversion remains the responsibility of `pactole-storage-fs::parser`.
+     domain models — that conversion remains the responsibility of `pactole-storage-fs`'s
+     crate-private `parser` module (`src/parser.rs`).
      This crate is intended as the shared foundation for future tooling (e.g. `pactole-lsp`) that
      needs positioned diagnostics on possibly-invalid text, without duplicating tree-sitter
      plumbing across consumers.
@@ -81,10 +93,13 @@ pactole/
       source-order and validated journals with unified diagnostics.
     - `parser.rs`: Contains the shared CST-to-domain lowering logic used by
       `analysis.rs`; include resolution is no longer implemented here.
-   - `printer.rs`: Formats AST/source code into canonical `.pactole` layout. Also exposes
-     `format_transactions(&[Transaction]) -> String`, which serializes a list of domain
-     transactions into canonical `.pactole` text (used by `pactole import-ofx`; the inverse of
-     parsing for that subset of directives).
+   - `printer.rs`: Formats AST/source code into canonical `.pactole` layout: `format` (default
+     options), `format_with_options` (explicit `[format]` options) and
+     `format_transactions(&[Transaction]) -> String` /
+     `format_transactions_with_options(&[Transaction], &FormatOptions)`, which serialize a list
+     of domain transactions into canonical `.pactole` text (the second one is what
+     `pactole import-ofx` uses, so that the resolved `[format]` options are honoured; the inverse
+     of parsing for that subset of directives).
    - `errors.rs`: `PactoleFsStorageError`.
    - **Reuses `pactole-syntax`**: parser initialization and syntax-error detection go through
      `pactole_syntax::parse_document`/`ParsedDocument::into_result`, so tree-sitter parser setup
@@ -95,8 +110,9 @@ pactole/
       project analysis as the CLI and LSP. The canonical formatter stays in
       `pactole-storage-fs` for now; it is not moved or duplicated into
       `pactole-syntax`.
-    - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `ParsedInclude`,
-      `LoweringDiagnostic`, `Diagnostic`): a positioned, directive-by-directive analysis for tooling (editors, a
+    - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `EntrySpans`,
+      `PostingSpans`, `ParsedInclude`, `LoweringDiagnostic`, `Diagnostic`, `DiagnosticSeverity`,
+      `DiagnosticSource`): a positioned, directive-by-directive analysis for tooling (editors, a
      future `pactole-lsp`) that needs spans and per-directive diagnostics instead of an
      all-or-nothing `Journal`. `analyze_file` never fails, even on syntactically invalid or
      partially invalid input:
@@ -174,13 +190,17 @@ pactole/
       - `pactole check <file> [--strict]`: Syntax parsing + business validation, using the resolved
         `[validation]` options (`--strict` turns warnings into a failure).
       - `pactole register <file> [filters]`: Register report with running balances.
-      - `pactole init [ledger] [--global]`: Initialize a starter ledger and, next to it (or in the
-        user configuration directory with `--global`), a `pactole.toml`.
+      - `pactole init [ledger] [options]`: Initialize a starter ledger and, next to it (or in the
+        user configuration directory with `--global`), a `pactole.toml`. Options: `--account`
+        (default `Assets:Checking`), `--currency` (default `EUR`), `--counter-account` (default
+        `Expenses:ToReview`), `--date`, `--stdout`, `--global`, `--no-config`, `--no-ledger`.
+        `--no-config` and `--no-ledger` are mutually exclusive: at least one file must be created.
      - `pactole import-ofx <file> [--into <path>] [--account <account>] [--write]`:
        Import an OFX/QFX
        statement (SGML 1.x or XML 2.x) into canonical `.pactole` transactions, via
        `pactole_import::decode_ofx_source` (source bytes → UTF-8) +
-       `pactole_import::import_ofx` + `pactole_storage_fs::format_transactions`. Configuration
+       `pactole_import::import_ofx` + `pactole_storage_fs::format_transactions_with_options`.
+       Configuration
        (bank account, optional `[import.accounts]` ACCTID → Pactole account mapping, default
        counter account, optional fallback currency, `[[import.rules]]`) is read from the
        resolved `pactole.toml`; the command fails with a clear message when no `[import]`
@@ -227,21 +247,23 @@ pactole/
        `rootUri`, then `rootPath` — when given as relative; when no workspace root is known at
        all, resolved against the server process's current working directory instead of being
        silently left relative, so it does not later fail to resolve and silently drop every
-       diagnostic for the whole include graph) and `validation` (a `"warn"`/`"error"` string applied
-       to every configurable check, or a `{ "payee": ..., "unused": ... }` table). Validation
+       diagnostic for the whole include graph) and `validation` (an
+       `"off"`/`"warn"`/`"error"` string applied to every configurable check, or a
+       `{ "payee": ..., "unused": ... }` table). Validation
        settings follow the same layering as the CLI: the
        global `pactole.toml` (via `pactole_config::config_dir`), then the project `pactole.toml`
        (next to `journal_file`, or at the workspace root when none is configured), then
-       `initializationOptions`. Unreadable or invalid configuration files, and the
-       not-yet-supported `off` level, are logged and ignored rather than failing `initialize`.
+       `initializationOptions`. Unreadable or invalid configuration files, and invalid
+       validation levels, are logged and ignored rather than failing `initialize`.
        Also supports the `[declaration]` section (`payees`/`accounts`/`commodities`), whose
        relative paths are resolved against the journal's directory (like an `include`), and
        exposes them as `DeclarationTargets` for the declaration quick fixes.
      - `server.rs`: the stdio `Connection`, main loop, and notification handlers. Publishes
        `textDocument/publishDiagnostics`:
        - When `journal_file` is configured and loads successfully, diagnostics are computed for
-         *every file reachable via `include`* using `pactole_storage_fs::analyze_file_with_loader`
-         with `DocumentsSourceLoader` (open buffers first, filesystem fallback), and published
+         *every file reachable via `include`* using
+         `pactole_storage_fs::analyze_file_with_loader_with_options` with
+         `DocumentsSourceLoader` (open buffers first, filesystem fallback), and published
          per-file (keyed by each file's own path/URI).
        - Otherwise (no `journal_file`, or it fails to load), the current document alone is
          analyzed standalone via `pactole_storage_fs::analyze_file` (its `include`s are *not*
@@ -253,8 +275,10 @@ pactole/
      - `navigation.rs`: goto definition (`textDocument/definition`) and find references
        (`textDocument/references`) for accounts, payees, commodities and `include` paths
        (jumping to the included file). Both resolve against one shared occurrence index built
-       directly from each file's CST through `tree-sitter-pactole` (hence the crate's direct
-       `tree-sitter` dependency), tagging each token as a declaration or a use. The scope is the
+       directly from each file's CST, obtained through `pactole-syntax`
+       (`ParsedFile::document().root_node()`), using the `tree-sitter` crate's `Node` type
+       directly (hence the crate's direct `tree-sitter` dependency, but no
+       `tree-sitter-pactole` one), tagging each token as a declaration or a use. The scope is the
        `journal_file` include graph analyzed with `DocumentsSourceLoader` (unsaved buffers
        first), plus the current document when it is not part of it; with no `journal_file`, the
        current document is its own entry point so its own `include`s are followed too — the same
@@ -276,8 +300,8 @@ pactole/
        only); a no-op rename, a
        non-renamable symbol or a position without a symbol yields an empty result.
     - Completion, code actions, hover, navigation and rename are supported. Formatting over LSP (use
-      `pactole fmt`), `textDocument/documentSymbol`, incremental sync, and reading
-      `~/.config/pactole` remain out of scope for this first version. Unhandled requests are
+      `pactole fmt`), `textDocument/documentSymbol` and incremental sync remain out of scope for
+      this first version. Unhandled requests are
       answered with a `MethodNotFound` error rather than silently ignored.
     - Declaration quick fixes (`code_action.rs`): beyond the "insert today's date" fix, the server
       turns the `payee-not-declared`, `account-not-open` and `commodity-not-declared` business
@@ -290,20 +314,21 @@ pactole/
       an `include`), and the fixes only exist when a `journal_file` is configured, since business
       diagnostics require a project context.
    - **Depends on `pactole-storage-fs`/`pactole-syntax` only through their existing public API**
-     (`analyze_file`, `analyze_file_with_loader`,
-     `analyze_file_with_loader_with_options`, `normalize_lexically`, `FsSourceLoader`,
-     `SourceLoader`, `SourceLoadError`, `ParsedFile`, `AnalyzedProject`, `SyntaxDiagnostic`,
-     `Span`/`Point`), plus `pactole-config` for layered configuration and `tree-sitter`
-     (directly, for the navigation CST index); it does not add or change anything in those
-     crates.
+     (`analyze_file`, `analyze_file_with_loader_with_options`,
+     `normalize_lexically`, `FsSourceLoader`, `SourceLoader`, `SourceLoadError`,
+     `ParsedFile`, `AnalyzedProject`, `Span`/`Point`; `analyze_file_with_loader` is used
+     in the crate's tests only), plus `pactole-config` for layered configuration and
+     `tree-sitter` (directly, for the navigation CST index); it does not add or change
+     anything in those crates.
    - Has no dependency on `thiserror`: its only error type is the hand-written `RenameError`
      struct, and errors are otherwise propagated via `Box<dyn Error + Sync + Send>` in
      `server.rs`.
 
 7. **`pactole-import`**:
    - **Edge adapter, zero I/O, depends only on `pactole-core` and `pactole-config`** (plus
-     `chrono`, `encoding_rs`, `rust_decimal`): translates a foreign input format into pure domain
-     models. It knows nothing about tree-sitter, `pactole-storage-fs`, the `.pactole` text
+     `chrono`, `encoding_rs`, `rust_decimal`, `thiserror` and `ofx-rs`): translates a foreign
+     input format into pure domain models. It knows nothing about tree-sitter,
+     `pactole-storage-fs`, the `.pactole` text
      format, or where its configuration comes from, so it is reusable by any front-end (the
      `pactole` CLI today, a future `pactole-storage-db`, the LSP tomorrow).
    - **Key modules**:
@@ -340,7 +365,7 @@ pactole/
      `Transaction`) so future importers (CSV, QIF, ...) reuse the rule engine instead of
      duplicating it. Only OFX is implemented for now.
    - **Serialization stays out of this crate**: turning the produced `Transaction`s into
-     `.pactole` text is `pactole_storage_fs::format_transactions`, called by the CLI.
+     `.pactole` text is `pactole_storage_fs::format_transactions_with_options`, called by the CLI.
 
 8. **`pactole-config`**:
    - **Leaf crate**: depends on no other Pactole crate (only `serde`, `toml`, `thiserror`), and
@@ -372,9 +397,9 @@ pactole/
        `[[import.rules]]` — the OFX import settings; `ImportConfig`/`Rule`/`Direction` are
        defined here and re-exported by `pactole-import`.
    - **Public API**: `Config` (resolved), `Config::resolve(&[Source], &Overrides)` (pure, no I/O),
-     `Config::load(explicit, project, &Overrides)` (I/O), `ConfigError`, `Overrides`,
-     `ValidationLevel`/`ValidationOptions`, `FormatOptions`, `ImportConfig`/`Rule`/`Direction`,
-     `config_dir()`, `default_config_path()`.
+     `Config::load(explicit, project, &Overrides)` (I/O), `ConfigError`, `Overrides`, `Source`,
+     `ValidationLevel`/`ValidationOptions`, `FormatOptions`, `DeclarationOptions`,
+     `ImportConfig`/`Rule`/`Direction`, `config_dir()`, `default_config_path()`.
 
 ### Planned Crates (not yet created)
 
@@ -519,6 +544,30 @@ If modifying `crates/tree-sitter-pactole/grammar.js`:
 3. Update `queries/highlights.scm` if syntax tokens were added or modified.
 4. Update `crates/pactole-storage-fs/src/parser.rs` and `crates/pactole-storage-fs/src/printer.rs` to support the new AST nodes.
 5. Update `GRAMMAR.md`.
+6. Update the documentation site: the directive tables of
+   `docs/src/content/docs/reference/directives.md`, the directive list of
+   `docs/src/content/docs/explanation/differences-from-beancount.md` and
+   `docs/src/content/docs/reference/grammar.md`. This is enforced by
+   `crates/pactole-storage-fs/tests/workspace_docs_sync.rs`, which fails when
+   a directive of the grammar is missing from the reference.
+
+### Documentation Synchronization
+
+Two integration tests keep the prose in sync with the code. They are skipped
+when the repository's markdown files are not available (a published crate
+tested from a tarball), so `cargo test` still passes outside a checkout.
+
+```sh
+# The CLI surface (sub-commands and options) vs the reference and the README
+cargo test -p pactole-cli --test docs_sync
+
+# The directives, the diagnostic codes and the public API vs the documentation
+cargo test -p pactole-storage-fs --test workspace_docs_sync
+```
+
+Run them whenever you add a sub-command, an option, a directive, a diagnostic
+code or a public item, and update the documentation in the same change: the
+tests fail otherwise.
 
 ---
 

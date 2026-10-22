@@ -20,3 +20,6 @@ rust_decimal.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 tree-sitter.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

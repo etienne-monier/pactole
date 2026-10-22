@@ -106,7 +106,7 @@ Merge/precedence/error cases live in `tests/config.rs`.
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §8 — the resolved
+- [`../../AGENTS.md`](../../AGENTS.md) — the resolved
   configuration and layering rules in context.
 - [`../../README.md`](../../README.md#configuration) — user-facing
   configuration guide.

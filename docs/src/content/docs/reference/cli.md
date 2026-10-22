@@ -2,7 +2,7 @@
 title: Command-line interface
 description: The pactole binary, its subcommands, options and exit codes.
 sidebar:
-  order: 3
+  order: 4
 ---
 
 The `pactole` binary exposes seven subcommands. Run `pactole --help` or
@@ -15,7 +15,7 @@ status `0` unless `--strict` is passed.
 
 ## Global options
 
-Two options are accepted **before** the subcommand:
+One option is accepted **before** the subcommand:
 
 | Option | Description |
 |---|---|
@@ -112,8 +112,8 @@ downgraded to a warning in `pactole.toml`:
 payee = "warn"
 ```
 
-or by setting `[validation] payee = "warn"` in `pactole.toml`. Every other
-business check remains an error.
+Every other business check remains an error. See the
+[configuration reference](/reference/configuration/) for the whole schema.
 
 Errors include syntax errors, lowering errors, business validation errors and
 includes whose content could not be loaded. Include cycles are warnings because
@@ -149,6 +149,9 @@ Existing files are never overwritten.
 | `--stdout` | Print the generated ledger instead of creating its file |
 | `--no-config` | Do not initialize `pactole.toml` |
 | `--no-ledger` | Do not initialize the ledger |
+
+`--no-config` and `--no-ledger` cannot be combined: at least one of the two
+files must be created.
 
 For example:
 
@@ -256,6 +259,8 @@ configuration format and categorization examples.
 
 ## Related
 
+- [Configuration reference](/reference/configuration/) — the `pactole.toml`
+  schema the commands read.
 - [Getting started](/tutorials/getting-started/) — a guided tour of these
   commands.
 - [Query with the register report](/how-to/query-with-register/) — worked

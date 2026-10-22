@@ -164,7 +164,6 @@ buffer on stdin and applying stdout as the new document contents.
   `pactole fmt -` command.
 - The language server uses full-document synchronization rather than
   incremental synchronization.
-- The language server does not read configuration from `~/.config/pactole`.
 
 See [Use the Pactole language server](/how-to/use-the-lsp/) for the LSP
 features and [Format a ledger](/how-to/format-a-ledger/) for the formatter's

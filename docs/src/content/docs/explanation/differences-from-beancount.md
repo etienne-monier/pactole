@@ -36,9 +36,61 @@ undeclared payees as warnings instead of errors.
 
 ## Status flags
 
-Only `*` (cleared), `!` (pending) and `?` (uncleared) are accepted. The status
-is optional and defaults to `?` (uncleared). There is no custom flag letter and
-no `txn` keyword.
+Only `*` (cleared), `!` (pending) and `?` (uncleared) are accepted. There is no
+custom flag letter and no `txn` keyword.
+
+The **default status differs from Beancount's**. Beancount defaults a
+transaction to `*` (cleared); Pactole defaults it to `?` (uncleared). A
+Beancount journal whose transactions carry no flag therefore lands in Pactole
+as a journal full of uncleared transactions — which is the safe direction, but
+it changes what the register report shows as reconciled.
+
+## Commodities have no label
+
+Beancount's `commodity` directive accepts an optional human-readable label:
+
+```beancount
+1970-01-01 commodity USD "US Dollar"
+```
+
+Pactole's `commodity` directive takes the commodity code and nothing else:
+
+```pactole
+1970-01-01 commodity USD
+```
+
+The quoted label is a syntax error in Pactole, so it has to be removed when
+migrating. A label can be kept as a comment (`; US Dollar` — Pactole comments
+start with a semicolon) or as free-form metadata on the directive:
+
+```pactole
+1970-01-01 commodity USD ; US Dollar
+1970-01-01 commodity GBP
+  label: "Pound Sterling"
+```
+
+## Accounts have no special metadata
+
+Beancount attaches booking metadata to an `open` directive:
+
+```beancount
+2015-04-01 open Assets:Checking USD "Chase Manhattan Bank" {
+  booking: Some,
+  booking_date: "2015-04-01",
+  institution: "Chase",
+}
+```
+
+Pactole's `open` directive takes the account and, optionally, a
+comma-separated list of commodities:
+
+```pactole
+2015-04-01 open Assets:Checking EUR,USD
+```
+
+The `booking`, `booking_date` and `institution` keys are not special in
+Pactole: there is no booking algorithm to configure, so they are only kept as
+ordinary metadata if you write them yourself.
 
 ## No cost or price annotations
 
@@ -70,6 +122,43 @@ Two features come from Ledger-cli rather than Beancount:
   Beancount's richer value types.
 - Strings have **no escaping mechanism**: a quoted string cannot contain a
   literal `"`.
+
+## Migrating a Beancount journal
+
+Two differences are easy to miss: the syntax stays valid, so nothing fails
+until the business checks run.
+
+### `payee:` and `narration:` become ordinary metadata
+
+In Beancount, `payee` and `narration` are special metadata keys: they carry
+the payee and the narration of a transaction whose header holds a single
+string. Pactole has no such special keys — `payee` and `narration` are just
+free-form metadata. A migrated transaction like this:
+
+```beancount
+2026-09-03 * "Weekly groceries"
+  payee: "Whole Foods"
+  narration: "Weekly groceries"
+```
+
+parses in Pactole, but the two lines are just metadata: the transaction's
+payee is the header string, not `Whole Foods`, and the narration is empty.
+The right translation is:
+
+```pactole
+2026-09-03 * "Whole Foods" "Weekly groceries"
+```
+
+A migrated journal often trips the `payee-not-declared` check on every
+transaction for the same reason. Declaring the payees, or setting
+`[validation] payee = "warn"` while migrating, makes the remaining work
+visible without blocking it.
+
+### Keys that only differ in case
+
+Beancount accepts metadata keys such as `Invoice-Id` or `PDF-URL`; Pactole
+accepts only lowercase letters, `_` and `-`. `invoice_id` and `invoice-id`
+are fine, `invoiceId` and `invoice2` are syntax errors.
 
 ## Where to look next
 

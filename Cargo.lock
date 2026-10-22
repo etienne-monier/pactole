@@ -744,6 +744,7 @@ dependencies = [
  "pactole-core",
  "pactole-syntax",
  "rust_decimal",
+ "serde_json",
  "thiserror",
  "toml",
  "tree-sitter",

@@ -83,6 +83,8 @@ default width of 50 is used.
 
 ## Related
 
+- [Configuration reference](/reference/configuration/) — the whole `pactole.toml`
+  schema and where the file lives.
 - [Command-line reference](/reference/cli/) — the full `fmt` options.
 - [Grammar reference](/reference/grammar/) — the syntax `fmt` understands.
 - [Configure editors](/how-to/configure-editors/) — configure Zed, Helix or

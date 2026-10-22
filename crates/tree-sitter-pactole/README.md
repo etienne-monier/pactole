@@ -69,7 +69,7 @@ cargo test -p tree-sitter-pactole
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — overall repository
+- [`../../AGENTS.md`](../../AGENTS.md) — overall repository
   architecture and boundaries between crates.
 - [`../../GRAMMAR.md`](../../GRAMMAR.md) — the `.pactole` language
   specification.

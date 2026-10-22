@@ -71,9 +71,11 @@ no `journal_file` is set). They can be overridden from
 ```
 
 With `warn`, an undeclared payee is reported as a warning instead of an error,
-so a journal being migrated from another tool stays green in the editor. A
-broken or unreadable configuration file is logged and ignored rather than
-failing initialization.
+so a journal being migrated from another tool stays green in the editor. The
+`off` level suppresses the check entirely, and a per-check table (as in
+`{ "payee": "warn" }`) sets each configurable check separately. A broken or
+unreadable configuration file is logged and ignored rather than failing
+initialization.
 
 The `[declaration]` section of `pactole.toml` can redirect new declarations to
 separate files:
@@ -125,6 +127,8 @@ and generic editor configuration examples, including the external formatter.
 - jumps from an account, payee or commodity to its declaration
   (`textDocument/definition`), and from an `include` path to the included
   file;
+- describes the symbol under the cursor (`textDocument/hover`): accounts,
+  payees, commodities, tags and links;
 - lists every occurrence of an account, payee or commodity across the
   include graph (`textDocument/references`);
 - renames an account or a payee across the whole include graph
@@ -152,3 +156,10 @@ RUST_LOG=pactole_lsp=debug pactole-lsp
 ```
 
 Logs are written to stderr so that they do not interfere with the LSP protocol.
+
+## Related
+
+- [Configuration reference](/reference/configuration/) — the whole `pactole.toml`
+  schema, its layers and the language server's own options.
+- [Diagnostics and project analysis](/reference/diagnostics/) — what the server
+  reports and how it resolves includes.

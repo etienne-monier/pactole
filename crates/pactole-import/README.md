@@ -71,7 +71,7 @@ Integration tests live in `tests/import_ofx.rs`, with OFX fixtures under
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — the role of
+- [`../../AGENTS.md`](../../AGENTS.md) — the role of
   `pactole-import` in the overall architecture and its boundaries.
 - [`../../README.md`](../../README.md) — the `pactole import-ofx`
   command and its `[import]` section in `pactole.toml`.

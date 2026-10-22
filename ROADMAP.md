@@ -149,10 +149,10 @@ features.*
 
 ### 0.1 — Refresh the project documentation
 
-- [ ] Update `differences-from-beancount.md` whenever a directive is added.
-- [ ] Keep the user documentation and the CLI `--help` in sync with the
+- [x] Update `differences-from-beancount.md` whenever a directive is added.
+- [x] Keep the user documentation and the CLI `--help` in sync with the
   actual feature set.
-- [ ] Keep `AGENTS.md` aligned with the public API of the crates.
+- [x] Keep `AGENTS.md` aligned with the public API of the crates.
 
 ### 0.2 — Type the diagnostic codes
 

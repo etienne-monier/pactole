@@ -55,6 +55,6 @@ conversion via `into_result`, and the consistency between
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — the role of
+- [`../../AGENTS.md`](../../AGENTS.md) — the role of
   `pactole-syntax` in the tolerant/positioned flow and its boundaries
   with `pactole-storage-fs` and `pactole-lsp`.

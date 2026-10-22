@@ -6,10 +6,10 @@ Command-line interface of Pactole: the `pactole` binary.
 
 Built with `clap` (derive), this crate exposes the features of
 `pactole-core`/`pactole-storage-fs`. Formatting and `parse` use the
-**strict** flow (see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3.1):
-all or nothing. `check` and `register` use the positioned multi-file analysis
-(§3.2) so that diagnostics from included files keep their provenance, while
-`check` still fails on any error-severity diagnostic.
+**strict** flow (see [`../../AGENTS.md`](../../AGENTS.md)): all or nothing.
+`check` and `register` use the positioned multi-file analysis so that
+diagnostics from included files keep their provenance, while `check` still
+fails on any error-severity diagnostic.
 
 Note that the Cargo package is named `pactole-cli`, but the produced
 binary is named `pactole` (see the `[[bin]]` of `Cargo.toml`), so that
@@ -78,8 +78,8 @@ rather than in `main.rs`.
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3.1 and §6 — strict
-  flow and command details.
+- [`../../AGENTS.md`](../../AGENTS.md) — strict flow and command
+  details.
 - [`../../GRAMMAR.md`](../../GRAMMAR.md) — the `.pactole` language
   specification handled by these commands.
 - [`../../README.md`](../../README.md) — installation and usage guide

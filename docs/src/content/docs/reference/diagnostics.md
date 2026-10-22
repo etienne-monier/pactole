@@ -2,7 +2,7 @@
 title: Diagnostics and project analysis
 description: How Pactole analyzes files, resolves includes and reports diagnostics.
 sidebar:
-  order: 4
+  order: 5
 ---
 
 Pactole distinguishes four kinds of diagnostics. The distinction matters for
@@ -93,16 +93,39 @@ The following include codes are stable in CLI and LSP output:
 `pactole check` fails on errors and accepts warnings by default. Use
 `pactole check --strict` when warnings must also fail, for example in CI.
 
-## Business diagnostic severities
+## Diagnostic codes
 
-Every business code is an error except the two checks below, whose severity
-is configurable with the `[validation]` section of `pactole.toml` (and with
-the LSP `validation` initialization option). Each level accepts `off` (never
+Every diagnostic carries a stable code, printed by the CLI and by the
+language server.
+
+### Syntax and lowering
+
+| Code | Meaning |
+|---|---|
+| `syntax-error` | The tolerant Tree-sitter parser found an `ERROR` or a `MISSING` node. |
+| `lowering-error` | A syntactically recognizable directive could not be converted into a domain entry. |
+
+### Business
+
+Business codes are errors, except the two configurable checks — the
+undeclared-payee check and the unused-declaration checks — whose severity is
+set with the `[validation]` section of `pactole.toml` (and with the LSP
+`validation` initialization option). Each level accepts `off` (never
 reported), `warn` (reported as a warning) or `error` (blocking).
 
 | Code | Level key | Default | Meaning |
 |---|---|---|---|
+| `account-already-open` | — | error | An account is opened while it is already open. |
+| `account-not-open` | — | error | An account is used, or closed, while it is not open. |
+| `commodity-already-declared` | — | error | A commodity is declared more than once. |
+| `commodity-not-declared` | — | error | A commodity is used before being declared. |
+| `payee-already-declared` | — | error | A payee is declared more than once. |
 | `payee-not-declared` | `payee` | error | A transaction uses a payee with no `payee` declaration. |
+| `too-many-postings-without-amount` | — | error | More than one posting of a transaction omits its amount; at most one may omit it, so that it can be inferred. |
+| `ambiguous-auto-balance-commodity` | — | error | The commodity of the inferred amount cannot be determined from the other postings. |
+| `transaction-not-balanced` | — | error | The postings of a transaction do not sum to zero for a commodity. |
+| `commodity-not-allowed` | — | error | A posting uses a commodity excluded by the account's `open` restriction. |
+| `balance-assertion-failed` | — | error | A `balance` assertion differs from the computed balance beyond its tolerance. |
 | `account-unused` | `unused` | warn | An account is opened but neither a transaction nor a balance assertion uses it. |
 | `commodity-unused` | `unused` | warn | A commodity is declared but no amount uses it, and no `open` restricts an account to it. |
 | `payee-unused` | `unused` | warn | A payee is declared but no transaction uses it. |

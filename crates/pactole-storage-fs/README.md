@@ -8,7 +8,7 @@ tolerant multi-file analysis for tooling.
 `pactole-storage-fs` is the only junction between the syntactic world
 (tree-sitter / `pactole-syntax`) and the domain world (`pactole-core`).
 It exposes two distinct flows (see
-[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §3 for details):
+[`../../AGENTS.md`](../../AGENTS.md) for details):
 
 - a **strict flow**, historical and unchanged, all-or-nothing: file read
   → parsing → a single flattened `pactole_core::Journal` (included files
@@ -41,9 +41,10 @@ Re-exported from `src/lib.rs`:
   - `analyze_file_with_loader(entry_path, loader: &dyn SourceLoader) -> Result<AnalyzedProject, ...>`
     — follows `include`s recursively through a `SourceLoader`, producing
     an `AnalyzedProject` (each file keeping its own
-    `AnalyzedFile { path, file }`) and a list of `IncludeIssue`s for
-    inclusion problems (unresolvable path, cycle, unloadable target) —
-    never a global failure, unless `entry_path` itself cannot be loaded.
+    `AnalyzedFile { path, file }`) and reporting inclusion problems
+    (unresolvable path, cycle, unloadable target) as positioned
+    diagnostics — never a global failure, unless `entry_path` itself
+    cannot be loaded.
   - `analyze_file_with_loader_with_options(entry_path, loader, &ValidationOptions)`:
     the configurable variant, giving the payee check and the unused-declaration
     checks (`payee-unused`, `account-unused`, `commodity-unused`) the severity
@@ -95,8 +96,9 @@ Add parsing/formatting unit tests in this crate (see `parser.rs`,
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — strict vs tolerant
-  flow, multi-file resolution, roadmap (notably the positioned business
-  diagnostics, still missing from this crate).
+- [`../../AGENTS.md`](../../AGENTS.md) — strict vs tolerant
+  flow, multi-file resolution, and the crate boundaries they respect.
+- [`../../ROADMAP.md`](../../ROADMAP.md) — the planned work, notably the
+  typed diagnostic codes and the partial analyses.
 - [`../../GRAMMAR.md`](../../GRAMMAR.md) — the `.pactole` language
   specification that `parser.rs`/`printer.rs`/`analysis.rs` interpret.

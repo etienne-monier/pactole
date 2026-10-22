@@ -133,7 +133,7 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
 Document symbols (`textDocument/documentSymbol`), formatting via LSP (use
 `pactole fmt`) and incremental sync. Any unhandled request receives a
 `MethodNotFound` error rather than being silently ignored.
-See the roadmap in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §10
+See the roadmap in [`../../ROADMAP.md`](../../ROADMAP.md)
 for the planned status of these items.
 
 ## Client-side configuration
@@ -252,8 +252,9 @@ checking the announced `serverInfo`.
 
 ## See also
 
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §5 — full
-  description of the current LSP, its limits, and the roadmap (document
-  symbols, LSP formatting, incremental sync).
+- [`../../AGENTS.md`](../../AGENTS.md) — full
+  description of the current LSP and its limits.
+- [`../../ROADMAP.md`](../../ROADMAP.md) — the planned status of the
+  document symbols, LSP formatting and incremental sync.
 - [`../../README.md`](../../README.md#configuration) — the shared
   `pactole.toml` format and layering rules.
