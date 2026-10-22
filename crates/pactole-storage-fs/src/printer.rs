@@ -159,12 +159,20 @@ fn print_transaction(transaction: &Transaction, options: &FormatOptions, out: &m
     }
 
     for posting in &transaction.postings {
-        out.push_str("  ");
-        out.push_str(posting.account.as_str());
+        // Align on the current line only: `out` holds everything printed so
+        // far, so its length cannot be used to pad the amount.
+        let mut line = String::new();
+        line.push_str(posting.account.as_str());
         if let Some(amount) = &posting.amount {
             let rendered_amount = format!("{} {}", amount.number, amount.commodity);
-            append_aligned_amount(out, &rendered_amount, options.posting_width);
+            append_aligned_amount(
+                &mut line,
+                &rendered_amount,
+                options.posting_width.saturating_sub(2),
+            );
         }
+        out.push_str("  ");
+        out.push_str(&line);
         out.push('\n');
 
         for (key, value) in &posting.meta {
@@ -715,6 +723,50 @@ mod tests {
             entries[0].entry,
             pactole_core::Entry::Transaction(transaction)
         );
+    }
+
+    #[test]
+    fn format_transactions_aligns_amounts_on_every_line() {
+        use chrono::NaiveDate;
+        use pactole_core::{
+            AccountName, Amount, CommodityName, Metadata, Posting, Transaction, TransactionStatus,
+        };
+        use rust_decimal::Decimal;
+
+        let transaction = |account: &str, number: &str| Transaction {
+            date: NaiveDate::from_ymd_opt(2026, 9, 3).unwrap(),
+            effective_date: None,
+            status: TransactionStatus::Cleared,
+            payee: Some("Carrefour".to_string()),
+            narration: Some("Courses".to_string()),
+            postings: vec![Posting {
+                account: AccountName::new(account).unwrap(),
+                amount: Some(Amount {
+                    number: number.parse::<Decimal>().unwrap(),
+                    commodity: CommodityName::new("EUR").unwrap(),
+                }),
+                meta: Metadata::new(),
+            }],
+            tags: Vec::new(),
+            links: Vec::new(),
+            reference: None,
+            meta: Metadata::new(),
+        };
+
+        let transactions = vec![
+            transaction("Depenses:Alimentation", "45.30"),
+            transaction("Actifs:Banque", "-45.30"),
+        ];
+
+        let source = super::format_transactions(&transactions);
+
+        // Every posting line is padded to the configured posting width, in
+        // every transaction, not only in the first line of the output.
+        for line in source.lines().filter(|line| line.starts_with("  ")) {
+            assert_eq!(line.len(), 50, "unaligned posting: {line:?}");
+        }
+        // The serializer's output is already canonical.
+        assert_eq!(format(&source).unwrap(), source);
     }
 
     #[test]

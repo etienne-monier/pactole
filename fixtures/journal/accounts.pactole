@@ -1,0 +1,15 @@
+2026-01-01 open Actifs:Compte-Joint
+  description: "Compte courant"
+2026-01-01 open Actifs:Livret
+  description: "Livret d'epargne"
+2026-01-01 open Actifs:Epargne-USD USD
+  description: "Compte en dollars"
+2026-01-01 open Capitaux:Ouverture
+2026-01-02 close Capitaux:Ouverture
+2026-01-01 open Revenus:Salaire
+2026-01-01 open Revenus:Interets
+2026-01-01 open Depenses:Logement
+2026-01-01 open Depenses:Alimentation
+2026-01-01 open Depenses:Transport
+2026-01-01 open Depenses:Voyage USD
+2026-01-01 open Impots:Revenu

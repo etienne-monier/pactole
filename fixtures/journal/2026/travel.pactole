@@ -1,0 +1,18 @@
+; Dollar account: an opening balance, then a short trip in February.
+;
+; Every transaction balances within a single commodity: cross-currency
+; conversions are not supported yet (see the roadmap).
+
+2026-01-01 * "Ouverture" "Solde d'ouverture"
+  Actifs:Epargne-USD                   1000.00 USD
+  Capitaux:Ouverture                  -1000.00 USD
+
+2026-02-16 * "Hôtel du Port" "Deux nuits"
+  Depenses:Voyage                       240.00 USD
+  Actifs:Epargne-USD                   -240.00 USD
+
+2026-02-18 * "Bistro du Port" "Dîner"
+  Depenses:Voyage                        36.50 USD
+  Actifs:Epargne-USD                    -36.50 USD
+
+2026-03-31 balance Actifs:Epargne-USD 723.50 USD

@@ -666,6 +666,21 @@ fn write_import_temp(name: &str, content: impl AsRef<[u8]>) -> std::path::PathBu
     path
 }
 
+/// Asserts that `stdout` contains a posting line for `account` whose amount is
+/// `amount`, regardless of the alignment padding in front of the amount.
+fn assert_posting(stdout: &str, account: &str, amount: &str) {
+    let mut expected = vec![account];
+    expected.extend(amount.split_whitespace());
+    let found = stdout.lines().any(|line| {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        fields == expected
+    });
+    assert!(
+        found,
+        "no posting `{account} {amount}` in stdout:\n{stdout}"
+    );
+}
+
 #[test]
 fn import_ofx_prints_transactions_to_stdout() {
     let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
@@ -694,13 +709,13 @@ fn import_ofx_prints_transactions_to_stdout() {
 
     // The matched rule overrides the payee and picks the counter account.
     assert!(stdout.contains("2026-09-03 * \"Carrefour\" \"Courses\""));
-    assert!(stdout.contains("Depenses:Alimentation 45.30 EUR"));
+    assert_posting(&stdout, "Depenses:Alimentation", "45.30 EUR");
     // The second transaction falls back to the default counter account.
     assert!(stdout.contains("2026-09-05 * \"ACME CORP\" \"Salary\""));
-    assert!(stdout.contains("Depenses:A-Classer -2000.00 EUR"));
+    assert_posting(&stdout, "Depenses:A-Classer", "-2000.00 EUR");
     // The imported account carries the signed source amount...
-    assert!(stdout.contains("Actifs:Banque -45.30 EUR"));
-    assert!(stdout.contains("Actifs:Banque 2000.00 EUR"));
+    assert_posting(&stdout, "Actifs:Banque", "-45.30 EUR");
+    assert_posting(&stdout, "Actifs:Banque", "2000.00 EUR");
     // ... and each transaction keeps its FITID for idempotent re-imports.
     assert!(stdout.contains("fitid: 2026090300001"));
     assert!(stdout.contains("fitid: 2026090500002"));
@@ -736,8 +751,8 @@ fn import_ofx_maps_the_statement_account_through_the_configuration() {
     // Both transactions are posted to the account mapped from the
     // statement's ACCTID rather than to `bank_account`.
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Actifs:Courant -45.30 EUR"));
-    assert!(stdout.contains("Actifs:Courant 2000.00 EUR"));
+    assert_posting(&stdout, "Actifs:Courant", "-45.30 EUR");
+    assert_posting(&stdout, "Actifs:Courant", "2000.00 EUR");
     assert!(!stdout.contains("Actifs:Banque"));
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -770,8 +785,8 @@ fn import_ofx_warns_and_falls_back_for_an_unmapped_statement_account() {
 
     // The import still succeeds: transactions fall back to `bank_account`.
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Actifs:Banque -45.30 EUR"));
-    assert!(stdout.contains("Actifs:Banque 2000.00 EUR"));
+    assert_posting(&stdout, "Actifs:Banque", "-45.30 EUR");
+    assert_posting(&stdout, "Actifs:Banque", "2000.00 EUR");
 
     // A single warning names the unmapped statement account.
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -808,8 +823,8 @@ fn import_ofx_account_flag_overrides_the_configuration() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Actifs:Epargne -45.30 EUR"));
-    assert!(stdout.contains("Actifs:Epargne 2000.00 EUR"));
+    assert_posting(&stdout, "Actifs:Epargne", "-45.30 EUR");
+    assert_posting(&stdout, "Actifs:Epargne", "2000.00 EUR");
     assert!(!stdout.contains("Actifs:Banque"));
     assert!(!stdout.contains("Actifs:Courant"));
 
@@ -966,7 +981,7 @@ fn import_ofx_decodes_windows_1252_sources() {
         stdout.contains("2026-10-10 * \"CAFÉ LÉON\" \"Croissants à la boulangerie\""),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("Depenses:A-Classer 12.50 EUR"));
+    assert_posting(&stdout, "Depenses:A-Classer", "12.50 EUR");
 }
 
 #[test]

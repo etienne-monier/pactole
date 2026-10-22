@@ -1,0 +1,15 @@
+2026-01-10 * "Supermarché" "Courses"
+  Actifs:Compte-Joint                   -84.30 EUR
+  Depenses:Alimentation                  84.30 EUR
+
+; The payee is not declared: the check still runs even though the project is
+; partial, because a lost directive cannot have used this payee.
+2026-01-12 * "Boulangerie" "Pain"
+  Actifs:Compte-Joint                    -4.20 EUR
+  Depenses:Alimentation                   4.20 EUR
+
+; `Actifs:Carte` is not open anywhere the analysis could see, but the lost
+; `open` of broken.pactole may have opened it: the check is suppressed.
+2026-01-20 * "Supermarché" "Carte"
+  Actifs:Carte                          -12.00 EUR
+  Depenses:Alimentation                  12.00 EUR

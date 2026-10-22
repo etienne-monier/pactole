@@ -284,6 +284,13 @@ pub fn analyze_file(source: &str) -> ParsedFile {
     {
         let mut cursor = document.root_node().walk();
         for child in document.root_node().named_children(&mut cursor) {
+            // A top-level comment is not a directive: it names no account,
+            // commodity nor payee, so nothing is lost when it is not lowered.
+            // Counting it as a lost directive would report a spurious
+            // `analysis-incomplete` warning on every commented file.
+            if child.kind() == "comment" {
+                continue;
+            }
             if child.kind() != "directive" {
                 // The parser could not make sense of this part of the file:
                 // its content is unknown, so the names it mentions may have
@@ -2030,6 +2037,39 @@ mod tests {
 
         assert!(!project.is_partial());
         assert!(project.partial().is_none());
+    }
+
+    #[test]
+    fn a_top_level_comment_is_not_a_lost_directive() {
+        // A comment is not a directive: it declares and uses nothing, so a
+        // commented file must not be reported as incomplete.
+        let file = analyze_file(
+            "; an example journal\n\
+             ; spanning several lines\n\
+             2026-01-01 open Assets:Checking\n",
+        );
+
+        assert_eq!(file.lost_directives(), 0);
+    }
+
+    #[test]
+    fn a_commented_project_is_not_partial() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "; included on purpose\n\
+             include \"other.pactole\"\n",
+        );
+        loader.insert("/journal/other.pactole", "; just a comment\n");
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+
+        assert!(
+            !project.is_partial(),
+            "unexpected losses: {:?}",
+            project.partial()
+        );
     }
 
     #[test]

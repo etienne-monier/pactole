@@ -1,0 +1,9 @@
+; A project where one file is broken and the other files are valid.
+;
+; Used by the partial-analysis tests: the business diagnostics of the
+; valid files must still be reported, and the checks that depend on the
+; missing content must be suppressed.
+
+include "declarations.pactole"
+include "valid.pactole"
+include "broken.pactole"

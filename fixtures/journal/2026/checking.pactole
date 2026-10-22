@@ -1,0 +1,82 @@
+; Current account statement, January to March 2026.
+
+2026-01-05 * "Employeur" "Salaire de janvier"
+  fitid: "BANK-2026-01-0001"
+  Actifs:Compte-Joint                  3200.00 EUR
+  Revenus:Salaire                     -3200.00 EUR
+
+2026-01-05 * "Bailleur" "Loyer de janvier"
+  fitid: "BANK-2026-01-0002"
+  Actifs:Compte-Joint                  -950.00 EUR
+  Depenses:Logement                     950.00 EUR
+
+2026-01-07 * "Supermarché" "Courses de la semaine"
+  fitid: "BANK-2026-01-0003"
+  Actifs:Compte-Joint                   -84.30 EUR
+  Depenses:Alimentation                  84.30 EUR
+
+2026-01-08 * "Réseau de Transport" "Abonnement mensuel"
+  fitid: "BANK-2026-01-0004"
+  Actifs:Compte-Joint                   -75.00 EUR
+  Depenses:Transport                     75.00 EUR
+
+2026-01-15 * "Trésor Public" "Impôt sur le revenu"
+  fitid: "BANK-2026-01-0005"
+  Actifs:Compte-Joint                  -210.00 EUR
+  Impots:Revenu                         210.00 EUR
+
+2026-01-20 ! "Café de la Gare" "Déjeuner"
+  fitid: "BANK-2026-01-0006"
+  Actifs:Compte-Joint                   -12.40 EUR
+  Depenses:Alimentation                  12.40 EUR
+
+2026-01-31 balance Actifs:Compte-Joint 1368.30 ~ 0.01 EUR
+
+2026-02-05 * "Employeur" "Salaire de février"
+  fitid: "BANK-2026-02-0001"
+  Actifs:Compte-Joint                  3200.00 EUR
+  Revenus:Salaire                     -3200.00 EUR
+
+2026-02-05 * "Bailleur" "Loyer de février"
+  fitid: "BANK-2026-02-0002"
+  Actifs:Compte-Joint                  -950.00 EUR
+  Depenses:Logement                     950.00 EUR
+
+2026-02-07 * "Supermarché" "Courses de la semaine"
+  fitid: "BANK-2026-02-0003"
+  Actifs:Compte-Joint                   -91.75 EUR
+  Depenses:Alimentation                  91.75 EUR
+
+2026-02-08 * "Réseau de Transport" "Abonnement mensuel"
+  fitid: "BANK-2026-02-0004"
+  Actifs:Compte-Joint                   -75.00 EUR
+  Depenses:Transport                     75.00 EUR
+
+2026-02-20 ? "Café de la Gare" "Déjeuner"
+  fitid: "BANK-2026-02-0005"
+  Actifs:Compte-Joint                    -9.80 EUR
+  Depenses:Alimentation                   9.80 EUR
+
+2026-02-28 balance Actifs:Compte-Joint 2941.75 ~ 0.01 EUR
+
+2026-03-05 * "Employeur" "Salaire de mars"
+  fitid: "BANK-2026-03-0001"
+  Actifs:Compte-Joint                  3200.00 EUR
+  Revenus:Salaire                     -3200.00 EUR
+
+2026-03-05 * "Bailleur" "Loyer de mars"
+  fitid: "BANK-2026-03-0002"
+  Actifs:Compte-Joint                  -950.00 EUR
+  Depenses:Logement                     950.00 EUR
+
+2026-03-07 * "Supermarché" "Courses de la semaine"
+  fitid: "BANK-2026-03-0003"
+  Actifs:Compte-Joint                   -78.20 EUR
+  Depenses:Alimentation                  78.20 EUR
+
+2026-03-08 * "Réseau de Transport" "Abonnement mensuel"
+  fitid: "BANK-2026-03-0004"
+  Actifs:Compte-Joint                   -75.00 EUR
+  Depenses:Transport                     75.00 EUR
+
+2026-03-31 balance Actifs:Compte-Joint 4538.55 ~ 0.01 EUR

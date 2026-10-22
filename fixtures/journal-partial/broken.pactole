@@ -1,0 +1,9 @@
+; A project where part of one file cannot be analyzed and the other files
+; are valid.
+;
+; The first directive has an impossible calendar date (a lowering error);
+; the second is missing its account (a syntax error). Both are lost, so the
+; business checks that depend on what they may have declared are skipped.
+
+2026-13-45 open Actifs:Carte
+2026-01-15 open

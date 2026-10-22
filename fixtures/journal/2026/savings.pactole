@@ -1,0 +1,32 @@
+; Savings account: a monthly transfer, quarterly interest and a balance
+; assertion at the end of each month.
+
+2026-01-10 * "Banque" "Virement epargne janvier"
+  Actifs:Livret                         500.00 EUR
+  Actifs:Compte-Joint                  -500.00 EUR
+
+2026-01-28 * "Banque" "Interets du livret"
+  Actifs:Livret                           4.17 EUR
+  Revenus:Interets                       -4.17 EUR
+
+2026-01-31 balance Actifs:Livret 504.17 ~ 0.01 EUR
+
+2026-02-10 * "Banque" "Virement epargne fevrier"
+  Actifs:Livret                         500.00 EUR
+  Actifs:Compte-Joint                  -500.00 EUR
+
+2026-02-25 * "Banque" "Interets du livret"
+  Actifs:Livret                           4.21 EUR
+  Revenus:Interets                       -4.21 EUR
+
+2026-02-28 balance Actifs:Livret 1008.38 ~ 0.01 EUR
+
+2026-03-10 * "Banque" "Virement epargne mars"
+  Actifs:Livret                         500.00 EUR
+  Actifs:Compte-Joint                  -500.00 EUR
+
+2026-03-28 * "Banque" "Interets du livret"
+  Actifs:Livret                           4.25 EUR
+  Revenus:Interets                       -4.25 EUR
+
+2026-03-31 balance Actifs:Livret 1512.63 ~ 0.01 EUR

@@ -1,0 +1,15 @@
+; Example journal used by the Pactole test suite.
+;
+; It mixes two currencies (EUR and USD), a current account, a savings
+; account, a salary, a rent and a few everyday expenses, spread across
+; several files tied together by `include` directives.
+;
+; The whole project is expected to validate without a single diagnostic,
+; and to already be in canonical form (`pactole fmt` is a no-op).
+
+include "commodities.pactole"
+include "accounts.pactole"
+include "payees.pactole"
+include "2026/checking.pactole"
+include "2026/savings.pactole"
+include "2026/travel.pactole"
