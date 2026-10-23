@@ -419,7 +419,12 @@ fn parse_date(value: i64) -> Result<NaiveDate, ImportError> {
 }
 
 fn amount(value: i64) -> Decimal {
-    Decimal::from(value)
+    // Actual stores transaction amounts as integer minor units (cents for
+    // the currencies supported by this migration), while Pactole amounts are
+    // expressed in the currency's major unit. Keep the conversion in one
+    // place so opening balances, regular transactions, splits and transfers
+    // all use the same scale.
+    Decimal::new(value, 2)
 }
 
 fn posting(account: AccountName, number: Decimal, commodity: &CommodityName) -> Posting {
@@ -475,4 +480,17 @@ pub fn parse_actual_database(filepath: &Path) -> Result<(), ImportError> {
         None,
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::amount;
+    use rust_decimal::Decimal;
+
+    #[test]
+    fn converts_actual_minor_units_to_currency_units() {
+        assert_eq!(amount(1_000), Decimal::new(10, 0));
+        assert_eq!(amount(-1_050), Decimal::new(-105, 1));
+        assert_eq!(amount(0), Decimal::ZERO);
+    }
 }
