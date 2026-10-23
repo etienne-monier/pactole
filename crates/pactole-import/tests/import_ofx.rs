@@ -18,6 +18,7 @@ fn base_config() -> ImportConfig {
         accounts: BTreeMap::new(),
         currency: None,
         default_counter_account: "Depenses:A-Classer".to_string(),
+        payee_metadata_key: None,
         rules: Vec::new(),
     }
 }
@@ -280,16 +281,28 @@ fn applies_the_first_matching_rule() {
         rules: vec![
             Rule {
                 payee_contains: Some("carrefour".to_string()),
+                payee_in: None,
+                payee_regex: None,
                 memo_contains: None,
+                memo_in: None,
+                memo_regex: None,
                 trntype: None,
+                trntype_in: None,
+                account: None,
                 direction: None,
                 counter_account: "Depenses:Alimentation".to_string(),
                 payee: Some("Carrefour".to_string()),
             },
             Rule {
                 payee_contains: None,
+                payee_in: None,
+                payee_regex: None,
                 memo_contains: None,
+                memo_in: None,
+                memo_regex: None,
                 trntype: None,
+                trntype_in: None,
+                account: None,
                 direction: Some(Direction::Credit),
                 counter_account: "Revenus:Salaire".to_string(),
                 payee: None,
@@ -310,6 +323,44 @@ fn applies_the_first_matching_rule() {
     let salary = &outcome.transactions[1];
     assert_eq!(salary.postings[0].account.as_str(), "Revenus:Salaire");
     assert_eq!(salary.payee.as_deref(), Some("ACME CORP"));
+}
+
+#[test]
+fn applies_regex_list_and_account_rules_and_preserves_source_payee() {
+    let config = ImportConfig {
+        payee_metadata_key: Some("imported-payee".to_string()),
+        rules: vec![Rule {
+            payee_contains: None,
+            payee_in: Some(vec!["CARREFOUR".to_string()]),
+            payee_regex: Some("^carre".to_string()),
+            memo_contains: None,
+            memo_in: None,
+            memo_regex: None,
+            trntype: None,
+            trntype_in: None,
+            account: Some("00012345678".to_string()),
+            direction: None,
+            counter_account: "Depenses:Alimentation".to_string(),
+            payee: Some("Carrefour".to_string()),
+        }],
+        ..base_config()
+    };
+
+    let outcome = pactole_import::import_ofx(XML, &config, &no_fitids()).unwrap();
+    let groceries = &outcome.transactions[0];
+    assert_eq!(groceries.payee.as_deref(), Some("Carrefour"));
+    assert_eq!(
+        groceries.meta.get("imported-payee").map(String::as_str),
+        Some("CARREFOUR")
+    );
+    assert_eq!(
+        groceries.postings[0].account.as_str(),
+        "Depenses:Alimentation"
+    );
+    assert_eq!(
+        outcome.transactions[1].postings[0].account.as_str(),
+        "Depenses:A-Classer"
+    );
 }
 
 #[test]

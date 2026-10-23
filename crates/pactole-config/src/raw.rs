@@ -63,6 +63,8 @@ pub(crate) struct RawImport {
     pub(crate) accounts: Option<BTreeMap<String, String>>,
     pub(crate) currency: Option<String>,
     pub(crate) default_counter_account: Option<String>,
+    #[serde(default)]
+    pub(crate) payee_metadata_key: Option<String>,
     /// Rules are replaced in block by the highest-precedence layer that
     /// defines them, never merged element-wise.
     pub(crate) rules: Option<Vec<RawRule>>,
@@ -75,9 +77,21 @@ pub(crate) struct RawRule {
     #[serde(default)]
     pub(crate) payee_contains: Option<String>,
     #[serde(default)]
+    pub(crate) payee_in: Option<Vec<String>>,
+    #[serde(default)]
+    pub(crate) payee_regex: Option<String>,
+    #[serde(default)]
     pub(crate) memo_contains: Option<String>,
     #[serde(default)]
+    pub(crate) memo_in: Option<Vec<String>>,
+    #[serde(default)]
+    pub(crate) memo_regex: Option<String>,
+    #[serde(default)]
     pub(crate) trntype: Option<String>,
+    #[serde(default)]
+    pub(crate) trntype_in: Option<Vec<String>>,
+    #[serde(default)]
+    pub(crate) account: Option<String>,
     #[serde(default)]
     pub(crate) direction: Option<RawDirection>,
     pub(crate) counter_account: String,
@@ -164,6 +178,9 @@ impl RawFile {
             }
             if let Some(counter) = import.default_counter_account {
                 target.default_counter_account = Some(counter);
+            }
+            if let Some(key) = import.payee_metadata_key {
+                target.payee_metadata_key = Some(key);
             }
             if let Some(rules) = import.rules {
                 target.rules = Some(rules);

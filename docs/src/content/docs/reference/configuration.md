@@ -162,6 +162,7 @@ fails with a clear message when no layer defines this section.
 | `currency` | The fallback commodity, used when a source transaction carries no currency of its own. |
 | `default_counter_account` | The counter account of the transactions that no rule matches (e.g. `Expenses:To-Be-Classified`). Required. |
 | `accounts` | A table mapping a source account identifier (for OFX, the statement's `ACCTID`) to a Pactole account. |
+| `payee_metadata_key` | Optional metadata key under which the original source payee is preserved, even when a rule replaces the displayed payee. |
 
 ```toml
 [import]
@@ -186,8 +187,14 @@ Rules categorize the imported transactions. They are evaluated in order and
 |---|---|
 | `counter_account` | The Pactole account to post the opposite side to. Required. |
 | `payee_contains` | Matches, case-insensitively, a substring of the source payee or name. |
+| `payee_in` | Matches the source payee exactly against a case-insensitive list. |
+| `payee_regex` | Matches the source payee with a case-insensitive regular expression. |
 | `memo_contains` | Matches, case-insensitively, a substring of the source memo. |
+| `memo_in` | Matches the source memo exactly against a case-insensitive list. |
+| `memo_regex` | Matches the source memo with a case-insensitive regular expression. |
 | `trntype` | Matches the source transaction type exactly, case-insensitively (e.g. `DEBIT`, `POS`, `XFER`). |
+| `trntype_in` | Matches the source transaction type against a case-insensitive list. |
+| `account` | Matches the source account identifier, such as an OFX `ACCTID`. |
 | `direction` | Matches the direction of the movement: `debit` (money leaving the account) or `credit` (money entering it). |
 | `payee` | The canonical payee to use instead of the raw source payee. |
 
@@ -200,6 +207,11 @@ after the more specific rules.
 payee_contains = "carrefour"
 counter_account = "Expenses:Groceries"
 payee = "Carrefour"
+
+[[import.rules]]
+payee_regex = "^(carrefour|auchan)"
+memo_in = ["Courses", "Alimentation"]
+counter_account = "Expenses:Groceries"
 
 [[import.rules]]
 trntype = "POS"

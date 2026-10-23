@@ -380,6 +380,7 @@ fn resolve_import(
         accounts: import.accounts.clone().unwrap_or_default(),
         currency: import.currency.clone(),
         default_counter_account,
+        payee_metadata_key: import.payee_metadata_key.clone(),
         rules: import
             .rules
             .as_ref()
@@ -391,8 +392,14 @@ fn resolve_import(
 fn rule_from_raw(rule: &RawRule) -> Rule {
     Rule {
         payee_contains: rule.payee_contains.clone(),
+        payee_in: rule.payee_in.clone(),
+        payee_regex: rule.payee_regex.clone(),
         memo_contains: rule.memo_contains.clone(),
+        memo_in: rule.memo_in.clone(),
+        memo_regex: rule.memo_regex.clone(),
         trntype: rule.trntype.clone(),
+        trntype_in: rule.trntype_in.clone(),
+        account: rule.account.clone(),
         direction: rule.direction.map(|direction| match direction {
             RawDirection::Debit => Direction::Debit,
             RawDirection::Credit => Direction::Credit,

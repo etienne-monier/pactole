@@ -69,4 +69,13 @@ pub enum ImportError {
     /// An Actual Budget rule could not be decoded or compiled.
     #[error("invalid Actual Budget rule: {0}")]
     ActualRule(String),
+
+    /// A configured import rule contains an invalid regular expression.
+    #[error("invalid import rule regex `{pattern}`: {message}")]
+    InvalidRuleRegex {
+        /// The configured regular expression.
+        pattern: String,
+        /// The regex parser error.
+        message: String,
+    },
 }

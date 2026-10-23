@@ -9,6 +9,7 @@ use crate::ImportWarning;
 use crate::error::ImportError;
 use crate::record::ImportRecord;
 use pactole_config::{Direction, ImportConfig, Rule};
+use regex::Regex;
 
 /// Payee used when a transaction has neither a rule-provided payee nor a
 /// source payee. A transaction's payee is mandatory in Pactole, so a
@@ -69,6 +70,22 @@ pub(crate) fn lower(
     }
 
     let fitid_key = MetadataKey::new("fitid")?;
+    let payee_metadata_key = config
+        .payee_metadata_key
+        .as_deref()
+        .map(|key| MetadataKey::new(key.to_string()))
+        .transpose()?;
+
+    let payee_regexes = config
+        .rules
+        .iter()
+        .map(|rule| compile_regex(rule.payee_regex.as_deref()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let memo_regexes = config
+        .rules
+        .iter()
+        .map(|rule| compile_regex(rule.memo_regex.as_deref()))
+        .collect::<Result<Vec<_>, _>>()?;
 
     let mut transactions = Vec::with_capacity(records.len());
     let mut warnings = Vec::new();
@@ -101,10 +118,14 @@ pub(crate) fn lower(
         };
 
         // Locate a matching rule
-        let rule_index = config
-            .rules
-            .iter()
-            .position(|rule| matches_rule(rule, &record));
+        let rule_index = config.rules.iter().enumerate().position(|(index, rule)| {
+            matches_rule(
+                rule,
+                &record,
+                payee_regexes[index].as_ref(),
+                memo_regexes[index].as_ref(),
+            )
+        });
 
         // Evaluate the counter account
         // Rule counter account, or default from config
@@ -147,6 +168,9 @@ pub(crate) fn lower(
         if let Some(fitid) = &record.fitid {
             meta.insert(fitid_key.clone(), fitid.clone());
         }
+        if let (Some(key), Some(payee)) = (&payee_metadata_key, &record.payee) {
+            meta.insert(key.clone(), payee.clone());
+        }
 
         let counter_posting = Posting {
             account: counter_account,
@@ -186,12 +210,31 @@ pub(crate) fn lower(
 /// Returns `true` when every criterion present in `rule` matches `record`.
 ///
 /// A rule with no criteria matches every record.
-fn matches_rule(rule: &Rule, record: &ImportRecord) -> bool {
+fn matches_rule(
+    rule: &Rule,
+    record: &ImportRecord,
+    payee_regex: Option<&Regex>,
+    memo_regex: Option<&Regex>,
+) -> bool {
     if let Some(needle) = &rule.payee_contains {
         let haystack = record.payee.as_deref().unwrap_or("");
         if !contains_ignore_case(haystack, needle) {
             return false;
         }
+    }
+
+    if let Some(values) = &rule.payee_in
+        && !values
+            .iter()
+            .any(|value| equals_ignore_case(record.payee.as_deref().unwrap_or(""), value))
+    {
+        return false;
+    }
+
+    if let Some(regex) = payee_regex
+        && !regex.is_match(record.payee.as_deref().unwrap_or(""))
+    {
+        return false;
     }
 
     if let Some(needle) = &rule.memo_contains {
@@ -201,11 +244,39 @@ fn matches_rule(rule: &Rule, record: &ImportRecord) -> bool {
         }
     }
 
+    if let Some(values) = &rule.memo_in
+        && !values
+            .iter()
+            .any(|value| equals_ignore_case(record.memo.as_deref().unwrap_or(""), value))
+    {
+        return false;
+    }
+
+    if let Some(regex) = memo_regex
+        && !regex.is_match(record.memo.as_deref().unwrap_or(""))
+    {
+        return false;
+    }
+
     if let Some(expected) = &rule.trntype {
         let actual = record.transaction_type.as_deref().unwrap_or("");
         if !actual.eq_ignore_ascii_case(expected) {
             return false;
         }
+    }
+
+    if let Some(values) = &rule.trntype_in
+        && !values.iter().any(|value| {
+            equals_ignore_case(record.transaction_type.as_deref().unwrap_or(""), value)
+        })
+    {
+        return false;
+    }
+
+    if let Some(account) = &rule.account
+        && !equals_ignore_case(record.account_id.as_deref().unwrap_or(""), account)
+    {
+        return false;
     }
 
     if let Some(expected) = rule.direction
@@ -232,4 +303,22 @@ fn direction_of(amount: &rust_decimal::Decimal) -> Direction {
 /// accented merchant names match regardless of case.
 fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
     haystack.to_lowercase().contains(&needle.to_lowercase())
+}
+
+fn equals_ignore_case(left: &str, right: &str) -> bool {
+    left.eq_ignore_ascii_case(right)
+}
+
+fn compile_regex(pattern: Option<&str>) -> Result<Option<Regex>, ImportError> {
+    pattern
+        .map(|pattern| {
+            regex::RegexBuilder::new(pattern)
+                .case_insensitive(true)
+                .build()
+                .map_err(|error| ImportError::InvalidRuleRegex {
+                    pattern: pattern.to_string(),
+                    message: error.to_string(),
+                })
+        })
+        .transpose()
 }

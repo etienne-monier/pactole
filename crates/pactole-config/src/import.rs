@@ -35,6 +35,11 @@ pub struct ImportConfig {
     /// side of the transaction, to be categorized later.
     pub default_counter_account: String,
 
+    /// When set, keeps the source payee in transaction metadata under this
+    /// key, while `Transaction::payee` may still contain the canonical rule
+    /// payee.
+    pub payee_metadata_key: Option<String>,
+
     /// Rules evaluated in order, first match wins, used to determine the
     /// counter account and optionally the canonical payee of each
     /// transaction.
@@ -52,12 +57,31 @@ pub struct Rule {
     /// Case-insensitive substring matched against the source payee/name.
     pub payee_contains: Option<String>,
 
+    /// Case-insensitive exact match against one of these source payees.
+    pub payee_in: Option<Vec<String>>,
+
+    /// Case-insensitive regular expression matched against the source payee.
+    pub payee_regex: Option<String>,
+
     /// Case-insensitive substring matched against the source memo.
     pub memo_contains: Option<String>,
+
+    /// Case-insensitive exact match against one of these source memos.
+    pub memo_in: Option<Vec<String>>,
+
+    /// Case-insensitive regular expression matched against the source memo.
+    pub memo_regex: Option<String>,
 
     /// Source transaction type to match exactly, case-insensitively (e.g.
     /// `DEBIT`, `POS`, `XFER`).
     pub trntype: Option<String>,
+
+    /// Case-insensitive exact match against one of these transaction types.
+    pub trntype_in: Option<Vec<String>>,
+
+    /// Optional source account identifier to match (for example an OFX
+    /// `ACCTID`).
+    pub account: Option<String>,
 
     /// Direction of the money movement to match.
     pub direction: Option<Direction>,
