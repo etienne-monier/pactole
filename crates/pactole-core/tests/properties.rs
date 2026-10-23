@@ -9,15 +9,25 @@
 
 use chrono::NaiveDate;
 use pactole_core::{
-    AccountName, Amount, Commodity, CommodityName, Entry, Journal, Metadata, Open, Posting,
+    AccountBalances, AccountGrouping, AccountName, Amount, Amounts, Commodity, CommodityName,
+    Entry, Journal, Metadata, Open, Period, Posting, Report, ReportFormat, ReportLine, ReportScope,
     Transaction, TransactionStatus, ValidationError, validate_journal, validate_journal_all,
 };
 use proptest::prelude::*;
 use rust_decimal::Decimal;
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
 
 const ACCOUNTS: [&str; 3] = ["Actifs:Compte", "Actifs:Livret", "Depenses:Logement"];
 const COMMODITIES: [&str; 3] = ["EUR", "USD", "GBP"];
+const REPORT_ACCOUNTS: [&str; 6] = [
+    "Actifs",
+    "Actifs:Banque",
+    "Actifs:Banque:Courant",
+    "Actifs:Banque:Livret",
+    "Depenses:Logement",
+    "Depenses:Logement:Loyer",
+];
 
 fn date() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 1, 2).expect("a valid date")
@@ -317,5 +327,163 @@ proptest! {
             report.journal.entries.iter().filter(|entry| matches!(entry, Entry::Transaction(_))).count(),
             1
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reporting properties
+// ---------------------------------------------------------------------------
+
+/// A date between 2000 and roughly 2055, away from the chrono bounds.
+fn arbitrary_date() -> impl Strategy<Value = NaiveDate> {
+    (0i32..=20_000).prop_map(|days| {
+        NaiveDate::from_num_days_from_ce_opt(days + 730_000).expect("a valid date")
+    })
+}
+
+/// An `(account, commodity, amount)` movement over the reporting accounts.
+fn report_movement() -> impl Strategy<Value = (usize, usize, Decimal)> {
+    (0..REPORT_ACCOUNTS.len(), 0..COMMODITIES.len(), decimal())
+}
+
+fn report_account(index: usize) -> AccountName {
+    AccountName::new(REPORT_ACCOUNTS[index]).expect("a valid account name")
+}
+
+fn add_movement(balances: &mut AccountBalances, movement: &(usize, usize, Decimal)) {
+    let (account_index, commodity_index, number) = movement;
+    balances.add(
+        &report_account(*account_index),
+        &Amount {
+            number: *number,
+            commodity: commodity(*commodity_index),
+        },
+    );
+}
+
+fn totals_by_name(balances: &AccountBalances) -> BTreeMap<String, Decimal> {
+    balances
+        .totals()
+        .iter()
+        .map(|(commodity, number)| (commodity.as_str().to_string(), number))
+        .collect()
+}
+
+fn groupings() -> [AccountGrouping; 4] {
+    [
+        AccountGrouping::Exact,
+        AccountGrouping::Depth(NonZeroUsize::MIN),
+        AccountGrouping::Depth(NonZeroUsize::new(2).expect("a non-zero depth")),
+        AccountGrouping::Full,
+    ]
+}
+
+proptest! {
+    #[test]
+    fn period_contains_exactly_its_inclusive_bounds(
+        start in arbitrary_date(),
+        span in 0u32..=3_650,
+    ) {
+        let end = start + chrono::Duration::days(i64::from(span));
+        let period = Period::new(start, end).expect("start is not after end");
+
+        for offset in -2i64..=i64::from(span) + 2 {
+            let date = start + chrono::Duration::days(offset);
+            prop_assert_eq!(
+                period.contains(date),
+                start <= date && date <= end,
+                "date {} between {} and {}",
+                date,
+                start,
+                end
+            );
+        }
+    }
+
+    #[test]
+    fn as_of_scope_contains_exactly_the_dates_up_to_its_reference(
+        reference in arbitrary_date(),
+        date in arbitrary_date(),
+    ) {
+        prop_assert_eq!(
+            ReportScope::as_of(reference).contains(date),
+            date <= reference
+        );
+    }
+
+    #[test]
+    fn account_grouping_preserves_totals_per_commodity(
+        movements in prop::collection::vec(report_movement(), 0..30),
+    ) {
+        let mut balances = AccountBalances::new();
+        for movement in &movements {
+            add_movement(&mut balances, movement);
+        }
+        let expected = totals_by_name(&balances);
+
+        for grouping in groupings() {
+            let mut summed = Amounts::new();
+            for line in balances.lines(grouping) {
+                // Full lines are cumulative: only the top-level lines form a
+                // partition of the exact balances.
+                if grouping == AccountGrouping::Full && line.depth != 0 {
+                    continue;
+                }
+                summed.merge(&line.amounts);
+            }
+
+            for (name, number) in &expected {
+                let commodity = CommodityName::new(name.clone()).expect("a valid commodity name");
+                prop_assert_eq!(
+                    summed.get(&commodity).unwrap_or_default(),
+                    *number,
+                    "commodity {} with grouping {:?}",
+                    name,
+                    grouping
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn account_aggregation_is_order_independent(
+        movements in prop::collection::vec(report_movement(), 0..30),
+    ) {
+        let mut forward = AccountBalances::new();
+        for movement in &movements {
+            add_movement(&mut forward, movement);
+        }
+        let mut backward = AccountBalances::new();
+        for movement in movements.iter().rev() {
+            add_movement(&mut backward, movement);
+        }
+
+        prop_assert_eq!(forward.totals(), backward.totals());
+        for grouping in groupings() {
+            prop_assert_eq!(forward.lines(grouping), backward.lines(grouping));
+        }
+    }
+
+    #[test]
+    fn json_rendering_is_always_parseable(
+        title in ".*",
+        label in ".*",
+        number in decimal(),
+    ) {
+        let mut amounts = Amounts::new();
+        amounts.add(&Amount {
+            number,
+            commodity: commodity(0),
+        });
+        let report = Report::new(
+            title,
+            ReportScope::as_of(date()),
+            vec![ReportLine::new(label, 0, amounts.clone())],
+            amounts,
+        );
+
+        let rendered = report.render(ReportFormat::Json);
+
+        prop_assert!(serde_json::from_str::<serde_json::Value>(&rendered).is_ok());
     }
 }

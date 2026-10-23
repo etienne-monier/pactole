@@ -758,6 +758,7 @@ dependencies = [
  "chrono",
  "proptest",
  "rust_decimal",
+ "serde_json",
  "thiserror",
 ]
 

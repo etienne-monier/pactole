@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The first layer of the `pactole_core` reporting API. `Period` and
+  `ReferenceDate` describe inclusive reporting bounds, `ReportScope` combines
+  them for stock reports (`AsOf`) and flow reports (`Over`), and `Amounts`
+  represents a multi-commodity total without ever adding commodities
+  together. `AccountBalances`/`AccountGrouping` aggregate signed balances into
+  the exact accounts, a configurable depth or the full prefix hierarchy, and
+  `Report`/`ReportLine` are render-agnostic result structures. The same report
+  can be rendered as aligned text, JSON (decimal amounts as strings to keep
+  their exact precision) or tidy CSV, through `ReportFormat`.
 - Partial analyses: business validation now survives a broken file. When a
   directive cannot be lowered (or a chunk of source cannot be parsed), the
   checks that do not depend on the missing content are still reported, and

@@ -194,14 +194,14 @@ reports on top of it.*
 
 ### 1.1 — Introduce the reporting API
 
-- [ ] Define a `Period` and a reference-date abstraction (inclusive bounds).
-- [ ] Define result structures that do not depend on any text rendering.
-- [ ] Keep the commodity on every report line, and define how a multi-commodity
+- [x] Define a `Period` and a reference-date abstraction (inclusive bounds).
+- [x] Define result structures that do not depend on any text rendering.
+- [x] Keep the commodity on every report line, and define how a multi-commodity
   total is represented.
-- [ ] Aggregate into parent accounts (a configurable depth, or the full prefix
+- [x] Aggregate into parent accounts (a configurable depth, or the full prefix
   hierarchy).
-- [ ] Provide text, JSON and CSV renderings of the same result.
-- [ ] Add tests for inclusive dates, parent accounts, and multiple commodities.
+- [x] Provide text, JSON and CSV renderings of the same result.
+- [x] Add tests for inclusive dates, parent accounts, and multiple commodities.
 
 *Placement: `pactole-core` (pure domain logic). The CLI and any future web
 front-end only render the results.*
