@@ -130,6 +130,32 @@ pub(crate) enum Command {
         write: bool,
     },
 
+    /// Migrate an Actual Budget database into a new `.pactole` journal.
+    ImportActual {
+        /// Path to the Actual Budget sqlite file.
+        file: PathBuf,
+
+        /// Commodity used for every imported amount (for example `EUR`).
+        #[arg(long)]
+        currency: String,
+
+        /// Output journal path. When omitted, the journal is written to stdout.
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+
+        /// Equity account used as the counter-account for opening balances.
+        #[arg(long, default_value = "Equity:Opening")]
+        opening_equity: String,
+
+        /// Date of the explicit opening transaction.
+        #[arg(long, default_value = "1970-01-01")]
+        opening_date: NaiveDate,
+
+        /// Metadata key receiving the original Actual payee, when supplied.
+        #[arg(long, value_name = "KEY")]
+        payee_metadata_key: Option<String>,
+    },
+
     /// Initialize a ledger and, when missing, the `pactole.toml` configuration.
     Init {
         /// Path to the ledger file to create.

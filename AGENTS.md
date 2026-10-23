@@ -384,9 +384,11 @@ pactole/
        falling back to `ImportConfig::bank_account` with an `ImportWarning::UnmappedAccount`
        (emitted once per distinct unmapped identifier, only when a mapping table exists).
      - `error.rs`: `ImportError`.
-   - **Public API**: `import_ofx(source, &config, &HashSet<String>) -> Result<ImportOutcome,
-     ImportError>`, `decode_ofx_source(&[u8]) -> String`, plus `ImportConfig`, `Rule`,
-     `Direction`, `ImportRecord`, `ImportOutcome`, `ImportWarning`, `ImportError`. `import_ofx`
+    - **Public API**: `import_ofx(source, &config, &HashSet<String>) -> Result<ImportOutcome,
+      ImportError>`, `migrate_actual_database(path, currency, opening_equity, opening_date,
+      payee_metadata_key) -> Result<ActualMigration, ImportError>`, `parse_actual_database`,
+      `decode_ofx_source(&[u8]) -> String`, plus `ActualMigration`, `ImportConfig`, `Rule`,
+      `Direction`, `ImportRecord`, `ImportOutcome`, `ImportWarning`, `ImportError`. `import_ofx`
      skips any source transaction whose FITID is
      already in `known_fitids` (reported in `ImportOutcome::skipped`), and stores each produced
      transaction's FITID as `fitid` metadata so a later run can rebuild `known_fitids`.

@@ -313,6 +313,34 @@ running `pactole check`.
 See [Import an OFX bank statement](/how-to/import-ofx-bank-statement/) for the
 configuration format and categorization examples.
 
+## `pactole import-actual`
+
+```text
+pactole import-actual <FILE> --currency <CURRENCY> [--output <PATH>]
+  [--opening-equity <ACCOUNT>] [--opening-date <DATE>]
+  [--payee-metadata-key <KEY>]
+```
+
+Performs a one-shot migration from an Actual Budget SQLite database. Unlike
+`import-ofx`, this command does not append to or deduplicate an existing
+journal, and it does not read the `[import]` configuration: all migration
+options are passed on the command line.
+
+| Option | Description |
+|---|---|
+| `<FILE>` | Actual Budget SQLite database |
+| `--currency <CURRENCY>` | Commodity used by the generated postings (required) |
+| `--output <PATH>` | Output journal; stdout when omitted |
+| `--opening-equity <ACCOUNT>` | Counter-account for opening balances; defaults to `Equity:Opening` |
+| `--opening-date <DATE>` | Date of generated declarations and opening transaction; defaults to `1970-01-01` |
+| `--payee-metadata-key <KEY>` | Also preserve the original Actual payee under this transaction metadata key |
+
+The migration creates account, payee and commodity declarations, an explicit
+opening transaction, multi-posting transactions for Actual splits, and one
+balanced double-entry for each linked transfer. Actual rules using `contains`,
+`matches` (regular expressions) and `oneOf` are applied to imported
+descriptions.
+
 ## Related
 
 - [Configuration reference](/reference/configuration/) — the `pactole.toml`

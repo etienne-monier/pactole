@@ -21,5 +21,8 @@ encoding_rs.workspace = true
 ofx-rs = { version = "0.2.0", git = "https://github.com/etienne-monier/ofx-rs.git", rev = "ec8e9dc620ceb9d7e4aa56bcac19b03bba057dc2" }
 pactole-config.workspace = true
 pactole-core.workspace = true
+regex.workspace = true
+rusqlite = "0.40.2"
+serde_json.workspace = true
 rust_decimal.workspace = true
 thiserror.workspace = true

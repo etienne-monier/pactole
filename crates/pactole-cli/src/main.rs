@@ -4,6 +4,7 @@ mod commands;
 mod config;
 mod diagnostics;
 mod format;
+mod import_actual;
 mod import_ofx;
 mod init;
 mod parse;
@@ -104,6 +105,21 @@ fn main() -> ExitCode {
                 Err(error) => config::failure(error),
             }
         }
+        Command::ImportActual {
+            file,
+            output,
+            currency,
+            opening_equity,
+            opening_date,
+            payee_metadata_key,
+        } => import_actual::run(
+            file,
+            output,
+            currency,
+            opening_equity,
+            opening_date,
+            payee_metadata_key,
+        ),
         Command::Init {
             ledger,
             account,

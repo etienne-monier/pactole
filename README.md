@@ -233,6 +233,23 @@ Generated transactions are a fragment (no `open`/`commodity`/`payee`
 declarations), so `pactole check` on them alone is expected to fail until
 they are merged into a full journal.
 
+## Migrating from Actual Budget
+
+For a one-time migration, use `import-actual`. It creates a new complete
+journal and does not use or modify `pactole.toml`:
+
+```sh
+pactole import-actual actual.sqlite --currency EUR \
+  --opening-date 2026-04-30 --output ledger.pactole \
+  --payee-metadata-key imported-payee
+```
+
+The command generates account, payee and commodity declarations, an explicit
+opening transaction against `Equity:Opening`, multi-posting transactions for
+Actual splits, and balanced entries for transfers. Actual `contains`, regular
+expression (`matches`) and `oneOf` rules are applied to imported descriptions.
+When `--output` is omitted, the generated journal is written to stdout.
+
 ## Configuration
 
 Every command reads a single `pactole.toml`, resolved from lowest to

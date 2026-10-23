@@ -62,4 +62,11 @@ pub enum ImportError {
     /// be built.
     #[error("invalid model value: {0}")]
     Model(#[from] ModelError),
+
+    #[error("error with database: {0}")]
+    ActualDatabaseError(#[from] rusqlite::Error),
+
+    /// An Actual Budget rule could not be decoded or compiled.
+    #[error("invalid Actual Budget rule: {0}")]
+    ActualRule(String),
 }
