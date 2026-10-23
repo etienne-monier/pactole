@@ -32,3 +32,6 @@ serde_json.workspace = true
 # Used directly by `navigation.rs` to locate the CST token under the cursor
 # (`Node::descendant_for_byte_range`); same version as `pactole-syntax`.
 tree-sitter.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
