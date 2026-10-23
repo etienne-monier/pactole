@@ -59,10 +59,11 @@ The main gaps, in order of impact:
 3. **Grammar coverage.** `pad`, `price`, `note`, `document`, tags and
    `custom` are missing, and strings cannot contain a double quote.
 4. **Budgeting.** Nothing exists yet, in any form.
-5. **Debt in the current code.** Two things are known to be unfinished: a
-   syntactically broken file still suspends business validation for the whole
-   project, and diagnostic codes are still free-form strings instead of a
-   typed catalogue. Both are addressed in Phase 0.
+5. **Debt in the current code.** Phase 0 is complete: a broken file no longer
+   suspends business validation for the whole project, diagnostic codes are a
+   typed catalogue, and the test suite pins the partial-analysis, formatting
+   and editor-positioning contracts with realistic fixtures and property
+   tests. What remains is the reporting layer that Phase 1 introduces.
 
 ---
 
@@ -175,13 +176,13 @@ features.*
 
 ### 0.4 — Strengthen the test suite
 
-- [ ] Add realistic multi-file journal fixtures (bank statements, savings,
+- [x] Add realistic multi-file journal fixtures (bank statements, savings,
   salary, rent, a few currencies).
-- [ ] Add property tests for balancing and for the idempotence of the
+- [x] Add property tests for balancing and for the idempotence of the
   canonical formatter.
-- [ ] Add end-to-end tests converting business diagnostics to UTF-16 LSP
+- [x] Add end-to-end tests converting business diagnostics to UTF-16 LSP
   diagnostics, including non-ASCII text.
-- [ ] Keep `cargo fmt --check`, `cargo clippy --workspace --all-targets` and
+- [x] Keep `cargo fmt --check`, `cargo clippy --workspace --all-targets` and
   `cargo test --workspace` green in CI.
 
 ---

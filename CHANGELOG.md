@@ -36,6 +36,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the text printed by the CLI and published by the LSP, `parse()` reads a code
   back, `ALL` lists the catalogue, and `ValidationError::code()` maps each
   business error onto it. `pactole-storage-fs` re-exports the enum.
+- Two realistic example projects now live under `fixtures/`:
+  `fixtures/journal` (a valid, canonical, multi-file ledger in EUR and USD)
+  and `fixtures/journal-partial` (a broken file next to valid ones). The
+  integration tests of `pactole-storage-fs`, `pactole-cli` and `pactole-lsp`
+  use them as end-to-end fixtures, and a documentation page walks through the
+  working one.
+- `proptest` property tests pin the contracts that hand-written examples
+  cannot: transaction balancing and auto-balancing are order-independent and
+  agree between `validate_journal` and `validate_journal_all`; the canonical
+  formatter accepts every valid layout, is idempotent, preserves the lowered
+  entries and emits diagnostic-free text; `format_transactions` round-trips
+  through the parser and is already canonical; and the byte-offset to UTF-16
+  conversions are exact for arbitrary text, including non-BMP characters.
+- The LSP test suite now drives a real `pactole-lsp` process over stdio with
+  a project served entirely from in-memory buffers, and checks that a
+  diagnostic on a non-ASCII payee is published with UTF-16 columns (and that
+  dropping a file from the project clears its diagnostics).
+
+### Fixed
+
+- A top-level comment is no longer counted as a lost directive: a file that
+  starts with (or only contains) comments is not reported as partially
+  analyzed, and `pactole check` no longer prints a spurious
+  `analysis-incomplete` warning for it.
+- `format_transactions` (and therefore `pactole import-ofx`) now aligns every
+  posting amount on its own line instead of measuring the whole output
+  printed so far, so its output is canonical and `pactole fmt` is a no-op on
+  it.
 
 ### Documentation
 
@@ -50,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`?` in Pactole, `*` in Beancount), the unsupported `commodity` label, the
   unsupported `open` booking metadata, and the `payee:`/`narration:` metadata
   that silently becomes free-form metadata when migrating a Beancount journal.
+- The documentation site gained a tutorial walking through the repository's
+  **complete example journal** (`/tutorials/example-journal/`): its file
+  layout, its declarations, its transactions and balance assertions, the
+  commands to run on it, and the partially-broken sibling project.
 - `AGENTS.md` is now the single architecture reference: it documents the
   public API of every crate, and the orphaned `ARCHITECTURE.md` (and the links
   to it) has been removed.

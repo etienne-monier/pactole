@@ -486,6 +486,47 @@ cargo test -p pactole-import
 cargo test -p pactole-lsp
 ```
 
+### Fixtures and property tests
+
+Two example projects live at the root of the repository, under `fixtures/`.
+They are read by the integration tests of `pactole-storage-fs`
+(`tests/journal_fixtures.rs`), `pactole-cli` (`tests/journal.rs`) and
+`pactole-lsp` (`tests/diagnostics.rs`). Those tests skip when the repository's
+fixtures are not available (a published crate tested from a tarball), so
+`cargo test` still passes outside a checkout.
+
+- `fixtures/journal/` is a valid, canonical, multi-file ledger (EUR and USD,
+  current account, savings, salary, rent, everyday expenses). It must stay
+  completely clean: no diagnostic at any severity, and every file already in
+  canonical form. Run `pactole check --strict` and `pactole fmt --write` on
+  the files you change.
+- `fixtures/journal-partial/` is the deliberately broken sibling used by the
+  partial-analysis tests: its `broken.pactole` cannot be analyzed, and the
+  tests pin which business diagnostics survive that loss and which are
+  suppressed.
+- `fixtures/README.md` describes both, and
+  `docs/src/content/docs/tutorials/example-journal.md` walks users through the
+  valid one. Keep them in sync when the fixtures change.
+
+Property tests use `proptest` (a workspace dependency, enabled as a dev
+dependency of `pactole-core`, `pactole-storage-fs` and `pactole-lsp`). They
+cover the invariants that example-based tests cannot enumerate:
+
+```sh
+# Balancing rules, order-independence, agreement between validation entry points
+cargo test -p pactole-core --test properties
+
+# Formatter idempotence, diagnostic-free output, serializer round-trip
+cargo test -p pactole-storage-fs --test properties
+
+# Byte-offset <-> UTF-16 conversions on arbitrary text
+cargo test -p pactole-lsp --test properties
+```
+
+A failure prints the minimal input that reproduces it and writes a
+`*.proptest-regressions` file next to the test; commit that file together with
+the fix so the case stays covered.
+
 ### Code Quality & Linting
 
 ```sh
@@ -605,7 +646,13 @@ tests fail otherwise.
 - **Testing**:
   - For domain logic / validation, add unit tests in `pactole-core`.
   - For parsing / formatting, add unit tests in `pactole-storage-fs`.
-  - For external-format import (OFX, ...), add integration tests in `pactole-import`
-    (`crates/pactole-import/tests/`), with fixtures under `tests/fixtures/`.
-  - For end-to-end command behavior, add integration tests in `crates/pactole-cli/tests/cli.rs`.
+  - For external-format import (OFX, ...), add integration tests in
+    `pactole-import` (`crates/pactole-import/tests/`), with fixtures under
+    `tests/fixtures/`.
+  - For end-to-end command behavior, add integration tests in
+    `crates/pactole-cli/tests/cli.rs`, and use the root `fixtures/` journals
+    (see §4) for realistic multi-file scenarios.
+  - For rules that must hold on every input (balancing, formatting,
+    byte/UTF-16 conversion), add a `proptest` property to the crate's
+    `tests/properties.rs` instead of enumerating examples.
 - **Minimal Diffs**: Keep changes focused and avoid reformatting unrelated code.
