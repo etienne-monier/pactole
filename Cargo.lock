@@ -740,6 +740,7 @@ dependencies = [
  "pactole-core",
  "pactole-import",
  "pactole-storage-fs",
+ "serde_json",
 ]
 
 [[package]]

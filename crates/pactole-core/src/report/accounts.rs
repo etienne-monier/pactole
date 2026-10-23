@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
-use crate::models::{AccountName, Amount};
+use crate::models::{AccountName, Amount, Entry, Journal};
 
-use super::{Amounts, ReportLine};
+use super::{Amounts, ReportLine, ReportScope};
 
 /// How account balances are grouped into report lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -36,6 +36,37 @@ impl AccountBalances {
     /// Builds an empty set of account balances.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Accumulates the postings of `journal` dated within `scope`.
+    ///
+    /// A [`ReportScope::AsOf`] scope sums every posting up to its reference
+    /// date (inclusive), while [`ReportScope::Over`] restricts the sum to the
+    /// period, both bounds included. The transactions are expected to be
+    /// validated: a posting without an amount is skipped, so pass the journal
+    /// returned by [`crate::validate_journal_all`] to account for implicit
+    /// amounts.
+    pub fn from_journal(journal: &Journal, scope: ReportScope) -> Self {
+        let mut balances = Self::new();
+        for entry in journal.entries() {
+            let Entry::Transaction(transaction) = entry else {
+                continue;
+            };
+            if !scope.contains(transaction.date) {
+                continue;
+            }
+            for posting in &transaction.postings {
+                if let Some(amount) = &posting.amount {
+                    balances.add(&posting.account, amount);
+                }
+            }
+        }
+        balances
+    }
+
+    /// Iterates over the exact balances, in account order.
+    pub fn iter(&self) -> impl Iterator<Item = (&AccountName, &Amounts)> + '_ {
+        self.balances.iter()
     }
 
     /// Adds one amount to `account`.
@@ -192,6 +223,7 @@ fn compare_labels(left: &str, right: &str) -> std::cmp::Ordering {
 mod tests {
     use super::*;
     use crate::models::CommodityName;
+    use chrono::NaiveDate;
     use rust_decimal::Decimal;
 
     fn account(name: &str) -> AccountName {
@@ -358,5 +390,99 @@ mod tests {
                 .unwrap(),
             "15.00".parse().unwrap()
         );
+    }
+
+    #[test]
+    fn iterates_over_the_exact_balances() {
+        let balances = balances(&[("Actifs:Banque", "10.00", "EUR")]);
+
+        let entries: Vec<(&str, Decimal)> = balances
+            .iter()
+            .map(|(account, amounts)| {
+                (
+                    account.as_str(),
+                    amounts.get(&CommodityName::new("EUR").unwrap()).unwrap(),
+                )
+            })
+            .collect();
+
+        assert_eq!(entries, vec![("Actifs:Banque", "10.00".parse().unwrap())]);
+    }
+
+    #[test]
+    fn sums_the_postings_dated_within_an_as_of_scope() {
+        let journal = journal(&[
+            (date(2024, 1, 10), "Actifs:Banque", "10.00"),
+            (date(2024, 1, 31), "Actifs:Banque", "5.00"),
+            (date(2024, 2, 1), "Actifs:Banque", "100.00"),
+        ]);
+
+        let balances =
+            AccountBalances::from_journal(&journal, ReportScope::as_of(date(2024, 1, 31)));
+
+        assert_eq!(
+            balances
+                .totals()
+                .get(&CommodityName::new("EUR").unwrap())
+                .unwrap(),
+            "15.00".parse().unwrap()
+        );
+    }
+
+    #[test]
+    fn sums_the_postings_dated_within_an_inclusive_period() {
+        let journal = journal(&[
+            (date(2024, 1, 9), "Actifs:Banque", "1.00"),
+            (date(2024, 1, 10), "Actifs:Banque", "2.00"),
+            (date(2024, 1, 20), "Actifs:Banque", "3.00"),
+            (date(2024, 1, 21), "Actifs:Banque", "4.00"),
+        ]);
+
+        let balances = AccountBalances::from_journal(
+            &journal,
+            ReportScope::over(date(2024, 1, 10), date(2024, 1, 20)).unwrap(),
+        );
+
+        assert_eq!(
+            balances
+                .totals()
+                .get(&CommodityName::new("EUR").unwrap())
+                .unwrap(),
+            "5.00".parse().unwrap()
+        );
+    }
+
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    }
+
+    /// A journal with one single-posting transaction per `(date, account,
+    /// number)` triple, all in EUR.
+    fn journal(entries: &[(NaiveDate, &str, &str)]) -> Journal {
+        use crate::models::{Metadata, Posting, Transaction, TransactionStatus};
+
+        Journal {
+            entries: entries
+                .iter()
+                .map(|(date, account_name, number)| {
+                    Entry::Transaction(Transaction {
+                        date: *date,
+                        effective_date: None,
+                        status: TransactionStatus::Cleared,
+                        payee: None,
+                        narration: None,
+                        postings: vec![Posting {
+                            account: account(account_name),
+                            amount: Some(amount(number, "EUR")),
+                            meta: Metadata::new(),
+                        }],
+                        tags: Vec::new(),
+                        links: Vec::new(),
+                        reference: None,
+                        meta: Metadata::new(),
+                    })
+                })
+                .collect(),
+        }
     }
 }

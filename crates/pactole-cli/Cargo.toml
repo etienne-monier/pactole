@@ -25,3 +25,6 @@ pactole-config.workspace = true
 pactole-core.workspace = true
 pactole-import.workspace = true
 pactole-storage-fs.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

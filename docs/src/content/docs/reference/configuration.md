@@ -94,6 +94,36 @@ posting_width = 60
 
 See [Format a ledger](/how-to/format-a-ledger/).
 
+## `[reports]`
+
+The account roots the reports use to classify accounts. Each key is a list of
+root names: the first `:`-separated segment of an account. The balance sheet
+matches them exactly and case-sensitively.
+
+| Key | Default | Root of |
+|---|---|---|
+| `assets` | `["Assets"]` | Asset accounts |
+| `liabilities` | `["Liabilities"]` | Liability accounts |
+| `equity` | `["Equity"]` | Equity accounts |
+| `income` | `["Income"]` | Income accounts |
+| `expenses` | `["Expenses"]` | Expense accounts |
+
+A key left out keeps its default, so a journal only has to configure the
+convention it actually uses. An account whose root matches no list is reported
+in an `Unclassified` section by `pactole balance` instead of being dropped.
+
+```toml
+[reports]
+assets = ["Actifs"]
+liabilities = ["Passif"]
+equity = ["Capitaux"]
+income = ["Revenus"]
+expenses = ["Depenses", "Impots"]
+```
+
+Each key replaces the whole list: the lists are not unioned across layers. See
+[`pactole balance`](/reference/cli/#pactole-balance).
+
 ## `[declaration]`
 
 The files an editor front-end should insert new declarations into, instead of

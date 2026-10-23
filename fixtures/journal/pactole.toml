@@ -1,0 +1,10 @@
+# The example journal is written in French: tell the reports how its account
+# roots map to the balance-sheet categories. Every key is optional; an
+# omitted key keeps the default English convention.
+
+[reports]
+assets = ["Actifs"]
+liabilities = ["Passif"]
+equity = ["Capitaux"]
+income = ["Revenus"]
+expenses = ["Depenses", "Impots"]

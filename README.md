@@ -147,6 +147,32 @@ pactole register path/to/file.pactole --payee Carrefour --status cleared
 pactole register path/to/file.pactole --tag vacances
 ```
 
+Build the balance sheet of a file as of a date. Liabilities and equity are
+shown with a positive sign, and the net result of the income and expense
+accounts closes into equity, so a fully classified, balanced journal
+satisfies `Assets = Liabilities + Equity` per commodity:
+
+```sh
+pactole balance path/to/file.pactole
+pactole balance path/to/file.pactole --date 2026-03-31 --format json
+pactole balance path/to/file.pactole --depth 1
+```
+
+Accounts are classified by their root (the first `:`-separated segment)
+through the `[reports]` section of `pactole.toml` (see
+[Configuration](#configuration)). The defaults are the English `Assets`,
+`Liabilities`, `Equity`, `Income` and `Expenses`; a journal using another
+convention only configures the roots it needs:
+
+```toml
+[reports]
+assets = ["Actifs"]
+liabilities = ["Passif"]
+equity = ["Capitaux"]
+income = ["Revenus"]
+expenses = ["Depenses", "Impots"]
+```
+
 ## Importing a bank statement (OFX)
 
 `pactole import-ofx` turns an OFX/QFX statement (OFX 1.x SGML or OFX 2.x
@@ -229,6 +255,13 @@ unused = "warn" # never-used declarations: "off", "warn" or "error"
 [format]
 posting_width = 50
 
+[reports]
+assets = ["Assets"]
+liabilities = ["Liabilities"]
+equity = ["Equity"]
+income = ["Income"]
+expenses = ["Expenses"]
+
 [import]
 bank_account = "Actifs:Banque"
 currency = "EUR"
@@ -245,4 +278,4 @@ payees = "payees.pactole"
 accounts = "accounts.pactole"
 ```
 
-More commands (balance sheets, income statements, budgets) are coming.
+More commands (income statements, budgets) are coming.

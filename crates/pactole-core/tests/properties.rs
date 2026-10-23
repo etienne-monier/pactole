@@ -9,9 +9,10 @@
 
 use chrono::NaiveDate;
 use pactole_core::{
-    AccountBalances, AccountGrouping, AccountName, Amount, Amounts, Commodity, CommodityName,
-    Entry, Journal, Metadata, Open, Period, Posting, Report, ReportFormat, ReportLine, ReportScope,
-    Transaction, TransactionStatus, ValidationError, validate_journal, validate_journal_all,
+    AccountBalances, AccountClassification, AccountGrouping, AccountName, Amount, Amounts,
+    Commodity, CommodityName, Entry, Journal, Metadata, Open, Period, Posting, ReferenceDate,
+    Report, ReportFormat, ReportLine, ReportScope, Transaction, TransactionStatus, ValidationError,
+    balance_sheet, validate_journal, validate_journal_all,
 };
 use proptest::prelude::*;
 use rust_decimal::Decimal;
@@ -485,5 +486,139 @@ proptest! {
         let rendered = report.render(ReportFormat::Json);
 
         prop_assert!(serde_json::from_str::<serde_json::Value>(&rendered).is_ok());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Balance-sheet properties
+// ---------------------------------------------------------------------------
+
+/// Accounts of the five default categories.
+const BALANCE_SHEET_ACCOUNTS: [&str; 7] = [
+    "Assets:Bank",
+    "Assets:Cash",
+    "Liabilities:Card",
+    "Equity:Opening",
+    "Income:Salary",
+    "Expenses:Food",
+    "Expenses:Food:Restaurant",
+];
+
+/// An `(account, commodity, amount)` movement over the balance-sheet accounts.
+fn balance_sheet_movement() -> impl Strategy<Value = (usize, usize, Decimal)> {
+    (
+        0..BALANCE_SHEET_ACCOUNTS.len(),
+        0..COMMODITIES.len(),
+        decimal(),
+    )
+}
+
+/// A journal with one balanced transaction per movement.
+///
+/// Each movement is paired with its opposite on `Equity:Suspense`, so every
+/// transaction balances per commodity and every account is classified.
+fn balance_sheet_journal(movements: &[(usize, usize, Decimal)]) -> Journal {
+    let suspense = AccountName::new("Equity:Suspense").expect("a valid account name");
+    let entries = movements
+        .iter()
+        .map(|&(account_index, commodity_index, number)| {
+            Entry::Transaction(transaction(vec![
+                Posting {
+                    account: AccountName::new(BALANCE_SHEET_ACCOUNTS[account_index])
+                        .expect("a valid account name"),
+                    amount: Some(Amount {
+                        number,
+                        commodity: commodity(commodity_index),
+                    }),
+                    meta: Metadata::new(),
+                },
+                Posting {
+                    account: suspense.clone(),
+                    amount: Some(Amount {
+                        number: -number,
+                        commodity: commodity(commodity_index),
+                    }),
+                    meta: Metadata::new(),
+                },
+            ]))
+        })
+        .collect();
+    Journal { entries }
+}
+
+fn section_subtotal<'a>(report: &'a Report, title: &str) -> &'a Amounts {
+    &report
+        .sections
+        .iter()
+        .find(|section| section.title.as_deref() == Some(title))
+        .expect("the balance sheet has this section")
+        .subtotal
+}
+
+fn amounts_by_name(amounts: &Amounts) -> BTreeMap<String, Decimal> {
+    amounts
+        .iter()
+        .map(|(commodity, number)| (commodity.as_str().to_string(), number))
+        .collect()
+}
+
+proptest! {
+    #[test]
+    fn a_balance_sheet_satisfies_the_accounting_equation(
+        movements in prop::collection::vec(balance_sheet_movement(), 0..30),
+    ) {
+        let journal = balance_sheet_journal(&movements);
+
+        for grouping in groupings() {
+            let report = balance_sheet(
+                &journal,
+                ReferenceDate::new(date()),
+                &AccountClassification::default(),
+                grouping,
+            );
+
+            let assets = amounts_by_name(section_subtotal(&report, "Assets"));
+            let liabilities = amounts_by_name(section_subtotal(&report, "Liabilities"));
+            let equity = amounts_by_name(section_subtotal(&report, "Equity"));
+
+            for name in COMMODITIES {
+                prop_assert_eq!(
+                    assets.get(name).copied().unwrap_or_default(),
+                    liabilities.get(name).copied().unwrap_or_default()
+                        + equity.get(name).copied().unwrap_or_default(),
+                    "commodity {} with grouping {:?}",
+                    name,
+                    grouping
+                );
+            }
+
+            prop_assert!(
+                report.totals.is_empty(),
+                "a balanced, fully classified journal has no report total: {:?}",
+                report.totals
+            );
+        }
+    }
+
+    #[test]
+    fn a_balance_sheet_keeps_every_commodity_separate(
+        movements in prop::collection::vec(balance_sheet_movement(), 0..30),
+    ) {
+        let journal = balance_sheet_journal(&movements);
+        let report = balance_sheet(
+            &journal,
+            ReferenceDate::new(date()),
+            &AccountClassification::default(),
+            AccountGrouping::Full,
+        );
+
+        for section in &report.sections {
+            for line in &section.lines {
+                for (commodity, number) in line.amounts.iter() {
+                    prop_assert!(!number.is_zero());
+                    prop_assert!(COMMODITIES.contains(&commodity.as_str()));
+                }
+            }
+        }
     }
 }

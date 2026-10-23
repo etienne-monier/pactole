@@ -35,6 +35,16 @@ impl Amounts {
         }
     }
 
+    /// Negates every value, keeping the same commodities.
+    ///
+    /// Balance-sheet sections use this to present credit balances (liabilities
+    /// and equity) as positive amounts.
+    pub fn negate(&mut self) {
+        for number in self.values.values_mut() {
+            *number = -*number;
+        }
+    }
+
     /// Returns the value held for `commodity`, if any.
     pub fn get(&self, commodity: &CommodityName) -> Option<Decimal> {
         self.values.get(commodity).copied()
@@ -169,6 +179,24 @@ mod tests {
 
         assert!(amounts.is_empty());
         assert!(amounts.is_zero());
+    }
+
+    #[test]
+    fn negate_flips_every_value_and_keeps_the_commodities() {
+        let mut amounts = Amounts::new();
+        amounts.add(&amount("10.00", "EUR"));
+        amounts.add(&amount("-2.50", "USD"));
+
+        amounts.negate();
+
+        assert_eq!(
+            amounts.get(&commodity("EUR")),
+            Some("-10.00".parse().unwrap())
+        );
+        assert_eq!(
+            amounts.get(&commodity("USD")),
+            Some("2.50".parse().unwrap())
+        );
     }
 
     #[test]

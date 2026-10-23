@@ -22,8 +22,8 @@ pub use crate::models::{
 };
 pub use crate::register::{RegisterEntry, RegisterFilter, register};
 pub use crate::report::{
-    AccountBalances, AccountGrouping, Amounts, Period, ReferenceDate, Report, ReportError,
-    ReportFormat, ReportLine, ReportScope,
+    AccountBalances, AccountClassification, AccountGrouping, Amounts, Period, ReferenceDate,
+    Report, ReportError, ReportFormat, ReportLine, ReportScope, ReportSection, balance_sheet,
 };
 pub use crate::traits::ReadableStorage;
 pub use crate::validation::{

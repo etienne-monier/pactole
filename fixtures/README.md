@@ -13,8 +13,10 @@ short trip, spread over several files tied together by `include` directives.
 
 It is expected to stay **completely clean**: `pactole check` prints `OK`
 with no diagnostic, `pactole check --strict` also passes, and every file is
-already in canonical form (`pactole fmt` is a no-op). If you change it, run
-`pactole fmt --write` on the files you touched.
+already in canonical form (`pactole fmt` is a no-op). The project includes a
+`pactole.toml` that maps its French account roots to the `[reports]`
+categories for `pactole balance`. If you change it, run `pactole fmt --write`
+on the files you touched.
 
 ```sh
 pactole check fixtures/journal/ledger.pactole

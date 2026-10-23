@@ -25,6 +25,13 @@
 //! [format]
 //! posting_width = 50
 //!
+//! [reports]
+//! assets = ["Assets", "Actifs"]
+//! liabilities = ["Liabilities", "Passif"]
+//! equity = ["Equity", "Capitaux"]
+//! income = ["Income", "Revenus"]
+//! expenses = ["Expenses", "Depenses"]
+//!
 //! [import]
 //! bank_account = "Assets:Checking"
 //! currency = "EUR"
@@ -43,6 +50,7 @@ mod declaration;
 mod format;
 mod import;
 mod raw;
+mod reports;
 mod validation;
 
 use std::path::{Path, PathBuf};
@@ -52,6 +60,7 @@ use crate::raw::{RawDirection, RawFile, RawRule};
 pub use crate::declaration::DeclarationOptions;
 pub use crate::format::FormatOptions;
 pub use crate::import::{Direction, ImportConfig, Rule};
+pub use crate::reports::ReportOptions;
 pub use crate::validation::{ValidationLevel, ValidationOptions};
 
 /// Errors raised while loading or resolving a `pactole.toml` file.
@@ -117,6 +126,9 @@ pub struct Config {
     pub declaration: DeclarationOptions,
     /// Formatter options (the `[format]` section).
     pub format: FormatOptions,
+    /// Account classification used by the reports (the `[reports]`
+    /// section).
+    pub reports: ReportOptions,
     /// Import settings (the `[import]` section), or `None` when no layer
     /// defines it — an import command then fails with a clear message.
     pub import: Option<ImportConfig>,
@@ -160,6 +172,7 @@ impl Config {
             validation: resolve_validation(&merged, overrides),
             declaration: resolve_declaration(&merged),
             format: resolve_format(&merged),
+            reports: resolve_reports(&merged),
             import: resolve_import(&merged, import_path)?,
         })
     }
@@ -324,6 +337,20 @@ fn resolve_format(merged: &RawFile) -> FormatOptions {
     }
 
     options
+}
+
+fn resolve_reports(merged: &RawFile) -> ReportOptions {
+    let Some(reports) = &merged.reports else {
+        return ReportOptions::default();
+    };
+
+    ReportOptions {
+        assets: reports.assets.clone(),
+        liabilities: reports.liabilities.clone(),
+        equity: reports.equity.clone(),
+        income: reports.income.clone(),
+        expenses: reports.expenses.clone(),
+    }
 }
 
 fn resolve_import(

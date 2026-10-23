@@ -208,12 +208,12 @@ front-end only render the results.*
 
 ### 1.2 — Implement the balance sheet
 
-- [ ] Compute account balances at a given date.
-- [ ] Group accounts by hierarchical prefix.
-- [ ] Separate assets, liabilities and equity, using a documented convention
+- [x] Compute account balances at a given date.
+- [x] Group accounts by hierarchical prefix.
+- [x] Separate assets, liabilities and equity, using a documented convention
   with an explicit configuration override.
-- [ ] Add the `pactole balance` command, with `--date` and `--format`.
-- [ ] Add fixtures and compare the output against known journals.
+- [x] Add the `pactole balance` command, with `--date` and `--format`.
+- [x] Add fixtures and compare the output against known journals.
 
 ### 1.3 — Implement the income statement
 

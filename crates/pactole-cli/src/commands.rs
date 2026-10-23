@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use chrono::NaiveDate;
@@ -90,6 +91,24 @@ pub(crate) enum Command {
         status: Option<StatusArg>,
     },
 
+    /// Show the balance sheet of a `.pactole` file at a given date.
+    Balance {
+        /// Path to the `.pactole` file to read.
+        file: PathBuf,
+
+        /// Reference date of the sheet (`YYYY-MM-DD`). Defaults to today.
+        #[arg(long)]
+        date: Option<NaiveDate>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: FormatArg,
+
+        /// Fold the accounts deeper than this many levels.
+        #[arg(long)]
+        depth: Option<NonZeroUsize>,
+    },
+
     /// Import transactions from an OFX statement into canonical `.pactole`
     /// transaction directives.
     ImportOfx {
@@ -166,6 +185,24 @@ impl From<StatusArg> for pactole_core::TransactionStatus {
             StatusArg::Uncleared => pactole_core::TransactionStatus::Uncleared,
             StatusArg::Pending => pactole_core::TransactionStatus::Pending,
             StatusArg::Cleared => pactole_core::TransactionStatus::Cleared,
+        }
+    }
+}
+
+/// Output format of the reporting commands.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum FormatArg {
+    Text,
+    Json,
+    Csv,
+}
+
+impl From<FormatArg> for pactole_core::ReportFormat {
+    fn from(value: FormatArg) -> Self {
+        match value {
+            FormatArg::Text => pactole_core::ReportFormat::Text,
+            FormatArg::Json => pactole_core::ReportFormat::Json,
+            FormatArg::Csv => pactole_core::ReportFormat::Csv,
         }
     }
 }

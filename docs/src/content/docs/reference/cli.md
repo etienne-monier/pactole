@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-The `pactole` binary exposes seven subcommands. Run `pactole --help` or
+The `pactole` binary exposes eight subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
@@ -30,8 +30,8 @@ Without `--config`, Pactole reads the user-level `pactole.toml`
 (`~/.config/pactole/pactole.toml`, or
 `$XDG_CONFIG_HOME/pactole/pactole.toml`), then the project `pactole.toml`
 next to the journal being processed, merging them key by key. Every setting
-(`[validation]`, `[declaration]`, `[format]`, `[import]`) lives in that single file; unknown
-keys are rejected so typos fail loudly.
+(`[validation]`, `[declaration]`, `[format]`, `[reports]`, `[import]`) lives in
+that single file; unknown keys are rejected so typos fail loudly.
 
 ## `pactole parse`
 
@@ -202,6 +202,57 @@ pactole register ledger.pactole --tag food
 
 `--account` also matches sub-accounts: `--account Expenses` matches
 `Expenses:Groceries`.
+
+## `pactole balance`
+
+```text
+pactole balance <FILE> [--date <DATE>] [--format <FORMAT>] [--depth <N>]
+```
+
+Builds the balance sheet of a file as of a reference date. It has an *Assets*
+section, a *Liabilities* section and an *Equity* section, each with its own
+subtotal per commodity. Liabilities and equity are shown with a positive sign,
+so a fully classified, balanced journal satisfies `Assets = Liabilities +
+Equity` for every commodity.
+
+| Option | Description |
+|---|---|
+| `<FILE>` | Path to the file to read |
+| `--date <DATE>` | Reference date (`YYYY-MM-DD`); defaults to today |
+| `--format <FORMAT>` | Output format: `text` (default), `json` or `csv` |
+| `--depth <N>` | Fold the accounts deeper than `N` levels |
+
+```sh
+pactole balance ledger.pactole
+pactole balance ledger.pactole --date 2026-03-31
+pactole balance ledger.pactole --date 2026-03-31 --format json
+pactole balance ledger.pactole --depth 1
+```
+
+Income and expense accounts are not sections of their own: their net result is
+added to the *Equity* section as an `Unclosed result` line, unless it is zero.
+Accounts whose root matches no configured category are reported in an
+`Unclassified` section instead of being dropped.
+
+The categories are matched by account root through the `[reports]` section of
+`pactole.toml` (see the [configuration reference](/reference/configuration/)).
+Without it, the default English roots `Assets`, `Liabilities`, `Equity`,
+`Income` and `Expenses` are used, so a journal written in another language
+configures its own roots:
+
+```toml
+[reports]
+assets = ["Actifs"]
+liabilities = ["Passif"]
+equity = ["Capitaux"]
+income = ["Revenus"]
+expenses = ["Depenses", "Impots"]
+```
+
+The report is built from the validated journal, so an invalid ledger fails the
+command like `pactole check` does. The JSON rendering exposes the same sections
+and subtotals with amounts as strings; the CSV rendering adds a `section`
+column and a `subtotal` row kind.
 
 ## `pactole import-ofx`
 

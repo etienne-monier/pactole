@@ -9,15 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The first layer of the `pactole_core` reporting API. `Period` and
-  `ReferenceDate` describe inclusive reporting bounds, `ReportScope` combines
-  them for stock reports (`AsOf`) and flow reports (`Over`), and `Amounts`
-  represents a multi-commodity total without ever adding commodities
-  together. `AccountBalances`/`AccountGrouping` aggregate signed balances into
-  the exact accounts, a configurable depth or the full prefix hierarchy, and
-  `Report`/`ReportLine` are render-agnostic result structures. The same report
-  can be rendered as aligned text, JSON (decimal amounts as strings to keep
-  their exact precision) or tidy CSV, through `ReportFormat`.
+- **Balance sheet (roadmap 1.2):** `pactole_core` gained a sectioned report model (`ReportSection`, `AccountClassification`, `balance_sheet`) that builds a balance sheet from a validated journal. Accounts are grouped by root into Assets/Liabilities/Equity/Income/Expenses (configurable via `[reports]`), liabilities and equity are shown with a positive sign, income and expenses are closed into equity as an `Unclosed result` line when non-zero, and unknown roots go to an `Unclassified` section. `AccountBalances` can now be built from a journal (`from_journal`) and iterated (`iter()`); `Amounts::negate()` supports sign flips. The JSON output includes `sections`, the CSV output adds a `section` column and `subtotal`/`line` kinds. `pactole balance <file> [--date <date>] [--format <text|json|csv>] [--depth <n>]` prints the sheet with the same layering as other commands, defaulting the date to today and folding at the full hierarchy. The example journal now ships a `pactole.toml` mapping its French roots to `[reports]`, and the reference docs cover the new command and configuration section.
 - Partial analyses: business validation now survives a broken file. When a
   directive cannot be lowered (or a chunk of source cannot be parsed), the
   checks that do not depend on the missing content are still reported, and

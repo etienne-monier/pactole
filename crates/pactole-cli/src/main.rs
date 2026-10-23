@@ -1,3 +1,4 @@
+mod balance;
 mod check;
 mod commands;
 mod config;
@@ -65,6 +66,25 @@ fn main() -> ExitCode {
                     tag,
                     status,
                     &config.validation,
+                ),
+                Err(error) => config::failure(error),
+            }
+        }
+        Command::Balance {
+            file,
+            date,
+            format,
+            depth,
+        } => {
+            let project_dir = parent_dir(&file);
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
+                Ok(config) => balance::run(
+                    file,
+                    date,
+                    format,
+                    depth,
+                    &config.validation,
+                    &config.reports,
                 ),
                 Err(error) => config::failure(error),
             }

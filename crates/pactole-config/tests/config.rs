@@ -24,6 +24,7 @@ fn empty_layers_yield_defaults() {
     assert_eq!(config.format.posting_width, 50);
     assert_eq!(config.import, None);
     assert!(config.declaration.is_empty());
+    assert!(config.reports.is_empty());
 }
 
 #[test]
@@ -60,6 +61,59 @@ fn parses_every_section() {
     assert_eq!(import.default_counter_account, "Expenses:To-Be-Classified");
     assert!(import.accounts.is_empty());
     assert!(import.rules.is_empty());
+}
+
+#[test]
+fn parses_report_classification_roots() {
+    let config = resolve(
+        "[reports]\n\
+         assets = [\"Actifs\"]\n\
+         liabilities = [\"Passif\", \"Dettes\"]\n\
+         equity = [\"Capitaux\"]\n\
+         income = [\"Revenus\"]\n\
+         expenses = [\"Depenses\", \"Impots\"]\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        config.reports.assets.as_deref(),
+        Some(&["Actifs".to_string()][..])
+    );
+    assert_eq!(
+        config.reports.liabilities.as_deref(),
+        Some(&["Passif".to_string(), "Dettes".to_string()][..])
+    );
+    assert_eq!(
+        config.reports.expenses.as_deref(),
+        Some(&["Depenses".to_string(), "Impots".to_string()][..])
+    );
+    assert_eq!(
+        config.reports.equity.as_deref(),
+        Some(&["Capitaux".to_string()][..])
+    );
+    assert_eq!(
+        config.reports.income.as_deref(),
+        Some(&["Revenus".to_string()][..])
+    );
+}
+
+#[test]
+fn report_roots_merge_per_key() {
+    let global = source("[reports]\nassets = [\"Actifs\"]\nliabilities = [\"Passif\"]\n");
+    // The project redefines only `assets`: the global `liabilities` survives.
+    let project = source("[reports]\nassets = [\"Biens\"]\n");
+
+    let config = Config::resolve(&[global, project], &Overrides::default()).unwrap();
+
+    assert_eq!(
+        config.reports.assets.as_deref(),
+        Some(&["Biens".to_string()][..])
+    );
+    assert_eq!(
+        config.reports.liabilities.as_deref(),
+        Some(&["Passif".to_string()][..])
+    );
+    assert_eq!(config.reports.equity, None);
 }
 
 #[test]
@@ -235,6 +289,7 @@ fn rejects_unknown_keys_in_every_section() {
         "[validation]\nusued = \"warn\"\n",
         "[declaration]\npayes = \"payees.pactole\"\n",
         "[format]\nposting_widthh = 40\n",
+        "[reports]\nassets_roots = [\"Assets\"]\n",
         "[import]\nbankaccount = \"Assets:Checking\"\n",
         "[unknown]\nkey = 1\n",
     ] {

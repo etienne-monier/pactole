@@ -16,6 +16,7 @@ pub(crate) struct RawFile {
     pub(crate) validation: Option<RawValidation>,
     pub(crate) declaration: Option<RawDeclaration>,
     pub(crate) format: Option<RawFormat>,
+    pub(crate) reports: Option<RawReports>,
     pub(crate) import: Option<RawImport>,
 }
 
@@ -41,6 +42,17 @@ pub(crate) struct RawDeclaration {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawFormat {
     pub(crate) posting_width: Option<usize>,
+}
+
+/// The `[reports]` section, unmerged.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RawReports {
+    pub(crate) assets: Option<Vec<String>>,
+    pub(crate) liabilities: Option<Vec<String>>,
+    pub(crate) equity: Option<Vec<String>>,
+    pub(crate) income: Option<Vec<String>>,
+    pub(crate) expenses: Option<Vec<String>>,
 }
 
 /// The `[import]` section, unmerged.
@@ -115,6 +127,25 @@ impl RawFile {
             self.format
                 .get_or_insert_with(RawFormat::default)
                 .posting_width = Some(posting_width);
+        }
+
+        if let Some(reports) = upper.reports {
+            let target = self.reports.get_or_insert_with(RawReports::default);
+            if let Some(assets) = reports.assets {
+                target.assets = Some(assets);
+            }
+            if let Some(liabilities) = reports.liabilities {
+                target.liabilities = Some(liabilities);
+            }
+            if let Some(equity) = reports.equity {
+                target.equity = Some(equity);
+            }
+            if let Some(income) = reports.income {
+                target.income = Some(income);
+            }
+            if let Some(expenses) = reports.expenses {
+                target.expenses = Some(expenses);
+            }
         }
 
         if let Some(import) = upper.import {

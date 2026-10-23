@@ -23,6 +23,7 @@ fixtures/journal/
 ├── commodities.pactole     # the currencies the journal uses
 ├── accounts.pactole        # every account, with a description
 ├── payees.pactole          # every payee the transactions use
+├── pactole.toml            # balance-sheet classification for French roots
 └── 2026/
     ├── checking.pactole    # current account, January to March
     ├── savings.pactole     # savings account: transfers and interest
@@ -46,7 +47,9 @@ the rules.
 ; several files tied together by `include` directives.
 ;
 ; The whole project is expected to validate without a single diagnostic,
-; and to already be in canonical form (`pactole fmt` is a no-op).
+; and to already be in canonical form (`pactole fmt` is a no-op). The
+; French account roots are mapped to the balance-sheet categories in
+; `pactole.toml`.
 
 include "commodities.pactole"
 include "accounts.pactole"
@@ -209,6 +212,23 @@ $ pactole register fixtures/journal/ledger.pactole --account Actifs:Epargne-USD
 2026-01-01  *  Ouverture Solde d'ouverture               Actifs:Epargne-USD      1000.00 USD      1000.00 USD
 2026-02-16  *  Hôtel du Port Deux nuits                  Actifs:Epargne-USD      -240.00 USD       760.00 USD
 2026-02-18  *  Bistro du Port Dîner                      Actifs:Epargne-USD       -36.50 USD       723.50 USD
+```
+
+The balance sheet uses the `[reports]` mapping in `pactole.toml`:
+
+```sh
+$ pactole balance fixtures/journal/ledger.pactole --date 2026-03-31
+Balance sheet (as of 2026-03-31)
+Assets
+  Actifs:Compte-Joint               4538.55 EUR
+  Actifs:Epargne-USD                 723.50 USD
+  Actifs:Livret                     1512.63 EUR
+  Total Assets          6051.18 EUR, 723.50 USD
+Liabilities
+Equity
+  Capitaux:Ouverture                1000.00 USD
+  Unclosed result      6051.18 EUR, -276.50 USD
+  Total Equity          6051.18 EUR, 723.50 USD
 ```
 
 ## A broken sibling
