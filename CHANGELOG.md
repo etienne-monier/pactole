@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Actual Budget migration:** `pactole import-actual` now performs a
+  one-shot migration from an Actual Budget SQLite database. It accepts all
+  migration settings through CLI options, generates account, commodity and
+  payee declarations, creates an explicit opening transaction against an
+  equity account, preserves optional source payees as metadata, handles split
+  transactions as multi-posting entries, and converts linked transfers into
+  balanced double-entry transactions. Actual `contains`, regular-expression
+  `matches` and `oneOf` rules are supported.
+- **Extended OFX import rules:** `[import.rules]` now supports `payee_in`,
+  `memo_in`, `trntype_in`, `payee_regex`, `memo_regex` and `account` criteria.
+  Rules can also preserve the original source payee through the global
+  `[import].payee_metadata_key` setting. Regular expressions are compiled and
+  validated before importing.
 - **Balance sheet (roadmap 1.2):** `pactole_core` gained a sectioned report model (`ReportSection`, `AccountClassification`, `balance_sheet`) that builds a balance sheet from a validated journal. Accounts are grouped by root into Assets/Liabilities/Equity/Income/Expenses (configurable via `[reports]`), liabilities and equity are shown with a positive sign, income and expenses are closed into equity as an `Unclosed result` line when non-zero, and unknown roots go to an `Unclassified` section. `AccountBalances` can now be built from a journal (`from_journal`) and iterated (`iter()`); `Amounts::negate()` supports sign flips. The JSON output includes `sections`, the CSV output adds a `section` column and `subtotal`/`line` kinds. `pactole balance <file> [--date <date>] [--format <text|json|csv>] [--depth <n>]` prints the sheet with the same layering as other commands, defaulting the date to today and folding at the full hierarchy. The example journal now ships a `pactole.toml` mapping its French roots to `[reports]`, and the reference docs cover the new command and configuration section.
 - Partial analyses: business validation now survives a broken file. When a
   directive cannot be lowered (or a chunk of source cannot be parsed), the
