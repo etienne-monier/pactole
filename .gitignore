@@ -52,3 +52,4 @@ zig-out/
 editors/zed/grammars
 opencode*
 !AGENTS.md
+opencode.jsonc

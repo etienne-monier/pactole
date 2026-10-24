@@ -36,7 +36,7 @@ fn text(report: &Report) -> String {
             return output;
         }
 
-        rows.push(("Total".to_string(), amounts_text(&report.totals)));
+        rows.push((report.total_label.clone(), amounts_text(&report.totals)));
         output.push_str(&rows_text(rows));
         return output;
     }
@@ -70,7 +70,7 @@ fn text(report: &Report) -> String {
     }
 
     if has_amounts(&report.totals) {
-        rows.push(("Total".to_string(), amounts_text(&report.totals)));
+        rows.push((report.total_label.clone(), amounts_text(&report.totals)));
     }
 
     output.push_str(&rows_text(rows));

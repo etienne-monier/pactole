@@ -110,7 +110,9 @@ matches them exactly and case-sensitively.
 
 A key left out keeps its default, so a journal only has to configure the
 convention it actually uses. An account whose root matches no list is reported
-in an `Unclassified` section by `pactole balance` instead of being dropped.
+in an `Unclassified` section by `pactole balance` instead of being dropped. The
+same roots are used by `pactole income` to classify income and expense
+accounts.
 
 ```toml
 [reports]

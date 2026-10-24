@@ -16,6 +16,7 @@ mod accounts;
 mod amounts;
 mod balance_sheet;
 mod error;
+mod income_statement;
 mod period;
 mod render;
 
@@ -23,6 +24,7 @@ pub use accounts::{AccountBalances, AccountGrouping};
 pub use amounts::Amounts;
 pub use balance_sheet::{AccountClassification, balance_sheet};
 pub use error::ReportError;
+pub use income_statement::{IncomeGrouping, income_statement};
 pub use period::{Period, ReferenceDate, ReportScope};
 
 /// One line of a report.
@@ -109,7 +111,12 @@ pub struct Report {
     /// For a balance sheet this is the algebraic sum of the exact ledger
     /// balances, so it is zero for a balanced, fully classified journal. It is
     /// not the sum of the displayed lines, which carry presentation signs.
+    /// For an income statement this is the net result (income − expenses) per
+    /// commodity.
     pub totals: Amounts,
+    /// Label used for the report total in text rendering. Defaults to
+    /// `"Total"`.
+    pub total_label: String,
 }
 
 impl Report {
@@ -146,7 +153,14 @@ impl Report {
             scope,
             sections,
             totals,
+            total_label: "Total".to_string(),
         }
+    }
+
+    /// Sets the label used for the report total in text rendering.
+    pub fn with_total_label(mut self, label: impl Into<String>) -> Self {
+        self.total_label = label.into();
+        self
     }
 
     /// Builds a report from account balances and a grouping.

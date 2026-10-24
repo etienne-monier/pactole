@@ -254,6 +254,54 @@ command like `pactole check` does. The JSON rendering exposes the same sections
 and subtotals with amounts as strings; the CSV rendering adds a `section`
 column and a `subtotal` row kind.
 
+## `pactole income`
+
+```text
+pactole income <FILE> [--from <DATE>] [--to <DATE>] [--by account|payee|tag]
+                      [--format <FORMAT>] [--depth <N>]
+```
+
+Builds the income statement of a file over a period. Income accounts are
+shown as positive amounts, expense accounts are shown as positive amounts,
+and the total is the net result (`income − expenses`) per commodity.
+
+| Option | Description |
+|---|---|
+| `<FILE>` | Path to the file to read |
+| `--from <DATE>` | Start of the period (`YYYY-MM-DD`). Defaults to January 1 of the year containing `--to` |
+| `--to <DATE>` | End of the period (`YYYY-MM-DD`). Defaults to today |
+| `--by <GROUP>` | Grouping: `account` (default), `payee` or `tag` |
+| `--format <FORMAT>` | Output format: `text` (default), `json` or `csv` |
+| `--depth <N>` | Fold the accounts deeper than `N` levels (only when `--by account`) |
+
+```sh
+pactole income ledger.pactole
+pactole income ledger.pactole --from 2026-01-01 --to 2026-03-31
+pactole income ledger.pactole --by payee
+pactole income ledger.pactole --by tag --format json
+pactole income ledger.pactole --by account --depth 1
+```
+
+Income and expenses are classified by account root through the `[reports]`
+section of `pactole.toml` (see the [configuration reference](/reference/configuration/)).
+The report contains an *Income* section and an *Expenses* section. When
+`--by payee`, lines are grouped by the transaction payee; transactions with
+no payee appear as `(no payee)`. When `--by tag`, a transaction with several
+tags is counted under each tag and untagged transactions appear as
+`(untagged)`; in tag mode the sum of the lines can exceed the section
+subtotal, but the subtotal and the net result are computed from the exact
+amounts.
+
+**Multi-commodity behaviour:** amounts are never converted implicitly until
+Phase 2. Each commodity keeps its own totals, so income and expenses in
+different currencies appear side by side and the net result is reported per
+commodity.
+
+The report is built from the validated journal, so an invalid ledger fails the
+command like `pactole check` does. The JSON rendering exposes the same
+sections and subtotals with amounts as strings; the CSV rendering adds a
+`section` column and a `subtotal` row kind.
+
 ## `pactole import-ofx`
 
 ```text

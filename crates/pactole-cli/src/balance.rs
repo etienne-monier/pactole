@@ -4,9 +4,10 @@ use std::process::ExitCode;
 
 use chrono::{Local, NaiveDate};
 use pactole_config::{ReportOptions, ValidationOptions};
-use pactole_core::{AccountClassification, AccountGrouping, ReferenceDate, balance_sheet};
+use pactole_core::{AccountGrouping, ReferenceDate, balance_sheet};
 use pactole_storage_fs::FsSourceLoader;
 
+use crate::classification::classification;
 use crate::commands::FormatArg;
 
 pub(crate) fn run(
@@ -43,30 +44,6 @@ pub(crate) fn run(
     print!("{}", report.render(format.into()));
 
     ExitCode::SUCCESS
-}
-
-/// Turns the `[reports]` configuration into a core classification, keeping the
-/// default roots for the categories the configuration does not override.
-fn classification(options: &ReportOptions) -> AccountClassification {
-    let mut classification = AccountClassification::default();
-
-    if let Some(roots) = &options.assets {
-        classification = classification.with_assets(roots.clone());
-    }
-    if let Some(roots) = &options.liabilities {
-        classification = classification.with_liabilities(roots.clone());
-    }
-    if let Some(roots) = &options.equity {
-        classification = classification.with_equity(roots.clone());
-    }
-    if let Some(roots) = &options.income {
-        classification = classification.with_income(roots.clone());
-    }
-    if let Some(roots) = &options.expenses {
-        classification = classification.with_expenses(roots.clone());
-    }
-
-    classification
 }
 
 fn failure(error: impl std::fmt::Display) -> ExitCode {

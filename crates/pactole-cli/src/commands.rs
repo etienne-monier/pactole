@@ -109,6 +109,34 @@ pub(crate) enum Command {
         depth: Option<NonZeroUsize>,
     },
 
+    /// Show the income statement of a `.pactole` file over a period.
+    Income {
+        /// Path to the `.pactole` file to read.
+        file: PathBuf,
+
+        /// Start of the period (`YYYY-MM-DD`). Defaults to January 1 of the
+        /// year containing `--to`.
+        #[arg(long)]
+        from: Option<NaiveDate>,
+
+        /// End of the period (`YYYY-MM-DD`). Defaults to today.
+        #[arg(long)]
+        to: Option<NaiveDate>,
+
+        /// Grouping of the report.
+        #[arg(long, value_enum, default_value = "account")]
+        by: ByArg,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: FormatArg,
+
+        /// Fold the accounts deeper than this many levels (only when
+        /// `--by account`).
+        #[arg(long)]
+        depth: Option<NonZeroUsize>,
+    },
+
     /// Import transactions from an OFX statement into canonical `.pactole`
     /// transaction directives.
     ImportOfx {
@@ -231,4 +259,12 @@ impl From<FormatArg> for pactole_core::ReportFormat {
             FormatArg::Csv => pactole_core::ReportFormat::Csv,
         }
     }
+}
+
+/// Grouping for reports that can break down income and expenses.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum ByArg {
+    Account,
+    Payee,
+    Tag,
 }

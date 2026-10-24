@@ -158,6 +158,17 @@ pactole balance path/to/file.pactole --date 2026-03-31 --format json
 pactole balance path/to/file.pactole --depth 1
 ```
 
+Build the income statement of a file over a period. Income and expenses are
+shown as positive amounts and the total is the net result (`income −
+expenses`) per commodity:
+
+```sh
+pactole income path/to/file.pactole
+pactole income path/to/file.pactole --from 2026-01-01 --to 2026-03-31
+pactole income path/to/file.pactole --by payee
+pactole income path/to/file.pactole --by tag --format json
+```
+
 Accounts are classified by their root (the first `:`-separated segment)
 through the `[reports]` section of `pactole.toml` (see
 [Configuration](#configuration)). The defaults are the English `Assets`,
@@ -295,4 +306,4 @@ payees = "payees.pactole"
 accounts = "accounts.pactole"
 ```
 
-More commands (income statements, budgets) are coming.
+More commands (budgets) are coming.

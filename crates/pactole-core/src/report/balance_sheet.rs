@@ -79,7 +79,7 @@ impl AccountClassification {
         self
     }
 
-    fn category(&self, root: &str) -> Category {
+    pub(super) fn category(&self, root: &str) -> Category {
         let matches = |roots: &[String]| roots.iter().any(|candidate| candidate == root);
 
         if matches(&self.assets) {
@@ -99,7 +99,7 @@ impl AccountClassification {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Category {
+pub(super) enum Category {
     Assets,
     Liabilities,
     Equity,
@@ -224,7 +224,7 @@ fn equity_section(
     ReportSection::new("Equity", lines, subtotal)
 }
 
-fn section_lines(
+pub(super) fn section_lines(
     balances: &AccountBalances,
     grouping: AccountGrouping,
     direct_roots: &BTreeSet<String>,
@@ -246,7 +246,7 @@ fn section_lines(
 }
 
 /// Returns the first segment of `account`.
-fn root(account: &AccountName) -> &str {
+pub(super) fn root(account: &AccountName) -> &str {
     account
         .as_str()
         .split(':')

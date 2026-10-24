@@ -1,11 +1,13 @@
 mod balance;
 mod check;
+mod classification;
 mod commands;
 mod config;
 mod diagnostics;
 mod format;
 mod import_actual;
 mod import_ofx;
+mod income;
 mod init;
 mod parse;
 mod register;
@@ -82,6 +84,29 @@ fn main() -> ExitCode {
                 Ok(config) => balance::run(
                     file,
                     date,
+                    format,
+                    depth,
+                    &config.validation,
+                    &config.reports,
+                ),
+                Err(error) => config::failure(error),
+            }
+        }
+        Command::Income {
+            file,
+            from,
+            to,
+            by,
+            format,
+            depth,
+        } => {
+            let project_dir = parent_dir(&file);
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
+                Ok(config) => income::run(
+                    file,
+                    from,
+                    to,
+                    by,
                     format,
                     depth,
                     &config.validation,

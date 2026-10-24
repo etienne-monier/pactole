@@ -217,10 +217,10 @@ front-end only render the results.*
 
 ### 1.3 — Implement the income statement
 
-- [ ] Compute income and expenses over a period.
-- [ ] Group by account, payee and tag.
-- [ ] Add `pactole income --from --to`, with `--format`.
-- [ ] Document the multi-commodity behaviour (per-commodity totals, no
+- [x] Compute income and expenses over a period.
+- [x] Group by account, payee and tag.
+- [x] Add `pactole income --from --to`, with `--format`.
+- [x] Document the multi-commodity behaviour (per-commodity totals, no
   implicit conversion until Phase 2).
 
 ### 1.4 — Implement spending breakdowns
