@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Multi-currency model (roadmap 2.1):** `GRAMMAR.md` now specifies amounts,
+  transaction costs (`TransactionCost`), dated market prices and derived
+  report values as separate concepts. Transaction costs affect balancing;
+  market prices are for report valuation only. Converted transactions balance
+  exactly without implicit rounding or tolerance, and reports flag missing
+  direct prices while retaining unconverted amounts. Commodity kinds and lot
+  cost-basis tracking remain out of scope; the planned syntax is explicitly
+  marked as not yet accepted by the parser.
+
 ## [0.4.0] - 2026-10-25
 
 ### Added

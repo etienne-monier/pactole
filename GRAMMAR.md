@@ -136,9 +136,10 @@ The amount is optional: at most one posting per transaction may omit it
   Assets:Checking
 ```
 
-There is no cost or price annotation (`{cost}`, `@ price`, `@@ total`):
-these Beancount features (dedicated to investment tracking) are not
-supported.
+The current grammar does not accept cost or price annotations. Their planned
+multi-currency semantics are specified in
+[Multi-currency model](#multi-currency-model) below; this specification does
+not yet change what the parser accepts.
 
 ## Metadata (`property`)
 
@@ -195,6 +196,98 @@ its currency/commodity codes (e.g. `EUR`, `BTC.SAT-2`, `BRK'A`).
 2026-01-01 commodity BRK'A
 2026-01-01 commodity BTC.SAT-2
 ```
+
+## Multi-currency model
+
+This section specifies the model planned for Phase 2. The syntax examples are
+illustrative and are **not accepted by the current grammar**. Pactole treats
+every commodity as a named unit: it does not distinguish currencies from
+shares or other assets. No lot tracking or cost-basis accounting is part of
+this phase.
+
+### Concepts
+
+- An **amount** is a signed decimal quantity paired with exactly one
+  commodity, such as `100 USD` or `10 AAPL`. Amounts in different commodities
+  are not added together unless a conversion is explicitly defined.
+- A **transaction cost** (`TransactionCost` in the domain model) is the
+  consideration actually applied to one posting in a transaction. It
+  determines that posting's weight for transaction balancing. It is not a
+  historical cost basis attached to a lot.
+- A **price** is a dated market quote from one commodity into another. It is
+  used to value amounts in reports; it does not change the recorded amount or
+  determine how a transaction balances.
+- A **value** is a derived report amount, calculated by converting an amount
+  using a price at the requested valuation date. It is not stored as an
+  independent journal fact.
+
+### Transaction costs and balancing
+
+The planned `@` and `@@` posting annotations express a transaction cost in a
+second commodity:
+
+```pactole
+; Planned syntax; not accepted by the current parser.
+2026-10-25 * "Currency exchange"
+  Assets:USD -100 USD @ 0.93 EUR
+  Assets:EUR 93 EUR
+```
+
+For an amount `q C`:
+
+- `@ p Q` means a unit cost of `p Q` per unit of `C`; its balancing weight is
+  `q × p` in `Q`.
+- `@@ t Q` means a total transaction cost of magnitude `t Q`; its balancing
+  weight has the sign of `q` and magnitude `t` in `Q`.
+
+Thus the example's USD posting retains its `-100 USD` amount in the account,
+but has a `-93 EUR` weight for balancing against the EUR posting. Without a
+transaction-cost annotation, a posting's weight is its amount in its own
+commodity, as it is today. The transaction must sum to zero separately for
+each resulting weight commodity; a market price is never substituted for a
+missing transaction cost.
+
+`@` and `@@` are alternative ways to express the same transaction-specific
+conversion, not lot annotations. Given an explicit amount, the equivalent
+unit or total cost is derived from whichever annotation is written; both
+annotations may not appear on one posting. The cost on a posting must be
+positive, and the amount on a cost-annotated posting must be explicit because
+the source commodity cannot otherwise be identified. An omitted amount
+continues to be inferred only when its commodity is unambiguous under the
+existing auto-balancing rules.
+
+Converted weights are calculated with `Decimal` without an implicit
+currency-minor-unit rounding step. They must balance exactly. Any rounding
+difference must be represented by an explicit posting; the tolerance on a
+`balance` assertion does not apply to transaction balancing. If a conversion
+cannot be represented or calculated, it is an error rather than a silently
+rounded value.
+
+### Market prices and report values
+
+The planned market-price directive has the form:
+
+```pactole
+; Planned syntax; not accepted by the current parser.
+2026-10-25 price USD 0.92 EUR
+```
+
+This records a dated quote of `0.92 EUR` per `USD`. It is independent of any
+transaction cost: for example, it may be used to value a USD balance in an
+EUR report even if the balance arose from transactions executed at different
+rates.
+
+For a report valued on date `D`, Pactole uses the latest direct quote for the
+requested source/target commodity pair whose date is on or before `D`. The
+initial model does not infer inverse quotes or chain multiple quotes. If no
+such quote exists, the conversion is missing: the report must flag it and
+retain the original per-commodity amount rather than inventing a value or
+using zero. The unconverted per-commodity report remains available.
+
+The report's derived value must retain the target commodity, valuation date
+and price used, so renderers can explain the conversion. Lot costs, acquisition
+dates for positions, lot matching, cost-basis reports and realized/unrealized
+investment gains are explicitly out of scope.
 
 ## Payees
 
@@ -337,7 +430,9 @@ For reference, a summary of the deliberate deviations from Beancount:
   exist in Beancount at all.
 - Status flags limited to `*`, `!`, `?` (no custom flags, no `txn`
   keyword).
-- No cost/price annotations on postings (`{cost}`, `@`, `@@`).
+- No cost/price annotations on postings are accepted yet. Phase 2 specifies
+  `@`/`@@` as transaction costs for balancing; lot-cost annotations (`{}`)
+  remain out of scope.
 - No enforced account root categories.
 - Added an effective date (`date=effective_date`) and a parenthesized
   reference (`(ref)`), borrowed from Ledger-cli.

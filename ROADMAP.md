@@ -246,12 +246,19 @@ be valued.*
 
 ### 2.1 — Specify the model first
 
-- [ ] Document the current commodity semantics precisely.
-- [ ] Specify `Amount`, `Price`, `Cost` and `Value` as distinct concepts, and
-  decide what actually goes into the domain model.
-- [ ] Define the rounding and tolerance rules for a converted transaction.
-- [ ] Define the behaviour when a required price is missing.
-- [ ] Write the specification in `GRAMMAR.md` before touching the grammar.
+- [x] Document the current commodity semantics precisely.
+- [x] Specify `Amount`, `Price`, `TransactionCost` and `Value` as distinct
+  concepts, and decide what actually goes into the domain model. Transaction
+  costs are transaction-specific balancing weights, not lot cost bases; all
+  commodities remain untyped.
+- [x] Define the rounding and tolerance rules for a converted transaction:
+  exact `Decimal` balancing, no implicit rounding or transaction tolerance.
+- [x] Define the behaviour when a required price is missing: flag the missing
+  conversion and retain the original per-commodity amount.
+- [x] Write the specification in `GRAMMAR.md` before touching the grammar.
+
+Lot tracking, cost basis and investment-gain reporting remain explicitly out
+of scope.
 
 ### 2.2 — Add the `price` directive
 
