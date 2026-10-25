@@ -107,12 +107,14 @@ matches them exactly and case-sensitively.
 | `equity` | `["Equity"]` | Equity accounts |
 | `income` | `["Income"]` | Income accounts |
 | `expenses` | `["Expenses"]` | Expense accounts |
+| `uncategorized` | Not set | Accounts used for uncategorized expense transactions (exact account or subaccounts) |
 
 A key left out keeps its default, so a journal only has to configure the
 convention it actually uses. An account whose root matches no list is reported
 in an `Unclassified` section by `pactole balance` instead of being dropped. The
 same roots are used by `pactole income` to classify income and expense
-accounts.
+accounts. `pactole expenses --uncategorized` uses the configured account list;
+when omitted, it falls back to `[import] default_counter_account` if present.
 
 ```toml
 [reports]
@@ -121,6 +123,7 @@ liabilities = ["Passif"]
 equity = ["Capitaux"]
 income = ["Revenus"]
 expenses = ["Depenses", "Impots"]
+uncategorized = ["Depenses:A-Revoir"]
 ```
 
 Each key replaces the whole list: the lists are not unioned across layers. See

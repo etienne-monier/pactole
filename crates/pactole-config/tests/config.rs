@@ -98,6 +98,17 @@ fn parses_report_classification_roots() {
 }
 
 #[test]
+fn parses_uncategorized_expense_accounts() {
+    let config = resolve("[reports]\nuncategorized = [\"Depenses:A-Revoir\"]\n").unwrap();
+
+    assert_eq!(
+        config.reports.uncategorized.as_deref(),
+        Some(&["Depenses:A-Revoir".to_string()][..])
+    );
+    assert!(config.reports.is_empty());
+}
+
+#[test]
 fn report_roots_merge_per_key() {
     let global = source("[reports]\nassets = [\"Actifs\"]\nliabilities = [\"Passif\"]\n");
     // The project redefines only `assets`: the global `liabilities` survives.
@@ -114,6 +125,19 @@ fn report_roots_merge_per_key() {
         Some(&["Passif".to_string()][..])
     );
     assert_eq!(config.reports.equity, None);
+}
+
+#[test]
+fn uncategorized_accounts_merge_per_key() {
+    let global = source("[reports]\nuncategorized = [\"Expenses:Review\"]\n");
+    let project = source("[reports]\nuncategorized = [\"Expenses:Unsorted\"]\n");
+
+    let config = Config::resolve(&[global, project], &Overrides::default()).unwrap();
+
+    assert_eq!(
+        config.reports.uncategorized.as_deref(),
+        Some(&["Expenses:Unsorted".to_string()][..])
+    );
 }
 
 #[test]

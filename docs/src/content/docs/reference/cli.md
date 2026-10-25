@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-The `pactole` binary exposes eight subcommands. Run `pactole --help` or
+The `pactole` binary exposes eleven subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
@@ -301,6 +301,72 @@ The report is built from the validated journal, so an invalid ledger fails the
 command like `pactole check` does. The JSON rendering exposes the same
 sections and subtotals with amounts as strings; the CSV rendering adds a
 `section` column and a `subtotal` row kind.
+
+## `pactole expenses`
+
+```text
+pactole expenses <FILE> [--from <DATE>] [--to <DATE>] [--by account|payee|tag|month]
+                        [--format <FORMAT>] [--depth <N>] [--uncategorized] [--inactive]
+                        [--compare previous | --compare-from <DATE> --compare-to <DATE>]
+                        [--diff absolute|percent] [--reverse-diff]
+```
+
+Builds the expenses breakdown of a file over a period. Only expense
+accounts are included. Amounts keep their accounting sign (a refund appears
+as a negative amount), and the total is the period's spending per commodity.
+
+| Option | Description |
+|---|---|
+| `<FILE>` | Path to the file to read |
+| `--from <DATE>` | Start of the period (`YYYY-MM-DD`). Defaults to January 1 of the year containing `--to` |
+| `--to <DATE>` | End of the period (`YYYY-MM-DD`). Defaults to today |
+| `--by <GROUP>` | Grouping: `account` (default), `payee`, `tag` or `month` |
+| `--format <FORMAT>` | Output format: `text` (default), `json` or `csv` |
+| `--depth <N>` | Fold the accounts deeper than `N` levels (only when `--by account`) |
+| `--uncategorized` | Show uncategorized transactions (from `[reports] uncategorized` or `[import] default_counter_account`) |
+| `--inactive` | Show inactive expense accounts (opened during or before the period, not closed before its start, with no postings in the period) |
+| `--compare <PERIOD>` | Compare against `previous` or provide `--compare-from`/`--compare-to` |
+| `--compare-from <DATE>` | Start of the comparison period |
+| `--compare-to <DATE>` | End of the comparison period |
+| `--diff <MODE>` | Difference mode: `absolute` (default) or `percent` |
+| `--reverse-diff` | Use `previous − current` for the difference (positive means you saved money) |
+
+```sh
+pactole expenses ledger.pactole
+pactole expenses ledger.pactole --from 2026-01-01 --to 2026-03-31
+pactole expenses ledger.pactole --by payee
+pactole expenses ledger.pactole --by tag --format json
+pactole expenses ledger.pactole --by month
+pactole expenses ledger.pactole --by account --depth 1
+pactole expenses ledger.pactole --from 2026-02-01 --to 2026-02-28 --compare previous --diff percent
+pactole expenses ledger.pactole --from 2026-02-01 --to 2026-02-28 --compare previous --reverse-diff
+pactole expenses ledger.pactole --uncategorized --inactive
+```
+
+Expenses are classified by account root through the `[reports]` section of
+`pactole.toml` (see the [configuration reference](/reference/configuration/)).
+When `--by month`, one line is emitted per calendar month from `--from` to
+`--to` (months with no spending show a zero amount).
+`--uncategorized` and `--inactive` add named sections to the report and are
+available with every grouping. Configure one or more accounts for the former
+with `[reports] uncategorized`; when omitted, the configured import counter
+account is used. The inactive section lists expense accounts open during the
+period that had no posting in it.
+
+`--compare previous` compares with the preceding period. Complete calendar
+month ranges shift by the same number of months (so February compares with
+January even when their day counts differ); other ranges shift by the same
+number of days. Explicit comparison bounds must describe a period of the same
+length under that rule. `--diff percent` uses the previous amount as the base;
+when it is zero the difference is `n/a` in text/CSV and `null` in JSON.
+By default the difference is `current − previous`, so a positive value means
+spending increased. `--reverse-diff` switches it to `previous − current`, so a
+positive value means spending decreased. Comparisons cannot be combined with
+`--by month`, `--uncategorized` or `--inactive`.
+
+The report is built from the validated journal, so an invalid ledger fails the
+command like `pactole check` does. The JSON and CSV renderings are the same
+render-agnostic formats used by the other reports.
 
 ## `pactole import-ofx`
 

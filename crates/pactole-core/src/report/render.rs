@@ -210,7 +210,29 @@ fn csv(report: &Report) -> String {
         let section_name = section.title.clone().unwrap_or_default();
 
         for line in &section.lines {
-            for (commodity, number) in line.amounts.iter().filter(|(_, number)| !number.is_zero()) {
+            let line_amounts: Vec<_> = line
+                .amounts
+                .iter()
+                .filter(|(_, number)| !number.is_zero())
+                .collect();
+            if line_amounts.is_empty()
+                && (section.title.as_deref() == Some("Inactive accounts")
+                    || (report.title == "Expenses" && section.title.is_none()))
+            {
+                rows.push(csv_row([
+                    report.title.clone(),
+                    scope_kind.to_string(),
+                    scope_start.clone(),
+                    scope_end.clone(),
+                    section_name.clone(),
+                    "line".to_string(),
+                    line.label.clone(),
+                    line.depth.to_string(),
+                    String::new(),
+                    String::new(),
+                ]));
+            }
+            for (commodity, number) in line_amounts {
                 rows.push(csv_row([
                     report.title.clone(),
                     scope_kind.to_string(),
@@ -545,6 +567,26 @@ mod tests {
                 "Balance sheet,as_of,,2026-01-31,Equity,subtotal,,,EUR,1234.56\n",
             )
         );
+    }
+
+    #[test]
+    fn csv_keeps_inactive_account_lines_without_amounts() {
+        let report = Report::from_sections(
+            "Expenses",
+            ReportScope::over(date(2026, 1, 1), date(2026, 1, 31)).unwrap(),
+            vec![ReportSection::new(
+                "Inactive accounts",
+                vec![ReportLine::new("Expenses:Unused", 0, Amounts::new())],
+                Amounts::new(),
+            )],
+            Amounts::new(),
+        );
+
+        let rendered = report.render(ReportFormat::Csv);
+
+        assert!(rendered.contains(
+            "Expenses,period,2026-01-01,2026-01-31,Inactive accounts,line,Expenses:Unused,0,,\n"
+        ));
     }
 
     #[test]

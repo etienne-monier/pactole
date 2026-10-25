@@ -21,6 +21,9 @@ pub struct ReportOptions {
     pub income: Option<Vec<String>>,
     /// Roots of the expense accounts.
     pub expenses: Option<Vec<String>>,
+    /// Accounts considered uncategorized (exact or by prefix). When omitted,
+    /// the CLI falls back to `[import] default_counter_account` if present.
+    pub uncategorized: Option<Vec<String>>,
 }
 
 impl ReportOptions {

@@ -137,6 +137,62 @@ pub(crate) enum Command {
         depth: Option<NonZeroUsize>,
     },
 
+    /// Show the expenses breakdown of a `.pactole` file over a period.
+    Expenses {
+        /// Path to the `.pactole` file to read.
+        file: PathBuf,
+
+        /// Start of the period (`YYYY-MM-DD`). Defaults to January 1 of the
+        /// year containing `--to`.
+        #[arg(long)]
+        from: Option<NaiveDate>,
+
+        /// End of the period (`YYYY-MM-DD`). Defaults to today.
+        #[arg(long)]
+        to: Option<NaiveDate>,
+
+        /// Grouping of the report.
+        #[arg(long, value_enum, default_value = "account")]
+        by: ExpensesByArg,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: FormatArg,
+
+        /// Fold the accounts deeper than this many levels (only when
+        /// `--by account`).
+        #[arg(long)]
+        depth: Option<NonZeroUsize>,
+
+        /// Show uncategorized transactions.
+        #[arg(long)]
+        uncategorized: bool,
+
+        /// Show inactive expense accounts.
+        #[arg(long)]
+        inactive: bool,
+
+        /// Compare against previous period or another period.
+        #[arg(long, value_enum)]
+        compare: Option<CompareArg>,
+
+        /// Start of the comparison period.
+        #[arg(long)]
+        compare_from: Option<NaiveDate>,
+
+        /// End of the comparison period.
+        #[arg(long)]
+        compare_to: Option<NaiveDate>,
+
+        /// Difference display mode.
+        #[arg(long, value_enum, default_value = "absolute")]
+        diff: DiffArg,
+
+        /// Reverse difference direction (use previous − current).
+        #[arg(long)]
+        reverse_diff: bool,
+    },
+
     /// Import transactions from an OFX statement into canonical `.pactole`
     /// transaction directives.
     ImportOfx {
@@ -267,4 +323,35 @@ pub(crate) enum ByArg {
     Account,
     Payee,
     Tag,
+}
+
+/// Grouping for the expenses breakdown.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum ExpensesByArg {
+    Account,
+    Payee,
+    Tag,
+    Month,
+}
+
+/// Difference mode for comparison.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum DiffArg {
+    Absolute,
+    Percent,
+}
+
+/// Named comparison period.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum CompareArg {
+    Previous,
+}
+
+impl From<DiffArg> for pactole_core::DiffMode {
+    fn from(value: DiffArg) -> Self {
+        match value {
+            DiffArg::Absolute => pactole_core::DiffMode::Absolute,
+            DiffArg::Percent => pactole_core::DiffMode::Percent,
+        }
+    }
 }

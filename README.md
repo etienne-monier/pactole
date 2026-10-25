@@ -169,6 +169,28 @@ pactole income path/to/file.pactole --by payee
 pactole income path/to/file.pactole --by tag --format json
 ```
 
+Build the expenses breakdown of a file over a period. Only expense accounts
+are included. Amounts keep their accounting sign and the total is the
+period's spending per commodity:
+
+```sh
+pactole expenses path/to/file.pactole
+pactole expenses path/to/file.pactole --from 2026-01-01 --to 2026-03-31
+pactole expenses path/to/file.pactole --by payee
+pactole expenses path/to/file.pactole --by tag --format json
+pactole expenses path/to/file.pactole --by month
+pactole expenses path/to/file.pactole --by account --depth 1
+pactole expenses path/to/file.pactole --uncategorized --inactive
+pactole expenses path/to/file.pactole --from 2026-02-01 --to 2026-02-28 --compare previous --diff percent
+pactole expenses path/to/file.pactole --from 2026-02-01 --to 2026-02-28 --compare previous --reverse-diff
+```
+
+Uncategorized accounts can be configured in `[reports].uncategorized`;
+otherwise `--uncategorized` uses `[import].default_counter_account` when set.
+`--compare previous` compares the immediately preceding period. Differences
+default to `current − previous` (positive means spending increased);
+`--reverse-diff` switches the direction.
+
 Accounts are classified by their root (the first `:`-separated segment)
 through the `[reports]` section of `pactole.toml` (see
 [Configuration](#configuration)). The defaults are the English `Assets`,

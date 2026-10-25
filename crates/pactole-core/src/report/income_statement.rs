@@ -1,11 +1,12 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::models::{Amount, Entry, Journal};
+use crate::models::{Amount, Journal};
 
 use super::balance_sheet::{Category, root, section_lines};
+use super::grouping::{TransactionGrouping, for_each_grouped_posting, keyed_lines};
 use super::{
-    AccountBalances, AccountClassification, AccountGrouping, Amounts, Period, Report, ReportLine,
-    ReportScope, ReportSection,
+    AccountBalances, AccountClassification, AccountGrouping, Amounts, Period, Report, ReportScope,
+    ReportSection,
 };
 
 /// How income and expenses are grouped on an income statement.
@@ -84,168 +85,74 @@ pub fn income_statement(
             report.with_total_label("Net result")
         }
         IncomeGrouping::Payee => {
-            let mut income_lines: std::collections::BTreeMap<String, Amounts> =
-                std::collections::BTreeMap::new();
-            let mut expense_lines: std::collections::BTreeMap<String, Amounts> =
-                std::collections::BTreeMap::new();
-            let mut income_subtotal = Amounts::new();
-            let mut expense_subtotal = Amounts::new();
-
-            for entry in journal.entries() {
-                let Entry::Transaction(transaction) = entry else {
-                    continue;
-                };
-                if !period.contains(transaction.date) {
-                    continue;
-                }
-                let label = transaction
-                    .payee
-                    .clone()
-                    .unwrap_or_else(|| "(no payee)".to_string());
-                for posting in &transaction.postings {
-                    let Some(amount) = &posting.amount else {
-                        continue;
-                    };
-                    match classification.category(root(&posting.account)) {
-                        Category::Income => {
-                            let displayed = Amount {
-                                number: -amount.number,
-                                commodity: amount.commodity.clone(),
-                            };
-                            income_subtotal.add(&displayed);
-                            income_lines
-                                .entry(label.clone())
-                                .or_default()
-                                .add(&displayed);
-                        }
-                        Category::Expenses => {
-                            expense_subtotal.add(amount);
-                            expense_lines.entry(label.clone()).or_default().add(amount);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            let mut income_report_lines: Vec<ReportLine> = Vec::new();
-            for (label, amounts) in income_lines.iter() {
-                if !amounts.is_zero() {
-                    income_report_lines.push(ReportLine::new(label.clone(), 0, amounts.clone()));
-                }
-            }
-            let mut expense_report_lines: Vec<ReportLine> = Vec::new();
-            for (label, amounts) in expense_lines.iter() {
-                if !amounts.is_zero() {
-                    expense_report_lines.push(ReportLine::new(label.clone(), 0, amounts.clone()));
-                }
-            }
-            sort_keyed(&mut income_report_lines);
-            sort_keyed(&mut expense_report_lines);
-
-            let sections = vec![
-                ReportSection::new("Income", income_report_lines, income_subtotal.clone()),
-                ReportSection::new("Expenses", expense_report_lines, expense_subtotal.clone()),
-            ];
-            let mut net = income_subtotal;
-            for (commodity, amount) in expense_subtotal.iter() {
-                net.add(&Amount {
-                    number: -amount,
-                    commodity: commodity.clone(),
-                });
-            }
-            let report =
-                Report::from_sections("Income statement", ReportScope::Over(period), sections, net);
-            report.with_total_label("Net result")
+            grouped_income_statement(journal, period, classification, TransactionGrouping::Payee)
         }
         IncomeGrouping::Tag => {
-            let mut income_lines: std::collections::BTreeMap<String, Amounts> =
-                std::collections::BTreeMap::new();
-            let mut expense_lines: std::collections::BTreeMap<String, Amounts> =
-                std::collections::BTreeMap::new();
-            let mut income_subtotal = Amounts::new();
-            let mut expense_subtotal = Amounts::new();
-
-            for entry in journal.entries() {
-                let Entry::Transaction(transaction) = entry else {
-                    continue;
-                };
-                if !period.contains(transaction.date) {
-                    continue;
-                }
-                let tags: Vec<String> = if transaction.tags.is_empty() {
-                    vec!["(untagged)".to_string()]
-                } else {
-                    transaction.tags.clone()
-                };
-                for posting in &transaction.postings {
-                    let Some(amount) = &posting.amount else {
-                        continue;
-                    };
-                    match classification.category(root(&posting.account)) {
-                        Category::Income => {
-                            let displayed = Amount {
-                                number: -amount.number,
-                                commodity: amount.commodity.clone(),
-                            };
-                            income_subtotal.add(&displayed);
-                            for tag in &tags {
-                                income_lines.entry(tag.clone()).or_default().add(&displayed);
-                            }
-                        }
-                        Category::Expenses => {
-                            expense_subtotal.add(amount);
-                            for tag in &tags {
-                                expense_lines.entry(tag.clone()).or_default().add(amount);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            let mut income_report_lines: Vec<ReportLine> = Vec::new();
-            for (label, amounts) in income_lines.iter() {
-                if !amounts.is_zero() {
-                    income_report_lines.push(ReportLine::new(label.clone(), 0, amounts.clone()));
-                }
-            }
-            let mut expense_report_lines: Vec<ReportLine> = Vec::new();
-            for (label, amounts) in expense_lines.iter() {
-                if !amounts.is_zero() {
-                    expense_report_lines.push(ReportLine::new(label.clone(), 0, amounts.clone()));
-                }
-            }
-            sort_keyed(&mut income_report_lines);
-            sort_keyed(&mut expense_report_lines);
-
-            let sections = vec![
-                ReportSection::new("Income", income_report_lines, income_subtotal.clone()),
-                ReportSection::new("Expenses", expense_report_lines, expense_subtotal.clone()),
-            ];
-            let mut net = income_subtotal;
-            for (commodity, amount) in expense_subtotal.iter() {
-                net.add(&Amount {
-                    number: -amount,
-                    commodity: commodity.clone(),
-                });
-            }
-            let report =
-                Report::from_sections("Income statement", ReportScope::Over(period), sections, net);
-            report.with_total_label("Net result")
+            grouped_income_statement(journal, period, classification, TransactionGrouping::Tag)
         }
     }
 }
 
-fn sort_keyed(lines: &mut [ReportLine]) {
-    lines.sort_by(|left, right| {
-        let left_key = left.label.as_str();
-        let right_key = right.label.as_str();
-        let left_placeholder = left_key.starts_with('(');
-        let right_placeholder = right_key.starts_with('(');
-        left_placeholder
-            .cmp(&right_placeholder)
-            .then(left_key.cmp(right_key))
-    });
+fn grouped_income_statement(
+    journal: &Journal,
+    period: Period,
+    classification: &AccountClassification,
+    grouping: TransactionGrouping,
+) -> Report {
+    let mut income_lines = BTreeMap::new();
+    let mut expense_lines = BTreeMap::new();
+    let mut income_subtotal = Amounts::new();
+    let mut expense_subtotal = Amounts::new();
+
+    for_each_grouped_posting(
+        journal,
+        period,
+        classification,
+        grouping,
+        |category, labels, amount| match category {
+            Category::Income => {
+                let displayed = Amount {
+                    number: -amount.number,
+                    commodity: amount.commodity.clone(),
+                };
+                income_subtotal.add(&displayed);
+                for label in labels {
+                    income_lines
+                        .entry(label.clone())
+                        .or_insert_with(Amounts::new)
+                        .add(&displayed);
+                }
+            }
+            Category::Expenses => {
+                expense_subtotal.add(amount);
+                for label in labels {
+                    expense_lines
+                        .entry(label.clone())
+                        .or_insert_with(Amounts::new)
+                        .add(amount);
+                }
+            }
+            _ => {}
+        },
+    );
+
+    let sections = vec![
+        ReportSection::new("Income", keyed_lines(income_lines), income_subtotal.clone()),
+        ReportSection::new(
+            "Expenses",
+            keyed_lines(expense_lines),
+            expense_subtotal.clone(),
+        ),
+    ];
+    let mut net = income_subtotal;
+    for (commodity, amount) in expense_subtotal.iter() {
+        net.add(&Amount {
+            number: -amount,
+            commodity: commodity.clone(),
+        });
+    }
+    Report::from_sections("Income statement", ReportScope::Over(period), sections, net)
+        .with_total_label("Net result")
 }
 
 #[cfg(test)]

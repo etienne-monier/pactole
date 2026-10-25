@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Spending breakdowns (roadmap 1.4):** `pactole expenses` groups expense
+  postings by account, payee, tag or calendar month, preserving each
+  commodity's signed amounts. `--uncategorized` adds transaction lines for
+  accounts configured through `[reports].uncategorized` (or, when omitted,
+  `[import].default_counter_account`), and `--inactive` lists expense accounts
+  open during the selected period with no postings. `--compare previous` or
+  `--compare-from`/`--compare-to` compares equal-length periods; complete
+  calendar-month periods are compared by month count, other periods by day
+  count. `--diff percent` computes the percentage against the previous period;
+  `--reverse-diff` switches to `previous − current`. Text, JSON and CSV
+  comparison renderings are supported.
 - **Actual Budget migration:** `pactole import-actual` now performs a
   one-shot migration from an Actual Budget SQLite database. It accepts all
   migration settings through CLI options, generates account, commodity and

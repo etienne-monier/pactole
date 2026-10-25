@@ -350,6 +350,7 @@ fn resolve_reports(merged: &RawFile) -> ReportOptions {
         equity: reports.equity.clone(),
         income: reports.income.clone(),
         expenses: reports.expenses.clone(),
+        uncategorized: reports.uncategorized.clone(),
     }
 }
 

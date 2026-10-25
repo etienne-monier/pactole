@@ -15,7 +15,10 @@
 mod accounts;
 mod amounts;
 mod balance_sheet;
+mod comparison;
 mod error;
+mod expenses;
+mod grouping;
 mod income_statement;
 mod period;
 mod render;
@@ -23,7 +26,14 @@ mod render;
 pub use accounts::{AccountBalances, AccountGrouping};
 pub use amounts::Amounts;
 pub use balance_sheet::{AccountClassification, balance_sheet};
+pub use comparison::{
+    ComparisonLine, ComparisonReport, DiffDirection, DiffMode, compare_reports,
+    periods_have_same_length, previous_period,
+};
 pub use error::ReportError;
+pub use expenses::{
+    ExpenseGrouping, ExpenseOptions, expense_breakdown, expense_breakdown_with_options,
+};
 pub use income_statement::{IncomeGrouping, income_statement};
 pub use period::{Period, ReferenceDate, ReportScope};
 

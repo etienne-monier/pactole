@@ -53,6 +53,7 @@ pub(crate) struct RawReports {
     pub(crate) equity: Option<Vec<String>>,
     pub(crate) income: Option<Vec<String>>,
     pub(crate) expenses: Option<Vec<String>>,
+    pub(crate) uncategorized: Option<Vec<String>>,
 }
 
 /// The `[import]` section, unmerged.
@@ -159,6 +160,9 @@ impl RawFile {
             }
             if let Some(expenses) = reports.expenses {
                 target.expenses = Some(expenses);
+            }
+            if let Some(uncategorized) = reports.uncategorized {
+                target.uncategorized = Some(uncategorized);
             }
         }
 

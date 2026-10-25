@@ -4,6 +4,7 @@ mod classification;
 mod commands;
 mod config;
 mod diagnostics;
+mod expenses;
 mod format;
 mod import_actual;
 mod import_ofx;
@@ -111,6 +112,44 @@ fn main() -> ExitCode {
                     depth,
                     &config.validation,
                     &config.reports,
+                ),
+                Err(error) => config::failure(error),
+            }
+        }
+        Command::Expenses {
+            file,
+            from,
+            to,
+            by,
+            format,
+            depth,
+            uncategorized,
+            inactive,
+            compare,
+            compare_from,
+            compare_to,
+            diff,
+            reverse_diff,
+        } => {
+            let project_dir = parent_dir(&file);
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
+                Ok(config) => expenses::run(
+                    file,
+                    from,
+                    to,
+                    by,
+                    format,
+                    depth,
+                    uncategorized,
+                    inactive,
+                    compare,
+                    compare_from,
+                    compare_to,
+                    diff,
+                    reverse_diff,
+                    &config.validation,
+                    &config.reports,
+                    config.import.as_ref(),
                 ),
                 Err(error) => config::failure(error),
             }

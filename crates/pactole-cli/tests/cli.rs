@@ -53,6 +53,97 @@ fn parse_reports_error_on_missing_file() {
 }
 
 #[test]
+fn expenses_supports_optional_sections_and_calendar_month_comparisons() {
+    let directory = std::env::temp_dir().join(format!("pactole-expenses-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let ledger = directory.join("ledger.pactole");
+    let config = directory.join("pactole.toml");
+    std::fs::write(
+        &ledger,
+        "2026-01-01 open Assets:Bank\n\
+         2026-01-01 open Expenses:Review\n\
+         2026-01-01 open Expenses:Inactive\n\
+         2026-01-01 commodity EUR\n\
+         payee \"Shop\"\n\
+         2026-01-05 * \"Shop\"\n\
+         \u{20}\u{20}Assets:Bank -10.00 EUR\n\
+         \u{20}\u{20}Expenses:Review 10.00 EUR\n\
+         2026-02-05 * \"Shop\"\n\
+         \u{20}\u{20}Assets:Bank -15.00 EUR\n\
+         \u{20}\u{20}Expenses:Review 15.00 EUR\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &config,
+        "[reports]\nexpenses = [\"Expenses\"]\nuncategorized = [\"Expenses:Review\"]\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args([
+            "expenses",
+            ledger.to_str().unwrap(),
+            "--from",
+            "2026-01-01",
+            "--to",
+            "2026-02-28",
+            "--by",
+            "payee",
+            "--uncategorized",
+            "--inactive",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["sections"][1]["title"], "Uncategorized");
+    assert_eq!(report["sections"][1]["lines"].as_array().unwrap().len(), 2);
+    assert_eq!(report["sections"][2]["title"], "Inactive accounts");
+    assert_eq!(
+        report["sections"][2]["lines"][0]["label"],
+        "Expenses:Inactive"
+    );
+
+    let comparison = pactole_cmd()
+        .args([
+            "expenses",
+            ledger.to_str().unwrap(),
+            "--from",
+            "2026-02-01",
+            "--to",
+            "2026-02-28",
+            "--compare",
+            "previous",
+            "--reverse-diff",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        comparison.status.success(),
+        "{}",
+        String::from_utf8_lossy(&comparison.stderr)
+    );
+    let comparison_text = String::from_utf8_lossy(&comparison.stdout);
+    assert!(comparison_text.contains("Difference (previous − current)"));
+    assert!(comparison_text.contains("-5.00 EUR"));
+
+    let invalid = pactole_cmd()
+        .args(["expenses", ledger.to_str().unwrap(), "--reverse-diff"])
+        .output()
+        .unwrap();
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("require a comparison"));
+
+    std::fs::remove_dir_all(directory).ok();
+}
+
+#[test]
 fn check_reports_success_on_business_valid_file() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("pactole-check-ok-{}.pactole", std::process::id()));

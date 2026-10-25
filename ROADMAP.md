@@ -225,9 +225,9 @@ front-end only render the results.*
 
 ### 1.4 — Implement spending breakdowns
 
-- [ ] `pactole expenses --by account|payee|tag|month`.
-- [ ] Report uncategorized transactions and inactive accounts.
-- [ ] Compare two periods (same length, relative or absolute difference).
+- [x] `pactole expenses --by account|payee|tag|month`.
+- [x] Report uncategorized transactions and inactive accounts.
+- [x] Compare two periods (same length, relative or absolute difference).
 
 ### 1.5 — Improve the CLI output
 

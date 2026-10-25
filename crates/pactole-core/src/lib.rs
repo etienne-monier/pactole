@@ -22,9 +22,11 @@ pub use crate::models::{
 };
 pub use crate::register::{RegisterEntry, RegisterFilter, register};
 pub use crate::report::{
-    AccountBalances, AccountClassification, AccountGrouping, Amounts, IncomeGrouping, Period,
-    ReferenceDate, Report, ReportError, ReportFormat, ReportLine, ReportScope, ReportSection,
-    balance_sheet, income_statement,
+    AccountBalances, AccountClassification, AccountGrouping, Amounts, ComparisonLine,
+    ComparisonReport, DiffDirection, DiffMode, ExpenseGrouping, ExpenseOptions, IncomeGrouping,
+    Period, ReferenceDate, Report, ReportError, ReportFormat, ReportLine, ReportScope,
+    ReportSection, balance_sheet, compare_reports, expense_breakdown,
+    expense_breakdown_with_options, income_statement, periods_have_same_length, previous_period,
 };
 pub use crate::traits::ReadableStorage;
 pub use crate::validation::{
