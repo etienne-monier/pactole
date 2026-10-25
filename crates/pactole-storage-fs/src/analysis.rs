@@ -368,7 +368,7 @@ fn entry_spans(directive: Node<'_>) -> EntrySpans {
                 .map(|node| Span::from_node(&node))
                 .collect();
         }
-        "commodity" => {
+        "commodity" | "price" => {
             spans.commodities = named_children(header, "commodity_name")
                 .into_iter()
                 .map(|node| Span::from_node(&node))
@@ -868,6 +868,17 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
                         .filter(|amount| amount.commodity == *commodity)
                         .and(spans.commodity)
                 })
+                .or_else(|| {
+                    let Entry::Price(price) = &entry.entry else {
+                        return None;
+                    };
+                    entry
+                        .spans
+                        .commodities
+                        .iter()
+                        .zip([&price.base, &price.quote.commodity])
+                        .find_map(|(span, candidate)| (candidate == commodity).then_some(*span))
+                })
                 .or_else(|| entry.spans.commodities.first().copied())
                 .unwrap_or(entry.span)
         }
@@ -904,6 +915,9 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
         }
         ValidationError::PayeeUnused { .. } => entry.spans.payee.unwrap_or(entry.span),
         ValidationError::BalanceAssertionFailed { .. } => entry.span,
+        ValidationError::PriceNotPositive { .. } | ValidationError::PriceConflict { .. } => {
+            entry.span
+        }
         ValidationError::TooManyPostingsWithoutAmount { .. }
         | ValidationError::AmbiguousAutoBalanceCommodity { .. }
         | ValidationError::TransactionNotBalanced { .. } => entry.span,
@@ -1590,6 +1604,52 @@ mod tests {
         let balance_start = source.find("2026-01-03 balance").unwrap();
         let balance_end = source[balance_start..].find('\n').unwrap() + balance_start + 1;
         assert_eq!(balance.span.byte_range(), balance_start..balance_end);
+    }
+
+    #[test]
+    fn a_price_with_an_undeclared_commodity_points_at_that_commodity() {
+        let source = "2026-01-01 commodity EUR\n2026-01-02 price USD 0.92 EUR\n";
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::CommodityNotDeclared)
+            .expect("undeclared price commodity diagnostic");
+        let expected_start = source.find("USD").unwrap();
+
+        assert_eq!(
+            diagnostic.span.byte_range(),
+            expected_start..expected_start + "USD".len()
+        );
+    }
+
+    #[test]
+    fn conflicting_prices_across_included_files_are_reported_on_the_second_quote() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 commodity EUR\n\
+             2026-01-01 commodity USD\n\
+             2026-01-02 price USD 0.92 EUR\n\
+             include \"rates.pactole\"\n",
+        );
+        let rates = "2026-01-02 price USD 0.93 EUR\n";
+        loader.insert("/journal/rates.pactole", rates);
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::PriceConflict)
+            .expect("conflicting price diagnostic");
+
+        assert_eq!(diagnostic.path, Path::new("/journal/rates.pactole"));
+        assert_eq!(diagnostic.span.byte_range(), 0..rates.len());
     }
 
     #[test]

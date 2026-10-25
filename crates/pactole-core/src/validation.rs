@@ -54,8 +54,8 @@ pub struct ValidationIssue {
 ///   `commodity-not-allowed`) are suppressed for those names only, and the
 ///   names are treated as if they had been declared;
 /// - the *usage* axis (`used_accounts`, `used_commodities`, `used_payees`)
-///   lists the names a missing transaction or balance assertion may have
-///   used. The checks that depend on it (`balance-assertion-failed`,
+///   lists the names a missing transaction, balance assertion or price
+///   directive may have used. The checks that depend on it (`balance-assertion-failed`,
 ///   `account-unused`, `commodity-unused`, `payee-unused`) are suppressed for
 ///   those names only.
 ///
@@ -76,7 +76,7 @@ pub struct MissingData {
     pub payees: BTreeSet<String>,
     /// Accounts whose postings or balance assertions may be missing.
     pub used_accounts: BTreeSet<AccountName>,
-    /// Commodities whose amounts may be missing.
+    /// Commodities whose amounts or price references may be missing.
     pub used_commodities: BTreeSet<CommodityName>,
     /// Payees whose transactions may be missing.
     pub used_payees: BTreeSet<String>,
@@ -104,8 +104,8 @@ impl MissingData {
         self.everything || self.used_accounts.contains(account)
     }
 
-    /// Whether the commodity may have amounts that the journal does not
-    /// contain.
+    /// Whether the commodity may have amounts or price references that the
+    /// journal does not contain.
     fn commodity_may_be_used(&self, commodity: &CommodityName) -> bool {
         self.everything || self.used_commodities.contains(commodity)
     }
@@ -178,6 +178,9 @@ pub fn validate_journal_all_with(journal: Journal, missing: &MissingData) -> Val
     let mut open_accounts: HashMap<AccountName, Vec<CommodityName>> = HashMap::new();
     let mut declared_commodities: HashSet<CommodityName> = HashSet::new();
     let mut declared_payees: HashSet<String> = HashSet::new();
+    // First quote for each dated, directed commodity pair. Identical repeats
+    // are harmless; a different value on the same date is contradictory.
+    let mut prices: BTreeMap<(NaiveDate, CommodityName, CommodityName), Decimal> = BTreeMap::new();
     // Running balance, per (account, commodity) pair, of every posting
     // seen so far, used to check `balance` assertions.
     let mut running_balances: HashMap<(AccountName, CommodityName), Decimal> = HashMap::new();
@@ -225,6 +228,58 @@ pub fn validate_journal_all_with(journal: Journal, missing: &MissingData) -> Val
                         error,
                     });
                     continue;
+                }
+            }
+            Entry::Price(price) => {
+                let mut price_errors = Vec::new();
+                for commodity in [&price.base, &price.quote.commodity] {
+                    if !declared_commodities.contains(commodity)
+                        && !missing.commodity_may_be_declared(commodity)
+                    {
+                        price_errors.push(ValidationError::CommodityNotDeclared {
+                            commodity: commodity.clone(),
+                            date: price.date,
+                        });
+                    }
+                }
+                if !price_errors.is_empty() {
+                    issues.extend(price_errors.into_iter().map(|error| ValidationIssue {
+                        input_index: *input_index,
+                        error,
+                    }));
+                    continue;
+                }
+                if price.quote.number <= Decimal::ZERO {
+                    issues.push(ValidationIssue {
+                        input_index: *input_index,
+                        error: ValidationError::PriceNotPositive {
+                            base: price.base.clone(),
+                            date: price.date,
+                        },
+                    });
+                    continue;
+                }
+
+                let key = (
+                    price.date,
+                    price.base.clone(),
+                    price.quote.commodity.clone(),
+                );
+                if let Some(first) = prices.get(&key) {
+                    if *first != price.quote.number {
+                        issues.push(ValidationIssue {
+                            input_index: *input_index,
+                            error: ValidationError::PriceConflict {
+                                base: price.base.clone(),
+                                quote: price.quote.commodity.clone(),
+                                date: price.date,
+                                first: *first,
+                                second: price.quote.number,
+                            },
+                        });
+                    }
+                } else {
+                    prices.insert(key, price.quote.number);
                 }
             }
             Entry::Payee(payee) => {
@@ -376,8 +431,8 @@ pub fn validate_journal_all_with(journal: Journal, missing: &MissingData) -> Val
 ///   assertion; merely `close`ing it does not count (an account exists to
 ///   hold postings, so opened-then-closed-without-ever-posting is reported);
 /// - a declared commodity is used by a transaction posting amount, by a
-///   `balance` assertion amount, or by the restricted list of an `open`
-///   directive (an explicit reference to the commodity);
+///   `balance` assertion amount, by a `price` directive, or by the restricted
+///   list of an `open` directive (an explicit reference to the commodity);
 /// - a declared payee is used by a transaction's payee.
 ///
 /// A use counts even when the entry carrying it fails another validation
@@ -429,6 +484,10 @@ pub fn unused_declarations_with(journal: &Journal, missing: &MissingData) -> Vec
                 declared_commodities
                     .entry(commodity.name.clone())
                     .or_insert((input_index, commodity.date));
+            }
+            Entry::Price(price) => {
+                used_commodities.insert(price.base.clone());
+                used_commodities.insert(price.quote.commodity.clone());
             }
             Entry::Payee(payee) => {
                 declared_payees
@@ -640,7 +699,7 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
 mod tests {
     use super::*;
     use crate::models::{
-        Balance, Close, Commodity, Metadata, Open, Payee, Posting, TransactionStatus,
+        Balance, Close, Commodity, Metadata, Open, Payee, Posting, Price, TransactionStatus,
     };
 
     fn date(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
@@ -743,6 +802,119 @@ mod tests {
             name: CommodityName::new(name).unwrap(),
             meta: Metadata::new(),
         })
+    }
+
+    fn price(d: chrono::NaiveDate, base: &str, number: &str, quote: &str) -> Entry {
+        Entry::Price(Price {
+            date: d,
+            base: CommodityName::new(base).unwrap(),
+            quote: Amount {
+                number: number.parse().unwrap(),
+                commodity: CommodityName::new(quote).unwrap(),
+            },
+            meta: Metadata::new(),
+        })
+    }
+
+    #[test]
+    fn price_may_precede_the_first_posting_but_not_commodity_declarations() {
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                price(date(2024, 1, 2), "USD", "0.92", "EUR"),
+                commodity(date(2024, 1, 1), "EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+            ],
+        });
+
+        assert!(report.issues.is_empty(), "{:?}", report.issues);
+    }
+
+    #[test]
+    fn price_before_a_commodity_declaration_is_rejected() {
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                price(date(2024, 1, 2), "USD", "0.92", "EUR"),
+                commodity(date(2024, 1, 3), "USD"),
+            ],
+        });
+
+        assert_eq!(report.issues.len(), 1);
+        assert!(matches!(
+            report.issues[0].error,
+            ValidationError::CommodityNotDeclared { ref commodity, .. }
+                if commodity.as_str() == "USD"
+        ));
+    }
+
+    #[test]
+    fn non_positive_market_prices_are_rejected() {
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                price(date(2024, 1, 2), "USD", "0", "EUR"),
+            ],
+        });
+
+        assert!(matches!(
+            report.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::PriceNotPositive { .. },
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn conflicting_prices_on_the_same_day_are_rejected_but_identical_quotes_are_allowed() {
+        let declarations = vec![
+            commodity(date(2024, 1, 1), "EUR"),
+            commodity(date(2024, 1, 1), "USD"),
+        ];
+        let conflicting = validate_journal_all(Journal {
+            entries: [
+                declarations.clone(),
+                vec![
+                    price(date(2024, 1, 2), "USD", "0.92", "EUR"),
+                    price(date(2024, 1, 2), "USD", "0.93", "EUR"),
+                ],
+            ]
+            .concat(),
+        });
+        assert!(matches!(
+            conflicting.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::PriceConflict { .. },
+                ..
+            }]
+        ));
+
+        let identical = validate_journal_all(Journal {
+            entries: [
+                declarations,
+                vec![
+                    price(date(2024, 1, 2), "USD", "0.92", "EUR"),
+                    price(date(2024, 1, 2), "USD", "0.920", "EUR"),
+                    price(date(2024, 1, 2), "EUR", "1.08", "USD"),
+                ],
+            ]
+            .concat(),
+        });
+        assert!(identical.issues.is_empty(), "{:?}", identical.issues);
+    }
+
+    #[test]
+    fn price_directives_count_as_commodity_uses() {
+        let journal = Journal {
+            entries: vec![
+                commodity(date(2024, 1, 1), "EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                price(date(2024, 1, 2), "USD", "0.92", "EUR"),
+            ],
+        };
+
+        assert!(unused_declarations(&journal).is_empty());
     }
 
     fn balance(d: chrono::NaiveDate, account: &str, amount: (&str, &str)) -> Entry {

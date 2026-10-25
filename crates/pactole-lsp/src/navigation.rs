@@ -2,10 +2,10 @@
 //!
 //! Both requests resolve against a single, shared occurrence index built
 //! directly from each file's concrete syntax tree (CST): every account,
-//! payee, commodity and `include` path token becomes an occurrence tagged
+//! payee, commodity, price quote and `include` path token becomes an occurrence tagged
 //! with its kind, its name, and whether it is a *definition* (the `open` of
 //! an account, a `payee` directive, a `commodity` directive) or a *use* (a
-//! posting account, a transaction payee, a balance commodity, ...).
+//! posting account, a transaction payee, a balance or price commodity, ...).
 //!
 //! Working from the CST rather than the lowered domain model keeps token
 //! positions exact (the domain model deliberately carries no source
@@ -336,6 +336,21 @@ fn occurrences_in(file: &ParsedFile) -> Vec<Occurrence<'_>> {
                         commodity,
                         SymbolKind::Commodity,
                         true,
+                    );
+                }
+            }
+            "price" => {
+                let mut cursor = header.walk();
+                for commodity in header
+                    .named_children(&mut cursor)
+                    .filter(|node| node.kind() == "commodity_name")
+                {
+                    push_occurrence(
+                        &mut occurrences,
+                        source,
+                        commodity,
+                        SymbolKind::Commodity,
+                        false,
                     );
                 }
             }
@@ -671,6 +686,24 @@ mod tests {
             symbol_in_file(&file, offset),
             Some(account_symbol("Assets:Checking"))
         );
+    }
+
+    #[test]
+    fn price_quotes_are_commodity_references() {
+        let file = analyze_file(
+            "2026-01-01 commodity EUR\n\
+             2026-01-01 commodity USD\n\
+             2026-01-02 price USD 0.92 EUR\n",
+        );
+        let price_uses: Vec<_> = occurrences_in(&file)
+            .into_iter()
+            .filter(|occurrence| {
+                occurrence.kind == SymbolKind::Commodity && !occurrence.is_definition
+            })
+            .map(|occurrence| occurrence.name)
+            .collect();
+
+        assert_eq!(price_uses, ["USD", "EUR"]);
     }
 
     #[test]

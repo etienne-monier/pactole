@@ -164,6 +164,8 @@ reported), `warn` (reported as a warning) or `error` (blocking).
 | `account-not-open` | — | error | An account is used, or closed, while it is not open. |
 | `commodity-already-declared` | — | error | A commodity is declared more than once. |
 | `commodity-not-declared` | — | error | A commodity is used before being declared. |
+| `price-not-positive` | — | error | A market-price rate is zero or negative. |
+| `price-conflict` | — | error | Different rates are declared for the same directed commodity pair on the same date. |
 | `payee-already-declared` | — | error | A payee is declared more than once. |
 | `payee-not-declared` | `payee` | error | A transaction uses a payee with no `payee` declaration. |
 | `too-many-postings-without-amount` | — | error | More than one posting of a transaction omits its amount; at most one may omit it, so that it can be inferred. |
@@ -172,7 +174,7 @@ reported), `warn` (reported as a warning) or `error` (blocking).
 | `commodity-not-allowed` | — | error | A posting uses a commodity excluded by the account's `open` restriction. |
 | `balance-assertion-failed` | — | error | A `balance` assertion differs from the computed balance beyond its tolerance. |
 | `account-unused` | `unused` | warn | An account is opened but neither a transaction nor a balance assertion uses it. |
-| `commodity-unused` | `unused` | warn | A commodity is declared but no amount uses it, and no `open` restricts an account to it. |
+| `commodity-unused` | `unused` | warn | A commodity is declared but no amount, price directive or `open` restriction uses it. |
 | `payee-unused` | `unused` | warn | A payee is declared but no transaction uses it. |
 
 These diagnostics point at the declared name itself (the account or

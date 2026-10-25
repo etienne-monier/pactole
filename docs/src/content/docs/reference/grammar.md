@@ -35,8 +35,8 @@ source_file := (directive | newline)*
 directive   := header newline property* posting*
 ```
 
-Each directive starts with a header (`open`, `close`, `commodity`, `balance`,
-`transaction`, `payee` or `include`), followed by a newline, then an optional
+Each directive starts with a header (`open`, `close`, `commodity`, `price`,
+`balance`, `transaction`, `payee` or `include`), followed by a newline, then an optional
 block of metadata (`property`) and — for transactions only — a sequence of
 postings. Postings may only appear under a `transaction` directive.
 
@@ -54,6 +54,7 @@ itself.
 | `open`        | `DATE open ACCOUNT [COMMODITY_NAME[,COMMODITY_NAME...]]`          |
 | `close`       | `DATE close ACCOUNT`                                              |
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                   |
+| `price`       | `DATE price BASE_COMMODITY RATE QUOTE_COMMODITY`                  |
 | `payee`       | `payee "name"`                                                    |
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`        |
 | `transaction` | `DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]` |
@@ -68,6 +69,8 @@ order-independent fact about the journal.
 2026-09-03 open Assets:Broker EUR,USD
 2026-12-31 close Assets:Checking
 2026-01-01 commodity EUR
+2026-01-01 commodity USD
+2026-01-02 price USD 0.92 EUR
 payee "Whole Foods"
 2026-09-03 balance Assets:Checking 1234.56 ~ 0.01 EUR
 include "ledger/2026.pactole"
@@ -112,9 +115,9 @@ posting := account amount? property*
 ```
 
 The amount is optional: at most one posting per transaction may omit it
-(interpolation). There is no cost or price annotation (`{cost}`, `@ price`,
-`@@ total`); these Beancount features, dedicated to investment tracking, are not
-supported.
+(interpolation). The `price` directive records market quotes; postings do not
+yet support `@`/`@@` transaction-cost annotations. Lot-cost annotations (`{}`)
+remain out of scope.
 
 ```pactole
   Expenses:Groceries 45.30 EUR
@@ -268,14 +271,15 @@ amounts and indentation to be freely aligned:
 
 ## Main differences from Beancount
 
-- Only 7 directives are supported; `pad`, `price`, `note`, `event`, `document`,
+- Only 8 directives are supported; `pad`, `note`, `event`, `document`,
   `query`, `custom`, `option`, `plugin`, `pushtag`/`poptag` do not exist.
 - `payee` is mandatory in a transaction and `narration` is optional (the reverse
   of the Beancount convention). A `payee` *declaration* does not exist in
   Beancount at all.
 - Status flags are limited to `*`, `!`, `?` (no custom flags, no `txn` keyword);
   the status may be omitted and defaults to `?` (uncleared).
-- No cost/price annotations on postings (`{cost}`, `@`, `@@`).
+- No `@`/`@@` transaction-cost annotations on postings yet; `{}` lot costs are
+  out of scope.
 - No enforced account root categories.
 - Added an effective date (`date=effective_date`) and a parenthesized reference
   (`(ref)`), borrowed from Ledger-cli.

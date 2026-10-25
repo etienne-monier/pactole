@@ -175,6 +175,49 @@ fn check_reports_success_on_business_valid_file() {
 }
 
 #[test]
+fn check_accepts_market_prices_and_reports_conflicting_quotes() {
+    let directory =
+        std::env::temp_dir().join(format!("pactole-check-price-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let ledger = directory.join("ledger.pactole");
+    std::fs::write(
+        &ledger,
+        "2024-01-01 commodity EUR\n\
+         2024-01-01 commodity USD\n\
+         2024-01-02 price USD 0.92 EUR\n",
+    )
+    .unwrap();
+
+    let valid = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(
+        valid.status.success(),
+        "{}",
+        String::from_utf8_lossy(&valid.stderr)
+    );
+
+    std::fs::write(
+        &ledger,
+        "2024-01-01 commodity EUR\n\
+         2024-01-01 commodity USD\n\
+         2024-01-02 price USD 0.92 EUR\n\
+         2024-01-02 price USD 0.93 EUR\n",
+    )
+    .unwrap();
+    let conflicting = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+    std::fs::remove_dir_all(&directory).ok();
+
+    assert!(!conflicting.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&conflicting.stdout).unwrap();
+    assert_eq!(json["diagnostics"][0]["code"], "price-conflict");
+}
+
+#[test]
 fn check_reports_undeclared_payee() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!(

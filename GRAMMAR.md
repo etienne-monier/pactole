@@ -32,7 +32,7 @@ source_file := (directive | newline)*
 directive   := header newline property* posting*
 ```
 
-Each directive starts with a header (`open`, `close`, `commodity`,
+Each directive starts with a header (`open`, `close`, `commodity`, `price`,
 `balance`, `transaction`, `payee` or `include`), followed by a newline,
 then an optional block of metadata (`property`) and — for transactions
 only — a sequence of postings. Postings may only appear under a
@@ -51,6 +51,7 @@ never as metadata of the directive itself.
 | `open`        | `DATE open ACCOUNT [COMMODITY_NAME[,COMMODITY_NAME...]]`           |
 | `close`       | `DATE close ACCOUNT`                                               |
 | `commodity`   | `DATE commodity COMMODITY_NAME`                                    |
+| `price`       | `DATE price BASE NUMBER QUOTE`                                     |
 | `payee`       | `payee "name"`                                                      |
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`         |
 | `transaction` | `DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]` |
@@ -68,6 +69,8 @@ Examples:
 2026-09-03 open Assets:Broker EUR,USD
 2026-12-31 close Assets:Checking
 2026-01-01 commodity EUR
+2026-01-01 commodity USD
+2026-01-02 price USD 0.92 EUR
 payee "Whole Foods"
 2026-09-03 balance Assets:Checking 1234.56 ~ 0.01 EUR
 include "ledger/2026.pactole"
@@ -136,10 +139,8 @@ The amount is optional: at most one posting per transaction may omit it
   Assets:Checking
 ```
 
-The current grammar does not accept cost or price annotations. Their planned
-multi-currency semantics are specified in
-[Multi-currency model](#multi-currency-model) below; this specification does
-not yet change what the parser accepts.
+The current grammar accepts the dated `price` directive described below, but
+does not yet accept `@`/`@@` transaction-cost annotations on postings.
 
 ## Metadata (`property`)
 
@@ -199,8 +200,9 @@ its currency/commodity codes (e.g. `EUR`, `BTC.SAT-2`, `BRK'A`).
 
 ## Multi-currency model
 
-This section specifies the model planned for Phase 2. The syntax examples are
-illustrative and are **not accepted by the current grammar**. Pactole treats
+This section specifies the multi-currency model for Phase 2. The dated `price`
+directive is implemented; the `@`/`@@` examples remain planned syntax for
+Phase 2.3 and are **not accepted by the current grammar yet**. Pactole treats
 every commodity as a named unit: it does not distinguish currencies from
 shares or other assets. No lot tracking or cost-basis accounting is part of
 this phase.
@@ -265,17 +267,19 @@ rounded value.
 
 ### Market prices and report values
 
-The planned market-price directive has the form:
+The market-price directive has the form:
 
 ```pactole
-; Planned syntax; not accepted by the current parser.
 2026-10-25 price USD 0.92 EUR
 ```
 
 This records a dated quote of `0.92 EUR` per `USD`. It is independent of any
 transaction cost: for example, it may be used to value a USD balance in an
 EUR report even if the balance arose from transactions executed at different
-rates.
+rates. Both commodities must already be declared in chronological journal
+order, and the rate must be positive. Different rates for the same directed
+pair on the same date are contradictory; identical repeats are allowed. A
+price may predate the first posting that uses either commodity.
 
 For a report valued on date `D`, Pactole uses the latest direct quote for the
 requested source/target commodity pair whose date is on or before `D`. The
@@ -420,8 +424,8 @@ files:
 
 For reference, a summary of the deliberate deviations from Beancount:
 
-- Only 7 directives are supported (`open`, `close`, `commodity`,
-  `payee`, `balance`, `transaction`, `include`); `pad`, `price`, `note`,
+- Only 8 directives are supported (`open`, `close`, `commodity`, `price`,
+  `payee`, `balance`, `transaction`, `include`); `pad`, `note`,
   `event`, `document`, `query`, `custom`, `option`, `plugin`,
   `pushtag`/`poptag` do not exist.
 - `payee` is mandatory in a transaction; `narration` is optional (the

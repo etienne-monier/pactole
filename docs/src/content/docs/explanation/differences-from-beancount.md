@@ -12,11 +12,12 @@ way to unlearn the right things.
 
 ## A smaller set of directives
 
-Only seven directives exist:
+Only eight directives exist:
 
-`open`, `close`, `commodity`, `payee`, `balance`, a transaction, and `include`.
+`open`, `close`, `commodity`, `price`, `payee`, `balance`, a transaction,
+and `include`.
 
-Beancount directives such as `pad`, `price`, `note`, `event`, `document`,
+Beancount directives such as `pad`, `note`, `event`, `document`,
 `query`, `custom`, `option`, `plugin` and `pushtag`/`poptag` are not supported.
 
 ## Payee versus narration
@@ -92,10 +93,12 @@ The `booking`, `booking_date` and `institution` keys are not special in
 Pactole: there is no booking algorithm to configure, so they are only kept as
 ordinary metadata if you write them yourself.
 
-## No cost or price annotations
+## No transaction-cost annotations or lot tracking
 
-Postings have no `{cost}`, `@ price` or `@@ total` annotations. These Beancount
-features exist mainly for tracking investments, which is out of scope for now.
+Pactole supports the dated `price` directive for market quotes, but postings do
+not yet accept `@`/`@@` transaction-cost annotations or `{}` lot-cost
+annotations. Transaction costs are planned separately from market prices;
+tracking acquisition lots and cost basis is out of scope.
 
 Account and commodity amounts are therefore plain, single-commodity postings.
 

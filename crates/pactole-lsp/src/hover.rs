@@ -164,6 +164,50 @@ fn build_hover_for_word_combined(
     None
 }
 
+fn build_hover_for_price_at_offset(file: &ParsedFile, offset: usize) -> Option<SymbolInfo> {
+    file.entries().iter().find_map(|entry| {
+        let Entry::Price(price) = &entry.entry else {
+            return None;
+        };
+        let [base, quote] = entry.spans.commodities.as_slice() else {
+            return None;
+        };
+
+        // The rate is the only non-symbol token in the price header. Restrict
+        // this hover to that token so commodity references retain their own
+        // declaration hover and unrelated parts of the directive stay clear.
+        let source = file.document().source();
+        let between = source.get(base.byte_range().end..quote.byte_range().start)?;
+        let rate_start = base.byte_range().end + (between.len() - between.trim_start().len());
+        let rate_tail = source.get(rate_start..quote.byte_range().start)?;
+        let rate_length = rate_tail
+            .char_indices()
+            .find(|(_, character)| character.is_whitespace())
+            .map_or(rate_tail.len(), |(index, _)| index);
+        if !(rate_start..rate_start + rate_length).contains(&offset) {
+            return None;
+        }
+
+        Some(SymbolInfo {
+            kind: "Market price",
+            detail: format!(
+                "{} {} = {} {}\n- quoted on {}",
+                1, price.base, price.quote.number, price.quote.commodity, price.date
+            ),
+        })
+    })
+}
+
+fn build_hover_at_offset(
+    word: &str,
+    project: Option<&AnalyzedProject>,
+    file: &ParsedFile,
+    offset: usize,
+) -> Option<SymbolInfo> {
+    build_hover_for_word_combined(word, project, file)
+        .or_else(|| build_hover_for_price_at_offset(file, offset))
+}
+
 /// Computes hover information for the symbol at the requested document position.
 pub fn handle_hover(
     config: &Config,
@@ -187,7 +231,7 @@ pub fn handle_hover(
     let file = pactole_storage_fs::analyze_file(&source);
     let project = analyze_scope(config, documents, &uri);
 
-    if let Some(info) = build_hover_for_word_combined(&word, project.as_ref(), &file) {
+    if let Some(info) = build_hover_at_offset(&word, project.as_ref(), &file, offset) {
         let contents = HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
             value: format!("**{}**\n\n{}", info.kind, info.detail),
@@ -243,5 +287,47 @@ mod tests {
 
         assert_eq!(info.kind, "Account");
         assert!(info.detail.contains("opened on 2026-01-01"));
+    }
+
+    #[test]
+    fn hovering_a_price_directive_shows_its_quote_and_date() {
+        let source = concat!(
+            "2026-01-01 commodity EUR\n",
+            "2026-01-01 commodity USD\n",
+            "2026-01-02 price USD 0.92 EUR\n",
+        );
+        let file = pactole_storage_fs::analyze_file(source);
+        let offset = source.find("0.92").unwrap();
+        let info = build_hover_for_price_at_offset(&file, offset).expect("price hover");
+
+        assert_eq!(info.kind, "Market price");
+        assert!(info.detail.contains("1 USD = 0.92 EUR"));
+        assert!(info.detail.contains("2026-01-02"));
+    }
+
+    #[test]
+    fn price_hover_does_not_hide_commodity_hover_or_apply_to_the_whole_directive() {
+        let source = concat!(
+            "2026-01-01 commodity EUR\n",
+            "2026-01-01 commodity USD\n",
+            "2026-01-02 price USD 0.92 EUR\n",
+        );
+        let file = pactole_storage_fs::analyze_file(source);
+
+        let base_offset = source.rfind("USD").unwrap() + 1;
+        let base_word = find_word_at(source, base_offset);
+        let base_hover =
+            build_hover_at_offset(&base_word, None, &file, base_offset).expect("commodity hover");
+        assert_eq!(base_hover.kind, "Commodity");
+
+        let quote_offset = source.rfind("EUR").unwrap() + 1;
+        let quote_word = find_word_at(source, quote_offset);
+        let quote_hover =
+            build_hover_at_offset(&quote_word, None, &file, quote_offset).expect("commodity hover");
+        assert_eq!(quote_hover.kind, "Commodity");
+
+        let keyword_offset = source.rfind("price").unwrap() + 1;
+        let keyword = find_word_at(source, keyword_offset);
+        assert!(build_hover_at_offset(&keyword, None, &file, keyword_offset).is_none());
     }
 }

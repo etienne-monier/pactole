@@ -313,6 +313,7 @@ fn describe_context(parent: &Node) -> Option<&'static str> {
         "open" => Some("an `open` directive"),
         "close" => Some("a `close` directive"),
         "commodity" => Some("a `commodity` directive"),
+        "price" => Some("a `price` directive"),
         "payee_declaration" => Some("a `payee` declaration"),
         "include" => Some("an `include` directive"),
         "balance" => Some("a `balance` directive"),
@@ -323,5 +324,19 @@ fn describe_context(parent: &Node) -> Option<&'static str> {
         "amount" => Some("an amount"),
         "commodity_list" => Some("a commodity list"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{describe_context, parse_document};
+
+    #[test]
+    fn price_node_provides_context_for_missing_children() {
+        let document = parse_document("2024-01-01 price USD 0.92 EUR\n");
+        let directive = document.root_node().named_child(0).expect("directive node");
+        let price = directive.named_child(0).expect("price node");
+
+        assert_eq!(describe_context(&price), Some("a `price` directive"));
     }
 }

@@ -6,7 +6,7 @@ mod names;
 mod transaction;
 
 pub use balance::{Amount, Balance};
-pub use declarations::{Close, Commodity, Open, Payee};
+pub use declarations::{Close, Commodity, Open, Payee, Price};
 pub use names::{AccountName, CommodityName, Metadata, MetadataKey};
 pub use transaction::{Posting, Transaction, TransactionStatus};
 
@@ -38,6 +38,8 @@ pub enum Entry {
     Close(Close),
     /// Declares a commodity.
     Commodity(Commodity),
+    /// Records a dated market price between two commodities.
+    Price(Price),
     /// Declares a known payee.
     Payee(Payee),
     /// Records a transaction and its postings.
@@ -60,6 +62,7 @@ impl Entry {
             Entry::Open(open) => Some(open.date),
             Entry::Close(close) => Some(close.date),
             Entry::Commodity(commodity) => Some(commodity.date),
+            Entry::Price(price) => Some(price.date),
             Entry::Payee(_) => None,
             Entry::Transaction(transaction) => Some(transaction.date),
             Entry::Balance(balance) => Some(balance.date),

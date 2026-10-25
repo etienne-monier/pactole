@@ -64,6 +64,28 @@ pub enum ValidationError {
         /// Date of the invalid use.
         date: NaiveDate,
     },
+    /// A market price has a zero or negative quote.
+    #[error("price for `{base}` must be positive on {date}")]
+    PriceNotPositive {
+        /// Commodity being priced.
+        base: CommodityName,
+        /// Date of the invalid quote.
+        date: NaiveDate,
+    },
+    /// Different quotes are declared for the same pair on the same date.
+    #[error("conflicting prices for `{base}` in `{quote}` on {date}: `{first}` and `{second}`")]
+    PriceConflict {
+        /// Commodity being priced.
+        base: CommodityName,
+        /// Commodity in which the price is quoted.
+        quote: CommodityName,
+        /// Date of the conflicting quotes.
+        date: NaiveDate,
+        /// First quote encountered on this date.
+        first: Decimal,
+        /// Conflicting quote.
+        second: Decimal,
+    },
     /// A payee is declared more than once.
     #[error("payee `{payee}` is already declared")]
     PayeeAlreadyDeclared {
@@ -167,8 +189,8 @@ pub enum ValidationError {
         /// Date of the opening.
         date: NaiveDate,
     },
-    /// A commodity is declared but never used by any amount, nor restricted
-    /// to an account by an `open` directive.
+    /// A commodity is declared but never used by an amount, a price directive
+    /// or an account restriction.
     ///
     /// Like [`Self::PayeeUnused`], this is a cleanup hint whose severity is
     /// decided by front-ends.
@@ -193,6 +215,8 @@ impl ValidationError {
             Self::AccountNotOpen { .. } => DiagnosticCode::AccountNotOpen,
             Self::CommodityAlreadyDeclared { .. } => DiagnosticCode::CommodityAlreadyDeclared,
             Self::CommodityNotDeclared { .. } => DiagnosticCode::CommodityNotDeclared,
+            Self::PriceNotPositive { .. } => DiagnosticCode::PriceNotPositive,
+            Self::PriceConflict { .. } => DiagnosticCode::PriceConflict,
             Self::PayeeAlreadyDeclared { .. } => DiagnosticCode::PayeeAlreadyDeclared,
             Self::PayeeNotDeclared { .. } => DiagnosticCode::PayeeNotDeclared,
             Self::TooManyPostingsWithoutAmount { .. } => {
@@ -242,6 +266,17 @@ mod tests {
             ValidationError::CommodityNotDeclared {
                 commodity: commodity.clone(),
                 date,
+            },
+            ValidationError::PriceNotPositive {
+                base: commodity.clone(),
+                date,
+            },
+            ValidationError::PriceConflict {
+                base: commodity.clone(),
+                quote: CommodityName::new("USD").unwrap(),
+                date,
+                first: Decimal::ONE,
+                second: Decimal::TWO,
             },
             ValidationError::PayeeAlreadyDeclared {
                 payee: payee.clone(),

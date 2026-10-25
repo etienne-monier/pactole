@@ -1,0 +1,30 @@
+====================================
+Market price directive
+====================================
+
+2026-01-02 price USD 0.92 EUR ; market quote
+
+---
+
+(source_file
+  (directive
+    (price
+      (date)
+      (commodity_name)
+      (number)
+      (commodity_name)
+      (comment))))
+
+====================================
+Invalid: price directive is missing its quote commodity
+====================================
+
+2026-01-02 price USD 0.92
+
+---
+
+(source_file
+  (ERROR
+    (date)
+    (commodity_name)
+    (number)))

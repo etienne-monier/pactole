@@ -10,6 +10,7 @@ const INLINE_KINDS: &[&str] = &[
     "open",
     "close",
     "commodity",
+    "price",
     "payee_declaration",
     "balance",
     "include",
@@ -369,7 +370,7 @@ impl<'src> Printer<'src> {
                     out.push_str(self.text(child).trim_end());
                     out.push('\n');
                 }
-                // Directive header: open/close/commodity/balance/
+                // Directive header: open/close/commodity/price/balance/
                 // transaction/include. Its own trailing comment, if any,
                 // is a fielded child of the header node and gets rendered
                 // inline by `join_children`.
@@ -520,6 +521,18 @@ mod tests {
         let source = "2026-01-01 commodity EUR\n2026-01-02 commodity USD\n";
 
         assert_eq!(format(source).unwrap(), source);
+    }
+
+    #[test]
+    fn formats_a_price_directive_canonically() {
+        let source = "2026-01-01 commodity USD\n2026-01-01 commodity EUR\n\
+                       2026-01-02    price   USD   0.920   EUR ; market quote\n";
+
+        assert_eq!(
+            format(source).unwrap(),
+            "2026-01-01 commodity USD\n2026-01-01 commodity EUR\n\
+             2026-01-02 price USD 0.920 EUR ; market quote\n"
+        );
     }
 
     #[test]

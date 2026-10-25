@@ -44,6 +44,11 @@ pub(crate) fn record_lost_directive(missing: &mut MissingData, directive: Node<'
                 missing.commodities.insert(commodity);
             }
         }
+        "price" => {
+            for commodity in commodities_in(directive, source) {
+                missing.used_commodities.insert(commodity);
+            }
+        }
         "payee_declaration" => {
             for payee in payees_in(directive, source) {
                 missing.payees.insert(payee);

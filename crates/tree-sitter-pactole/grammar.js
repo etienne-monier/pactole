@@ -40,13 +40,14 @@ export default grammar({
     // of leading whitespace (see `_ws`), since a `key: value` line right
     // after a posting is otherwise indistinguishable from one belonging to
     // the directive itself. Only `transaction` may be followed by
-    // postings: `open`/`close`/`commodity`/`payee`/`balance`/`include`
+    // postings: `open`/`close`/`commodity`/`price`/`payee`/`balance`/`include`
     // never have postings of their own.
     directive: ($) =>
       choice(
         seq($.open, $._newline, repeat($._property_or_comment)),
         seq($.close, $._newline, repeat($._property_or_comment)),
         seq($.commodity, $._newline, repeat($._property_or_comment)),
+        seq($.price, $._newline, repeat($._property_or_comment)),
         seq($.payee_declaration, $._newline, repeat($._property_or_comment)),
         seq($.balance, $._newline, repeat($._property_or_comment)),
         seq($.include, $._newline, repeat($._property_or_comment)),
@@ -103,6 +104,19 @@ export default grammar({
         "commodity",
         $._ws,
         $.commodity_name,
+        optional($._trailing_comment),
+      ),
+    price: ($) =>
+      seq(
+        field("date", $.date),
+        $._ws,
+        "price",
+        $._ws,
+        field("base", $.commodity_name),
+        $._ws,
+        field("number", $.number),
+        $._ws,
+        field("quote", $.commodity_name),
         optional($._trailing_comment),
       ),
     // Declares a payee as "known". Unlike `open`/`commodity`, this takes

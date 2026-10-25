@@ -35,6 +35,8 @@ enum CompletionContext {
     Account { prefix: String },
     PostingAccount { prefix: String },
     Commodity { prefix: String },
+    PriceBase { prefix: String },
+    PriceQuote { prefix: String },
     Tag { prefix: String },
     Link { prefix: String },
     Unknown,
@@ -50,6 +52,7 @@ fn build_index_from_file(file: &ParsedFile) -> SymbolIndex {
             Entry::Commodity(c) => {
                 index.commodities.insert(c.name.to_string());
             }
+            Entry::Price(_) => {}
             Entry::Open(o) => {
                 let name = o.account.to_string();
                 index.accounts_open.insert(name.clone());
@@ -126,6 +129,7 @@ fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
         ("open", "Open an account"),
         ("close", "Close an account"),
         ("commodity", "Declare a commodity"),
+        ("price", "Record a dated market price"),
         ("payee", "Declare a payee"),
         ("balance", "Balance assertion"),
         ("include", "Include another file"),
@@ -253,6 +257,29 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
                 prefix: String::new(),
             }
         }
+        "price" => {
+            let tail = &words[keyword_index + 1..];
+            let trailing_whitespace = line_text.chars().last().is_some_and(char::is_whitespace);
+            match tail {
+                [] => CompletionContext::PriceBase {
+                    prefix: String::new(),
+                },
+                [base] if !trailing_whitespace => CompletionContext::PriceBase {
+                    prefix: (*base).to_string(),
+                },
+                [_, number] if trailing_whitespace && number_looks_valid(number) => {
+                    CompletionContext::PriceQuote {
+                        prefix: String::new(),
+                    }
+                }
+                [_, number, quote] if !trailing_whitespace && number_looks_valid(number) => {
+                    CompletionContext::PriceQuote {
+                        prefix: (*quote).to_string(),
+                    }
+                }
+                _ => CompletionContext::Unknown,
+            }
+        }
         "payee" => CompletionContext::Payee {
             prefix: String::new(),
         },
@@ -374,6 +401,17 @@ fn completions_for_context(
                 }
             }
         }
+        CompletionContext::PriceBase { prefix } | CompletionContext::PriceQuote { prefix } => {
+            for commodity in &index.commodities {
+                if commodity.starts_with(prefix) {
+                    items.push(CompletionItem {
+                        label: commodity.clone(),
+                        kind: Some(CompletionItemKind::ENUM_MEMBER),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
         CompletionContext::Tag { prefix } => {
             for t in &index.tags {
                 if t.starts_with(prefix) {
@@ -399,6 +437,14 @@ fn completions_for_context(
         CompletionContext::Unknown => {}
     }
     items
+}
+
+fn number_looks_valid(value: &str) -> bool {
+    let value = value.strip_prefix('-').unwrap_or(value);
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b',' | b'.'))
 }
 
 /// Computes completion items for the requested document position.
@@ -504,6 +550,40 @@ mod tests {
         );
 
         assert!(items.iter().any(|item| item.label == "Assets:Checking"));
+    }
+
+    #[test]
+    fn offers_commodity_completions_for_price_base_and_quote() {
+        let commodities: BTreeSet<String> = ["EUR".to_string(), "USD".to_string()].into();
+        for (source, expected_context, prefix) in [
+            (
+                "2026-01-01 price US",
+                CompletionContext::PriceBase {
+                    prefix: "US".to_string(),
+                },
+                "USD",
+            ),
+            (
+                "2026-01-01 price USD 0.92 E",
+                CompletionContext::PriceQuote {
+                    prefix: "E".to_string(),
+                },
+                "EUR",
+            ),
+        ] {
+            let position = Position::new(0, source.len() as u32);
+            let context = context_at(source, source.len(), &position);
+            assert_eq!(context, expected_context);
+            let items = completions_for_context(
+                &context,
+                &SymbolIndex {
+                    commodities: commodities.clone(),
+                    ..Default::default()
+                },
+                None,
+            );
+            assert!(items.iter().any(|item| item.label == prefix));
+        }
     }
 
     #[test]

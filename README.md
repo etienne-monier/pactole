@@ -61,7 +61,7 @@ user configuration directory (`~/.config/pactole/pactole.toml`, or
 `$XDG_CONFIG_HOME/pactole/pactole.toml`) instead.
 
 A Pactole ledger is a plain `.pactole` text file made of directives
-(`open`, `commodity`, `payee`, `balance`, `transaction`...). See
+(`open`, `commodity`, `price`, `payee`, `balance`, `transaction`...). See
 [`GRAMMAR.md`](GRAMMAR.md) for the full syntax. Transaction statuses are
 optional and default to uncleared (`?`), for example:
 

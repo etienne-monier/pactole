@@ -1,3 +1,4 @@
+use crate::models::balance::Amount;
 use crate::models::names::{AccountName, CommodityName, Metadata};
 use chrono::NaiveDate;
 
@@ -43,6 +44,19 @@ pub struct Commodity {
     pub date: NaiveDate,
     /// Declared commodity name.
     pub name: CommodityName,
+    /// Metadata attached to the directive.
+    pub meta: Metadata,
+}
+
+/// Records a dated market quote from one commodity into another.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Price {
+    /// Date of the quote.
+    pub date: NaiveDate,
+    /// Commodity being priced.
+    pub base: CommodityName,
+    /// Quoted rate and quote commodity, expressed as a positive amount.
+    pub quote: Amount,
     /// Metadata attached to the directive.
     pub meta: Metadata,
 }

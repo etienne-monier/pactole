@@ -56,6 +56,10 @@ pub enum DiagnosticCode {
     CommodityAlreadyDeclared,
     /// A commodity is used before being declared.
     CommodityNotDeclared,
+    /// A market price is zero or negative.
+    PriceNotPositive,
+    /// Two different market prices are declared for the same pair and date.
+    PriceConflict,
     /// A payee is declared more than once.
     PayeeAlreadyDeclared,
     /// A transaction uses a payee that has not been declared.
@@ -75,7 +79,8 @@ pub enum DiagnosticCode {
     /// An opened account is never used by a transaction nor a balance
     /// assertion.
     AccountUnused,
-    /// A declared commodity is never used by any amount.
+    /// A declared commodity is never used by an amount, a price directive or
+    /// an account restriction.
     CommodityUnused,
     /// A declared payee is never used by any transaction.
     PayeeUnused,
@@ -99,6 +104,8 @@ impl DiagnosticCode {
         Self::AccountNotOpen,
         Self::CommodityAlreadyDeclared,
         Self::CommodityNotDeclared,
+        Self::PriceNotPositive,
+        Self::PriceConflict,
         Self::PayeeAlreadyDeclared,
         Self::PayeeNotDeclared,
         Self::TooManyPostingsWithoutAmount,
@@ -126,6 +133,8 @@ impl DiagnosticCode {
             Self::AccountNotOpen => "account-not-open",
             Self::CommodityAlreadyDeclared => "commodity-already-declared",
             Self::CommodityNotDeclared => "commodity-not-declared",
+            Self::PriceNotPositive => "price-not-positive",
+            Self::PriceConflict => "price-conflict",
             Self::PayeeAlreadyDeclared => "payee-already-declared",
             Self::PayeeNotDeclared => "payee-not-declared",
             Self::TooManyPostingsWithoutAmount => "too-many-postings-without-amount",

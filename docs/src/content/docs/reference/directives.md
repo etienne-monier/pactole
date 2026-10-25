@@ -10,15 +10,16 @@ their syntax and the validation rules enforced by `pactole check`.
 
 ## Overview
 
-| Directive     | Purpose                                             | Date? |
-|---------------|-----------------------------------------------------|:-----:|
-| `open`        | Open an account (optionally restricting commodities) | yes  |
-| `close`       | Close an account                                    | yes   |
-| `commodity`   | Declare a commodity                                 | yes   |
-| `payee`       | Declare a known payee                               | no    |
-| `balance`     | Assert an account's balance on a date               | yes   |
-| transaction   | Record a movement of funds                          | yes   |
-| `include`     | Inline another `.pactole` file                      | no    |
+| Directive     | Purpose                                              | Date? |
+|---------------|------------------------------------------------------|:-----:|
+| `open`        | Open an account (optionally restricting commodities) | yes   |
+| `close`       | Close an account                                     | yes   |
+| `commodity`   | Declare a commodity                                  | yes   |
+| `price`       | Record a dated market quote between commodities     | yes   |
+| `payee`       | Declare a known payee                                | no    |
+| `balance`     | Assert an account's balance on a date                | yes   |
+| transaction   | Record a movement of funds                           | yes   |
+| `include`     | Inline another `.pactole` file                       | no    |
 
 ## `open`
 
@@ -57,12 +58,35 @@ DATE commodity COMMODITY_NAME
 ```
 
 Declares a commodity. A commodity must be declared before it is used in a
-transaction or a balance assertion.
+transaction, a balance assertion or a `price` directive.
 
 ```pactole
 2026-01-01 commodity EUR
 2026-01-01 commodity USD
 ```
+
+## `price`
+
+```text
+DATE price BASE_COMMODITY RATE QUOTE_COMMODITY
+```
+
+Records a dated market rate: `RATE` units of the quote commodity per one unit
+of the base commodity. Both commodities must already be declared in
+chronological journal order; a price may nevertheless predate the first
+transaction posting that uses either commodity. The rate must be positive.
+
+```pactole
+2026-01-01 commodity EUR
+2026-01-01 commodity USD
+2026-01-02 price USD 0.92 EUR
+```
+
+Two different rates for the same directed pair on the same date are an error;
+repeating the same rate is allowed. Reversing the pair is a separate quote.
+Prices do not affect transaction balancing or account balances. Reports can
+use the latest direct quote on or before their valuation date; inverse and
+multi-step conversions are not supported.
 
 ## `payee`
 

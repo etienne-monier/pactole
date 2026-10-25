@@ -18,7 +18,7 @@ pub use crate::diagnostics::DiagnosticCode;
 pub use crate::errors::{ModelError, ValidationError};
 pub use crate::models::{
     AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Journal, Metadata,
-    MetadataKey, Open, Payee, Posting, Transaction, TransactionStatus,
+    MetadataKey, Open, Payee, Posting, Price, Transaction, TransactionStatus,
 };
 pub use crate::register::{RegisterEntry, RegisterFilter, register};
 pub use crate::report::{

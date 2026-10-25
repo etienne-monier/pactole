@@ -176,6 +176,10 @@
           "named": true
         },
         {
+          "type": "price",
+          "named": true
+        },
+        {
           "type": "property",
           "named": true
         },
@@ -358,6 +362,62 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "price",
+    "named": true,
+    "fields": {
+      "base": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "commodity_name",
+            "named": true
+          }
+        ]
+      },
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "date": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "date",
+            "named": true
+          }
+        ]
+      },
+      "number": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "number",
+            "named": true
+          }
+        ]
+      },
+      "quote": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "commodity_name",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -609,6 +669,10 @@
   },
   {
     "type": "payee",
+    "named": false
+  },
+  {
+    "type": "price",
     "named": false
   },
   {

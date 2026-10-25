@@ -262,11 +262,13 @@ of scope.
 
 ### 2.2 — Add the `price` directive
 
-- [ ] Extend the grammar and regenerate the tree-sitter parser.
-- [ ] Lower the directive into a domain model, and print it canonically.
-- [ ] Validate: unknown commodities, contradictory prices on the same day,
-  prices before the first use.
-- [ ] Add LSP support (hover, completion, navigation).
+- [x] Extend the grammar and regenerate the tree-sitter parser.
+- [x] Lower the directive into a domain model, and print it canonically.
+- [x] Validate unknown or not-yet-declared commodities, non-positive rates and
+  contradictory prices for the same directed pair on the same day. Identical
+  repeated quotes are allowed; historical quotes may predate first posting use
+  but not commodity declarations.
+- [x] Add LSP support (hover, completion, navigation).
 
 ### 2.3 — Add price annotations on postings
 

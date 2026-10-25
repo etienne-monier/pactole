@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Market-price directive (roadmap 2.2):** `DATE price BASE RATE QUOTE` adds
+  dated, directed market quotes to the domain model. Quotes are validated
+  against commodity declaration dates; conflicting values for the same pair
+  and day and non-positive rates are errors. Identical repeated quotes are
+  allowed. The canonical formatter and LSP now support price directives,
+  including commodity completion/navigation and quote hover. Prices do not
+  affect transaction balancing or account balances.
+
 ### Documentation
 
 - **Multi-currency model (roadmap 2.1):** `GRAMMAR.md` now specifies amounts,
@@ -15,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   market prices are for report valuation only. Converted transactions balance
   exactly without implicit rounding or tolerance, and reports flag missing
   direct prices while retaining unconverted amounts. Commodity kinds and lot
-  cost-basis tracking remain out of scope; the planned syntax is explicitly
-  marked as not yet accepted by the parser.
+  cost-basis tracking remain out of scope; the `@`/`@@` transaction-cost
+  annotation syntax remains unaccepted until roadmap 2.3.
 
 ## [0.4.0] - 2026-10-25
 

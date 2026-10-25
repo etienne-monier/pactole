@@ -2,7 +2,7 @@ use crate::errors::PactoleFsStorageError;
 use chrono::NaiveDate;
 use pactole_core::{
     AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Metadata, MetadataKey,
-    Open, Payee, Posting, Transaction, TransactionStatus,
+    Open, Payee, Posting, Price, Transaction, TransactionStatus,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -63,6 +63,15 @@ impl<'src> AstBuilder<'src> {
     ) -> Result<Node<'a>, PactoleFsStorageError> {
         self.find_child(node, kind)
             .ok_or_else(|| self.error(format!("missing `{kind}` node in `{}`", node.kind())))
+    }
+
+    fn require_field<'a>(
+        &self,
+        node: Node<'a>,
+        field: &str,
+    ) -> Result<Node<'a>, PactoleFsStorageError> {
+        node.child_by_field_name(field)
+            .ok_or_else(|| self.error(format!("missing `{field}` field in `{}`", node.kind())))
     }
 
     fn parse_date(&self, node: Node<'_>) -> Result<NaiveDate, PactoleFsStorageError> {
@@ -164,6 +173,7 @@ impl<'src> AstBuilder<'src> {
             "commodity" => {
                 DirectiveOutcome::Entry(Entry::Commodity(self.build_commodity(node, header)?))
             }
+            "price" => DirectiveOutcome::Entry(Entry::Price(self.build_price(node, header)?)),
             "payee_declaration" => {
                 DirectiveOutcome::Entry(Entry::Payee(self.build_payee_declaration(node, header)?))
             }
@@ -242,6 +252,25 @@ impl<'src> AstBuilder<'src> {
         let meta = self.build_metadata(directive)?;
 
         Ok(Commodity { date, name, meta })
+    }
+
+    fn build_price(
+        &self,
+        directive: Node<'_>,
+        price: Node<'_>,
+    ) -> Result<Price, PactoleFsStorageError> {
+        let date = self.parse_date(self.require_field(price, "date")?)?;
+        let base = self.parse_commodity_name(self.require_field(price, "base")?)?;
+        let number = self.parse_number(self.require_field(price, "number")?)?;
+        let commodity = self.parse_commodity_name(self.require_field(price, "quote")?)?;
+        let meta = self.build_metadata(directive)?;
+
+        Ok(Price {
+            date,
+            base,
+            quote: Amount { number, commodity },
+            meta,
+        })
     }
 
     fn build_payee_declaration(
@@ -393,7 +422,7 @@ impl<'src> AstBuilder<'src> {
 #[cfg(test)]
 mod tests {
     use super::PactoleFsStorageError;
-    use pactole_core::{CommodityName, Entry, Journal, TransactionStatus};
+    use pactole_core::{CommodityName, Entry, Journal, Price, TransactionStatus};
     use std::path::Path;
 
     fn parse(source: &str, _base_dir: Option<&Path>) -> Result<Journal, PactoleFsStorageError> {
@@ -459,6 +488,25 @@ mod tests {
             Entry::Open(open) => assert!(open.commodities.is_empty()),
             other => panic!("expected an Open entry, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_a_dated_market_price() {
+        let journal = parse(
+            "2026-01-01 commodity EUR\n\
+             2026-01-01 commodity USD\n\
+             2026-01-02 price USD 0.92 EUR\n",
+            None,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            &journal.entries[2],
+            Entry::Price(Price { base, quote, .. })
+                if base.as_str() == "USD"
+                    && quote.number == "0.92".parse().unwrap()
+                    && quote.commodity.as_str() == "EUR"
+        ));
     }
 
     #[test]
