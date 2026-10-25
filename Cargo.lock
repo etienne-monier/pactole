@@ -805,7 +805,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "pactole-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "pactole-config"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "thiserror",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "pactole-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "proptest",
@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "pactole-import"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "encoding_rs",
@@ -855,7 +855,7 @@ dependencies = [
 
 [[package]]
 name = "pactole-lsp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
@@ -875,7 +875,7 @@ dependencies = [
 
 [[package]]
 name = "pactole-storage-fs"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "pactole-config",
@@ -891,7 +891,7 @@ dependencies = [
 
 [[package]]
 name = "pactole-syntax"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "tree-sitter",
  "tree-sitter-pactole",
@@ -1459,7 +1459,7 @@ checksum = "ca0d1bf6fdd806e43ae5198f82f527056d359def39e54e67a0f478ac09dac081"
 
 [[package]]
 name = "tree-sitter-pactole"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "cc",
  "tree-sitter",

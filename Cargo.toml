@@ -14,7 +14,7 @@ default-members = ["crates/pactole-cli", "crates/pactole-lsp/"]
 exclude = ["editors/zed"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Etienne Monier"]
 license = "MIT"
 repository = "https://github.com/etienne-monier/pactole"
@@ -28,12 +28,12 @@ edition = "2024"
 # crates are never fetched from crates.io), the `version` is what the published
 # crates require from the registry. Both must match the version of the crate
 # they point at, which Cargo checks on every build.
-pactole-config = { version = "0.3.0", path = "crates/pactole-config" }
-pactole-core = { version = "0.3.0", path = "crates/pactole-core" }
-pactole-import = { version = "0.3.0", path = "crates/pactole-import" }
-pactole-storage-fs = { version = "0.3.0", path = "crates/pactole-storage-fs" }
-pactole-syntax = { version = "0.3.0", path = "crates/pactole-syntax" }
-tree-sitter-pactole = { version = "0.3.0", path = "crates/tree-sitter-pactole" }
+pactole-config = { version = "0.4.0", path = "crates/pactole-config" }
+pactole-core = { version = "0.4.0", path = "crates/pactole-core" }
+pactole-import = { version = "0.4.0", path = "crates/pactole-import" }
+pactole-storage-fs = { version = "0.4.0", path = "crates/pactole-storage-fs" }
+pactole-syntax = { version = "0.4.0", path = "crates/pactole-syntax" }
+tree-sitter-pactole = { version = "0.4.0", path = "crates/tree-sitter-pactole" }
 
 # Third-party dependencies.
 chrono = "0.4.45"
