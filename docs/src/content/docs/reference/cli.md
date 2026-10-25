@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-The `pactole` binary exposes eleven subcommands. Run `pactole --help` or
+The `pactole` binary exposes twelve subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
@@ -96,7 +96,7 @@ pactole completions bash > ~/.local/share/bash-completion/completions/pactole
 ## `pactole check`
 
 ```text
-pactole check <FILE> [--strict]
+pactole check <FILE> [--strict] [--format text|json]
 ```
 
 Parses the file like `parse`, then validates the resulting journal (see the
@@ -131,7 +131,44 @@ the include error codes.
 ```sh
 pactole check ledger.pactole
 pactole check --strict ledger.pactole
+pactole check ledger.pactole --format json
 ```
+
+`--format json` writes an object to stdout with an `ok` boolean and a
+`diagnostics` array. Each diagnostic includes its file, one-based source range,
+severity, stable code and message. If the root file cannot be loaded, the JSON
+includes an `error` object. The command's exit status is unchanged by the
+format.
+
+## `pactole graph`
+
+```text
+pactole graph <FILE> [--scan <DIR>] [--format text|json]
+```
+
+Displays the include graph rooted at `<FILE>`, including unresolved include
+targets and cycles. Files targeted by more than one include directive are
+marked as included more than once; this also identifies diamond-shaped include
+graphs. The command recursively scans for `.pactole` files in the root journal's
+directory and lists those not reachable from the root. Use `--scan` to choose a
+different scan directory.
+
+| Option | Description |
+|---|---|
+| `<FILE>` | Root `.pactole` file |
+| `--scan <DIR>` | Directory recursively scanned for unreachable `.pactole` files; defaults to the root journal's directory |
+| `--format <FORMAT>` | Output format: `text` (default) or `json` |
+
+```sh
+pactole graph ledger.pactole
+pactole graph ledger.pactole --format json
+pactole graph ledger.pactole --scan ./journals
+```
+
+JSON output provides sorted `files` and `edges`, an `unreachable` list,
+`cycles`, and all include diagnostics. Each file is marked `reachable`,
+`unreachable` or `unresolved`. Include cycles are warnings; unresolved includes
+remain errors and make the command exit unsuccessfully.
 
 ## `pactole init`
 
@@ -174,7 +211,7 @@ settings and categorization rules.
 ## `pactole register`
 
 ```text
-pactole register <FILE> [FILTERS]
+pactole register <FILE> [FILTERS] [--format text|json]
 ```
 
 Lists the transactions of a file, one line per matching posting, with a running
@@ -191,6 +228,7 @@ can be combined; a posting is shown only when all of them match.
 | `--narration <TEXT>`    | Only transactions whose narration contains this text (case-insensitive)     |
 | `--tag <TAG>`           | Only transactions carrying this tag                                         |
 | `--status <STATUS>`     | Only transactions with this status: `cleared`, `pending` or `uncleared`     |
+| `--format <FORMAT>`     | Output format: `text` (default) or `json`                                  |
 
 ```sh
 pactole register ledger.pactole
@@ -198,7 +236,11 @@ pactole register ledger.pactole --account Expenses:Groceries
 pactole register ledger.pactole --from 2026-01-01 --to 2026-12-31
 pactole register ledger.pactole --payee Whole --status cleared
 pactole register ledger.pactole --tag food
+pactole register ledger.pactole --format json
 ```
+
+The JSON form is an array with one object per matched posting. Decimal amounts
+and running balances are strings to preserve exact precision.
 
 `--account` also matches sub-accounts: `--account Expenses` matches
 `Expenses:Groceries`.

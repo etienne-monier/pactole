@@ -212,9 +212,12 @@ pactole/
       - `pactole fmt <file> [--write]`: Format `.pactole` file canonically (supports `-` for stdin),
         using the resolved `[format]` options.
       - `pactole completions <shell>`: Generate shell completion scripts.
-      - `pactole check <file> [--strict]`: Syntax parsing + business validation, using the resolved
-        `[validation]` options (`--strict` turns warnings into a failure).
-      - `pactole register <file> [filters]`: Register report with running balances.
+       - `pactole check <file> [--strict] [--format text|json]`: Syntax parsing + business validation,
+         using the resolved `[validation]` options (`--strict` turns warnings into a failure).
+       - `pactole graph <file> [--scan <dir>] [--format text|json]`: Display the include graph,
+         cycles, multiply included files, and unreachable `.pactole` files under the scan directory
+         (the root journal's directory by default).
+       - `pactole register <file> [filters] [--format text|json]`: Register report with running balances.
        - `pactole balance <file> [--date <date>] [--format <text|json|csv>] [--depth <n>]`:
          Build the balance sheet with the `[reports]` classification (Assets/Liabilities/Equity,
          income/expenses closed into equity as `Unclosed result`, unclassified roots in an

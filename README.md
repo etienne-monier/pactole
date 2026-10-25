@@ -92,6 +92,7 @@ every transaction balances):
 
 ```sh
 pactole check path/to/file.pactole
+pactole check path/to/file.pactole --format json
 ```
 
 Every check is reported as an error by default. Two checks are configurable
@@ -107,6 +108,16 @@ Generate shell completion scripts to stdout:
 pactole completions bash > ~/.local/share/bash-completion/completions/pactole
 pactole completions zsh > ~/.zfunc/_pactole
 pactole completions fish > ~/.config/fish/completions/pactole.fish
+```
+
+Inspect which journal files are included, detect cycles and repeated includes,
+and find `.pactole` files in the root journal's directory that are not
+reachable from it:
+
+```sh
+pactole graph path/to/file.pactole
+pactole graph path/to/file.pactole --format json
+pactole graph path/to/file.pactole --scan path/to/journals
 ```
 
 Reformat a file into its canonical form, printed to stdout by default,
@@ -145,6 +156,7 @@ pactole register path/to/file.pactole --account Depenses:Alimentation
 pactole register path/to/file.pactole --from 2026-01-01 --to 2026-12-31
 pactole register path/to/file.pactole --payee Carrefour --status cleared
 pactole register path/to/file.pactole --tag vacances
+pactole register path/to/file.pactole --format json
 ```
 
 Build the balance sheet of a file as of a date. Liabilities and equity are

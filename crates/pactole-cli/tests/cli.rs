@@ -600,6 +600,135 @@ fn register_lists_every_posting_by_default() {
 }
 
 #[test]
+fn register_supports_json_with_exact_decimal_amounts() {
+    let path = write_register_fixture();
+
+    let output = pactole_cmd()
+        .args(["register", path.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json[0]["date"], "2024-01-05");
+    assert_eq!(json[0]["status"], "cleared");
+    assert_eq!(json[0]["amount"]["number"], "45.30");
+    assert_eq!(json[0]["amount"]["commodity"], "EUR");
+    assert_eq!(json[0]["balance"][0]["number"], "45.30");
+}
+
+#[test]
+fn check_supports_json_diagnostics() {
+    let directory = std::env::temp_dir().join(format!("pactole-check-json-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let ledger = directory.join("ledger.pactole");
+    std::fs::write(&ledger, "not a valid directive\n").unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_dir_all(&directory).ok();
+
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["ok"], false);
+    assert!(!json["diagnostics"].as_array().unwrap().is_empty());
+    assert!(json["diagnostics"][0]["code"].is_string());
+    assert!(json["diagnostics"][0]["range"]["start"]["line"].is_number());
+}
+
+#[test]
+fn check_json_success_has_no_diagnostics() {
+    let path = write_register_fixture();
+
+    let output = pactole_cmd()
+        .args(["check", path.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["diagnostics"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn graph_reports_repeated_includes_cycles_and_unreachable_files() {
+    let directory = std::env::temp_dir().join(format!("pactole-graph-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let root = directory.join("root.pactole");
+    std::fs::write(
+        &root,
+        "include \"accounts.pactole\"\ninclude \"accounts.pactole\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("accounts.pactole"),
+        "include \"root.pactole\"\n",
+    )
+    .unwrap();
+    std::fs::write(directory.join("orphan.pactole"), "\n").unwrap();
+
+    let output = pactole_cmd()
+        .args(["graph", root.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_dir_all(&directory).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["cycles"].as_array().unwrap().len(), 1);
+    assert!(json["edges"].as_array().unwrap().iter().any(|edge| {
+        edge["repeated_target"] == true
+            && edge["to"].as_str().unwrap().ends_with("accounts.pactole")
+    }));
+    assert!(
+        json["unreachable"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| { path.as_str().unwrap().ends_with("orphan.pactole") })
+    );
+}
+
+#[test]
+fn graph_reports_missing_includes_as_errors_in_json() {
+    let directory =
+        std::env::temp_dir().join(format!("pactole-graph-missing-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let root = directory.join("root.pactole");
+    std::fs::write(&root, "include \"missing.pactole\"\n").unwrap();
+
+    let output = pactole_cmd()
+        .args(["graph", root.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_dir_all(&directory).ok();
+
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["ok"], false);
+    assert_eq!(json["diagnostics"][0]["code"], "include-not-found");
+}
+
+#[test]
 fn register_filters_by_account() {
     let path = write_register_fixture();
 

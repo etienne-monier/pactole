@@ -231,11 +231,11 @@ front-end only render the results.*
 
 ### 1.5 — Improve the CLI output
 
-- [ ] Add a `--format json` option to `check`, and to every report.
-- [ ] Add a command to display the `include` graph, and to report cycles and
+- [x] Add a `--format json` option to `check`, and to every report.
+- [x] Add a command to display the `include` graph, and to report cycles and
   files included more than once.
-- [ ] Report `.pactole` files unreachable from the root journal.
-- [ ] Keep the text output stable for scripts and CI.
+- [x] Report `.pactole` files unreachable from the root journal.
+- [x] Keep the text output stable for scripts and CI.
 
 ---
 

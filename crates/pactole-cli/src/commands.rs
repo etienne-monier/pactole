@@ -55,6 +55,25 @@ pub(crate) enum Command {
         /// Treat warnings as errors.
         #[arg(long)]
         strict: bool,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: CheckFormatArg,
+    },
+
+    /// Display the include graph and report repeated, cyclic and unreachable files.
+    Graph {
+        /// Root `.pactole` file.
+        file: PathBuf,
+
+        /// Directory recursively searched for unreachable `.pactole` files.
+        /// Defaults to the root journal's directory.
+        #[arg(long, value_name = "DIR")]
+        scan: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: GraphFormatArg,
     },
 
     /// List the transactions of a `.pactole` file with a running balance.
@@ -89,6 +108,10 @@ pub(crate) enum Command {
         /// Only show transactions with this status.
         #[arg(long, value_enum)]
         status: Option<StatusArg>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: RegisterFormatArg,
     },
 
     /// Show the balance sheet of a `.pactole` file at a given date.
@@ -279,6 +302,27 @@ pub(crate) enum Command {
         #[arg(long)]
         no_ledger: bool,
     },
+}
+
+/// Output format for validation results.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum CheckFormatArg {
+    Text,
+    Json,
+}
+
+/// Output format for the register listing.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum RegisterFormatArg {
+    Text,
+    Json,
+}
+
+/// Output format for the include graph.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub(crate) enum GraphFormatArg {
+    Text,
+    Json,
 }
 
 /// CLI-facing mirror of [`pactole_core::TransactionStatus`].

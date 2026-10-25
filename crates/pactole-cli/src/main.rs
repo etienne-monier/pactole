@@ -6,6 +6,7 @@ mod config;
 mod diagnostics;
 mod expenses;
 mod format;
+mod graph;
 mod import_actual;
 mod import_ofx;
 mod income;
@@ -41,12 +42,20 @@ fn main() -> ExitCode {
             generate(shell, &mut command, "pactole", &mut std::io::stdout());
             ExitCode::SUCCESS
         }
-        Command::Check { file, strict } => {
+        Command::Check {
+            file,
+            strict,
+            format,
+        } => {
             let project_dir = parent_dir(&file);
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
-                Ok(config) => check::run(file, strict, &config.validation),
+                Ok(config) => check::run(file, strict, format, &config.validation),
                 Err(error) => config::failure(error),
             }
+        }
+        Command::Graph { file, scan, format } => {
+            let scan = scan.or_else(|| parent_dir(&file));
+            graph::run(file, scan, format)
         }
         Command::Register {
             file,
@@ -57,6 +66,7 @@ fn main() -> ExitCode {
             narration,
             tag,
             status,
+            format,
         } => {
             let project_dir = parent_dir(&file);
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
@@ -69,6 +79,7 @@ fn main() -> ExitCode {
                     narration,
                     tag,
                     status,
+                    format,
                     &config.validation,
                 ),
                 Err(error) => config::failure(error),

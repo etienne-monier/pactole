@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CLI output improvements (roadmap 1.5):** `pactole check --format json`
+  emits structured diagnostics, and `pactole register --format json` emits
+  exact decimal amounts as strings. The new `pactole graph` command displays
+  include edges, cycles, repeated targets and unreachable `.pactole` files
+  (scanned recursively from the root journal's directory by default, or from
+  `--scan`). Existing report commands retain their text, JSON and CSV formats;
+  default text output remains unchanged.
 - **Spending breakdowns (roadmap 1.4):** `pactole expenses` groups expense
   postings by account, payee, tag or calendar month, preserving each
   commodity's signed amounts. `--uncategorized` adds transaction lines for
