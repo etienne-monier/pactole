@@ -184,16 +184,59 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
         return CompletionContext::Link { prefix };
     }
 
-    // Check for commodity after number
-    // Look backwards for number pattern followed by space
-    if let Some(space_idx) = line_text.rfind(' ') {
-        let after_space = &line_text[space_idx + 1..];
-        if after_space.chars().any(|c| c.is_ascii_digit() || c == '.') && !after_space.contains(':')
+    // A commodity follows the number either of a posting amount or of a
+    // transaction-cost annotation (`@`/`@@`).
+    let words: Vec<&str> = line_text.split_whitespace().collect();
+    let trailing_whitespace = line_text.chars().last().is_some_and(char::is_whitespace);
+    let is_price_header = !is_indented(line_text) && words.contains(&"price");
+    if is_indented(line_text) && matches!(words.last(), Some(&"@" | &"@@")) {
+        // The next token is a numeric cost, not another posting account. There
+        // is no numeric completion provider, so avoid misleading account items.
+        return CompletionContext::Unknown;
+    }
+    if !is_indented(line_text) && trailing_whitespace {
+        let keyword_index = usize::from(
+            words
+                .first()
+                .is_some_and(|word| is_complete_date_token(word)),
+        );
+        if words.get(keyword_index) == Some(&"balance") {
+            let tail = &words[keyword_index + 1..];
+            let commodity_follows = match tail {
+                [_, number] => number_looks_valid(number),
+                [_, number, "~", tolerance] => {
+                    number_looks_valid(number) && number_looks_valid(tolerance)
+                }
+                _ => false,
+            };
+            if commodity_follows {
+                return CompletionContext::Commodity {
+                    prefix: String::new(),
+                };
+            }
+        }
+    }
+    if !is_price_header && let Some(last) = words.last().copied() {
+        if !trailing_whitespace && words.len() >= 2 && number_looks_valid(words[words.len() - 2]) {
+            return CompletionContext::Commodity {
+                prefix: last.to_string(),
+            };
+        }
+        if !trailing_whitespace
+            && number_looks_valid(last)
+            && (words.len() == 2 || matches!(words.get(words.len() - 2), Some(&"@" | &"@@")))
         {
-            let prefix = after_space.to_string();
-            // If it's just a number fragment, still maybe commodity? But better check - look ahead? No, rest is after offset
-            // But we're at end of line_text; prefix is after_space up to cursor
-            return CompletionContext::Commodity { prefix };
+            return CompletionContext::Commodity {
+                prefix: String::new(),
+            };
+        }
+        if trailing_whitespace
+            && number_looks_valid(last)
+            && (words.len() == 2 || matches!(words.get(words.len() - 2), Some(&"@" | &"@@")))
+        {
+            return CompletionContext::Commodity {
+                prefix: String::new(),
+            };
         }
     }
 
@@ -583,6 +626,49 @@ mod tests {
                 None,
             );
             assert!(items.iter().any(|item| item.label == prefix));
+        }
+    }
+
+    #[test]
+    fn offers_commodity_completions_after_unit_and_total_costs() {
+        for source in [
+            "  Assets:USD -100 USD @ 0.93 E",
+            "  Assets:EUR 93 EUR @@ 93 E",
+        ] {
+            let position = Position::new(0, source.len() as u32);
+            assert_eq!(
+                context_at(source, source.len(), &position),
+                CompletionContext::Commodity {
+                    prefix: "E".to_string(),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn offers_commodity_completion_after_a_balance_amount() {
+        for source in [
+            "2026-01-01 balance Assets:Checking 10.00 ",
+            "2026-01-01 balance Assets:Checking 10.00 ~ 0.01 ",
+        ] {
+            let position = Position::new(0, source.len() as u32);
+            assert_eq!(
+                context_at(source, source.len(), &position),
+                CompletionContext::Commodity {
+                    prefix: String::new(),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_offer_account_completions_after_a_cost_operator() {
+        for source in ["  Assets:USD 10 USD @", "  Assets:USD 10 USD @@ "] {
+            let position = Position::new(0, source.len() as u32);
+            assert_eq!(
+                context_at(source, source.len(), &position),
+                CompletionContext::Unknown
+            );
         }
     }
 

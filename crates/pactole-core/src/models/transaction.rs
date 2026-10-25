@@ -42,8 +42,34 @@ pub struct Posting {
     /// Amount and commodity. `None` may be inferred during validation when
     /// there is exactly one missing posting amount.
     pub amount: Option<Amount>,
+    /// Transaction-specific conversion annotation, retained separately from
+    /// the recorded amount. Converted weights are not used for balancing yet.
+    pub transaction_cost: Option<TransactionCost>,
     /// Metadata attached to the posting.
     pub meta: Metadata,
+}
+
+/// A posting's transaction cost in the representation written in the journal.
+///
+/// `amount` is the exact value written after `@` or `@@`; its meaning depends
+/// on `annotation`. Keeping the written value avoids rounding total costs whose
+/// equivalent unit price is not exactly representable. The posting amount is
+/// needed to derive the other representation when required.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransactionCost {
+    /// The exact unit or total cost written in the source.
+    pub amount: Amount,
+    /// Which equivalent representation was present in the source.
+    pub annotation: TransactionCostAnnotation,
+}
+
+/// The syntax used to express a [`TransactionCost`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransactionCostAnnotation {
+    /// A unit price introduced by `@`.
+    Unit,
+    /// A total price introduced by `@@`.
+    Total,
 }
 
 /// Reconciliation status of a transaction.

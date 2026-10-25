@@ -86,6 +86,25 @@ pub enum ValidationError {
         /// Conflicting quote.
         second: Decimal,
     },
+    /// A transaction cost annotation has a zero or negative price.
+    #[error("transaction cost on account `{account}` must be positive on {date}")]
+    TransactionCostNotPositive {
+        /// Account carrying the invalid transaction cost.
+        account: AccountName,
+        /// Date of the transaction.
+        date: NaiveDate,
+    },
+    /// A transaction-cost annotation has no explicit non-zero posting amount,
+    /// or a unit cost cannot be converted to a total without overflow.
+    #[error(
+        "transaction cost on account `{account}` is inconsistent with its posting amount on {date}"
+    )]
+    TransactionCostInconsistent {
+        /// Account carrying the inconsistent transaction cost.
+        account: AccountName,
+        /// Date of the transaction.
+        date: NaiveDate,
+    },
     /// A payee is declared more than once.
     #[error("payee `{payee}` is already declared")]
     PayeeAlreadyDeclared {
@@ -217,6 +236,8 @@ impl ValidationError {
             Self::CommodityNotDeclared { .. } => DiagnosticCode::CommodityNotDeclared,
             Self::PriceNotPositive { .. } => DiagnosticCode::PriceNotPositive,
             Self::PriceConflict { .. } => DiagnosticCode::PriceConflict,
+            Self::TransactionCostNotPositive { .. } => DiagnosticCode::TransactionCostNotPositive,
+            Self::TransactionCostInconsistent { .. } => DiagnosticCode::TransactionCostInconsistent,
             Self::PayeeAlreadyDeclared { .. } => DiagnosticCode::PayeeAlreadyDeclared,
             Self::PayeeNotDeclared { .. } => DiagnosticCode::PayeeNotDeclared,
             Self::TooManyPostingsWithoutAmount { .. } => {
@@ -277,6 +298,14 @@ mod tests {
                 date,
                 first: Decimal::ONE,
                 second: Decimal::TWO,
+            },
+            ValidationError::TransactionCostNotPositive {
+                account: account.clone(),
+                date,
+            },
+            ValidationError::TransactionCostInconsistent {
+                account: account.clone(),
+                date,
             },
             ValidationError::PayeeAlreadyDeclared {
                 payee: payee.clone(),

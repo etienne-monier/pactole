@@ -16,17 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allowed. The canonical formatter and LSP now support price directives,
   including commodity completion/navigation and quote hover. Prices do not
   affect transaction balancing or account balances.
+- **Posting transaction-cost annotations (roadmap 2.3):** postings now accept
+  `@ UNIT_PRICE COMMODITY` and `@@ TOTAL_PRICE COMMODITY`. The domain model
+  retains the exact written amount and form; `@@` is accepted even when its
+  derived unit cost is not exactly representable. Annotations require an
+  explicit non-zero amount and a positive cost. The canonical formatter, serializer
+  and LSP commodity completion/navigation understand the annotations. Converted
+  weights do not affect transaction balancing yet; that remains roadmap 2.4.
 
 ### Documentation
 
 - **Multi-currency model (roadmap 2.1):** `GRAMMAR.md` now specifies amounts,
   transaction costs (`TransactionCost`), dated market prices and derived
-  report values as separate concepts. Transaction costs affect balancing;
+  report values as separate concepts. Transaction costs will affect balancing;
   market prices are for report valuation only. Converted transactions balance
   exactly without implicit rounding or tolerance, and reports flag missing
   direct prices while retaining unconverted amounts. Commodity kinds and lot
-  cost-basis tracking remain out of scope; the `@`/`@@` transaction-cost
-  annotation syntax remains unaccepted until roadmap 2.3.
+  cost-basis tracking remain out of scope.
 
 ## [0.4.0] - 2026-10-25
 

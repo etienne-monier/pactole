@@ -8,7 +8,9 @@ mod transaction;
 pub use balance::{Amount, Balance};
 pub use declarations::{Close, Commodity, Open, Payee, Price};
 pub use names::{AccountName, CommodityName, Metadata, MetadataKey};
-pub use transaction::{Posting, Transaction, TransactionStatus};
+pub use transaction::{
+    Posting, Transaction, TransactionCost, TransactionCostAnnotation, TransactionStatus,
+};
 
 // -------------------------------------------------
 // Journal structure

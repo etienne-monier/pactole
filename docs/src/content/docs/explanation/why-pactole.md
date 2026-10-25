@@ -52,7 +52,8 @@ Pactole is not trying to cover every Beancount or Ledger feature. It keeps a
 small, well-specified grammar (see the
 [grammar reference](/reference/grammar/)) and focuses on the common case:
 recording day-to-day transactions and checking that they add up. Features like
-investment cost/price annotations are intentionally left out for now;
+lot-cost annotations and acquisition tracking are intentionally left out for
+now;
 [differences from Beancount](/explanation/differences-from-beancount/) lists the
 gaps.
 

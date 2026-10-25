@@ -4,8 +4,8 @@ use pactole_syntax::parse_document;
 use tree_sitter::Node;
 
 /// Node kinds whose children all sit on a single output line and are
-/// joined by [`Printer::join_children`]: directive headers, `amount` and
-/// `property`.
+/// joined by [`Printer::join_children`]: directive headers, amounts,
+/// transaction costs and properties.
 const INLINE_KINDS: &[&str] = &[
     "open",
     "close",
@@ -16,6 +16,7 @@ const INLINE_KINDS: &[&str] = &[
     "include",
     "transaction",
     "amount",
+    "transaction_cost",
     "property",
     "commodity_list",
 ];
@@ -172,6 +173,9 @@ fn print_transaction(transaction: &Transaction, options: &FormatOptions, out: &m
                 options.posting_width.saturating_sub(2),
             );
         }
+        if let Some(cost) = &posting.transaction_cost {
+            append_transaction_cost(&mut line, cost);
+        }
         out.push_str("  ");
         out.push_str(&line);
         out.push('\n');
@@ -303,7 +307,7 @@ impl<'src> Printer<'src> {
     }
 
     /// Render a node that may appear as a child of an inline node: recurse
-    /// into the other inline kinds (only `amount`, nested in a posting
+    /// into the other inline kinds (such as `amount`, nested in a posting
     /// header), otherwise fall back to the node's raw source text
     /// unchanged.
     fn render(&self, node: Node<'_>) -> String {
@@ -382,7 +386,7 @@ impl<'src> Printer<'src> {
         }
     }
 
-    /// Print a `posting` node: its `account amount [; comment]` header
+    /// Print a `posting` node: its `account amount [cost] [; comment]` header
     /// line, then its own metadata (`property`) and standalone comment
     /// lines, one level deeper, in source order.
     fn print_posting(&self, node: Node<'_>, out: &mut String) {
@@ -399,6 +403,10 @@ impl<'src> Printer<'src> {
                         &rendered_amount,
                         self.options.posting_width.saturating_sub(2),
                     );
+                }
+                "transaction_cost" => {
+                    header.push(' ');
+                    header.push_str(&self.render(child));
                 }
                 _ => {}
             }
@@ -475,6 +483,25 @@ impl<'src> Printer<'src> {
         }
 
         out
+    }
+}
+
+fn append_transaction_cost(line: &mut String, cost: &pactole_core::TransactionCost) {
+    line.push(' ');
+    match cost.annotation {
+        pactole_core::TransactionCostAnnotation::Unit => {
+            line.push('@');
+            line.push(' ');
+            line.push_str(&cost.amount.number.to_string());
+            line.push(' ');
+            line.push_str(cost.amount.commodity.as_str());
+        }
+        pactole_core::TransactionCostAnnotation::Total => {
+            line.push_str("@@ ");
+            line.push_str(&cost.amount.number.to_string());
+            line.push(' ');
+            line.push_str(cost.amount.commodity.as_str());
+        }
     }
 }
 
@@ -709,6 +736,7 @@ mod tests {
                         number: "45.30".parse::<Decimal>().unwrap(),
                         commodity: CommodityName::new("EUR").unwrap(),
                     }),
+                    transaction_cost: None,
                     meta: Metadata::new(),
                 },
                 Posting {
@@ -717,6 +745,7 @@ mod tests {
                         number: "-45.30".parse::<Decimal>().unwrap(),
                         commodity: CommodityName::new("EUR").unwrap(),
                     }),
+                    transaction_cost: None,
                     meta: Metadata::new(),
                 },
             ],
@@ -734,6 +763,84 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(
             entries[0].entry,
+            pactole_core::Entry::Transaction(transaction)
+        );
+    }
+
+    #[test]
+    fn format_preserves_and_canonicalizes_transaction_cost_annotations() {
+        let source = "2026-10-25 * \"Exchange\"\n  Assets:USD   -100 USD    @   0.93 EUR\n  Assets:EUR 93 EUR   @@ 93 EUR\n";
+
+        let formatted = format(source).unwrap();
+
+        assert!(formatted.contains("@ 0.93 EUR"));
+        assert!(formatted.contains("@@ 93 EUR"));
+        assert_eq!(format(&formatted).unwrap(), formatted);
+    }
+
+    #[test]
+    fn transaction_serializer_round_trips_both_cost_annotation_forms() {
+        use chrono::NaiveDate;
+        use pactole_core::{
+            AccountName, Amount, CommodityName, Metadata, Posting, Transaction, TransactionCost,
+            TransactionCostAnnotation, TransactionStatus,
+        };
+        use rust_decimal::Decimal;
+
+        let quote_commodity = CommodityName::new("EUR").unwrap();
+        let transaction = Transaction {
+            date: NaiveDate::from_ymd_opt(2026, 10, 25).unwrap(),
+            effective_date: None,
+            status: TransactionStatus::Cleared,
+            payee: Some("Exchange".to_string()),
+            narration: None,
+            postings: vec![
+                Posting {
+                    account: AccountName::new("Assets:USD").unwrap(),
+                    amount: Some(Amount {
+                        number: Decimal::new(-100, 0),
+                        commodity: CommodityName::new("USD").unwrap(),
+                    }),
+                    transaction_cost: Some(TransactionCost {
+                        amount: Amount {
+                            number: Decimal::new(93, 2),
+                            commodity: quote_commodity.clone(),
+                        },
+                        annotation: TransactionCostAnnotation::Unit,
+                    }),
+                    meta: Metadata::new(),
+                },
+                Posting {
+                    account: AccountName::new("Assets:EUR").unwrap(),
+                    amount: Some(Amount {
+                        number: Decimal::new(93, 0),
+                        commodity: quote_commodity.clone(),
+                    }),
+                    transaction_cost: Some(TransactionCost {
+                        amount: Amount {
+                            number: Decimal::new(93, 0),
+                            commodity: quote_commodity,
+                        },
+                        annotation: TransactionCostAnnotation::Total,
+                    }),
+                    meta: Metadata::new(),
+                },
+            ],
+            tags: Vec::new(),
+            links: Vec::new(),
+            reference: None,
+            meta: Metadata::new(),
+        };
+
+        let source = super::format_transactions(std::slice::from_ref(&transaction));
+        assert!(source.contains("@ 0.93 EUR"));
+        assert!(source.contains("@@ 93 EUR"));
+
+        let parsed = crate::analyze_file(&source);
+        assert!(parsed.syntax_diagnostics().is_empty());
+        assert!(parsed.lowering_diagnostics().is_empty());
+        assert_eq!(
+            parsed.entries()[0].entry,
             pactole_core::Entry::Transaction(transaction)
         );
     }
@@ -758,6 +865,7 @@ mod tests {
                     number: number.parse::<Decimal>().unwrap(),
                     commodity: CommodityName::new("EUR").unwrap(),
                 }),
+                transaction_cost: None,
                 meta: Metadata::new(),
             }],
             tags: Vec::new(),
@@ -826,6 +934,7 @@ mod tests {
                     number: "12.00".parse::<Decimal>().unwrap(),
                     commodity: CommodityName::new("EUR").unwrap(),
                 }),
+                transaction_cost: None,
                 meta: Metadata::new(),
             }],
             tags: Vec::new(),

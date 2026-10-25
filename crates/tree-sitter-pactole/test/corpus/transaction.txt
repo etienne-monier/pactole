@@ -147,3 +147,66 @@ Interleaved tags and links
       (link)
       (tag)
       (link))))
+
+====================================
+Postings with unit and total transaction costs
+====================================
+
+2026-10-25 * "Exchange"
+  Assets:USD -100.00 USD @ 0.93 EUR
+  Assets:EUR 93.00 EUR @@ 93 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      (transaction_cost
+        amount: (amount
+          (number)
+          (commodity_name))))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      (transaction_cost
+        amount: (amount
+          (number)
+          (commodity_name))))))
+
+====================================
+Invalid: posting has both transaction-cost forms
+====================================
+
+2026-10-25 * "Exchange"
+  Assets:USD -100 USD @ 0.93 EUR @@ 93 EUR
+
+---
+
+(source_file
+  (directive
+    (transaction
+      date: (date)
+      (status)
+      (payee
+        (string)))
+    (posting
+      (account)
+      (amount
+        (number)
+        (commodity_name))
+      (transaction_cost
+        amount: (amount
+          (number)
+          (commodity_name)))
+      (ERROR))))

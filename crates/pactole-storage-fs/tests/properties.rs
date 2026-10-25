@@ -350,6 +350,7 @@ proptest! {
                         prop::option::of(-100_000i64..=100_000),
                         0..COMMODITIES.len(),
                         prop::option::of(metadata()),
+                        prop::option::of((0..2usize, 1i64..=100_000, 0..COMMODITIES.len())),
                     ),
                     1..4,
                 ),
@@ -368,20 +369,42 @@ proptest! {
                 narration: narration.map(|index| NARRATIONS[index].to_string()),
                 postings: postings
                     .into_iter()
-                    .map(|(account, cents, commodity, posting_meta)| Posting {
-                        account: AccountName::new(ACCOUNTS[account]).expect("a valid account"),
-                        amount: cents.map(|cents| Amount {
+                    .map(|(account, cents, commodity, posting_meta, cost)| {
+                        let amount = cents.map(|cents| Amount {
                             number: Decimal::new(cents, 2),
                             commodity: CommodityName::new(COMMODITIES[commodity])
                                 .expect("a valid commodity"),
-                        }),
-                        meta: posting_meta
-                            .map(|(key, value)| {
-                                [(MetadataKey::new(key).expect("a valid key"), value)]
-                                    .into_iter()
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
+                        });
+                        let transaction_cost = cost.and_then(|(annotation, cents, commodity)| {
+                            amount
+                                .as_ref()
+                                .is_some_and(|amount| !amount.number.is_zero())
+                                .then(|| pactole_core::TransactionCost {
+                                    amount: Amount {
+                                        number: Decimal::new(cents, 2),
+                                        commodity: CommodityName::new(COMMODITIES[commodity])
+                                            .expect("a valid commodity"),
+                                    },
+                                    annotation: if annotation == 0 {
+                                        pactole_core::TransactionCostAnnotation::Unit
+                                    } else {
+                                        pactole_core::TransactionCostAnnotation::Total
+                                    },
+                                })
+                        });
+                        Posting {
+                            account: AccountName::new(ACCOUNTS[account])
+                                .expect("a valid account"),
+                            amount,
+                            transaction_cost,
+                            meta: posting_meta
+                                .map(|(key, value)| {
+                                    [(MetadataKey::new(key).expect("a valid key"), value)]
+                                        .into_iter()
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                        }
                     })
                     .collect(),
                 tags: Vec::new(),

@@ -128,19 +128,25 @@ Each indented line under a transaction that starts with an account name is
 a posting:
 
 ```
-posting := account amount? property*
+posting := account amount? ("@" amount | "@@" amount)? property*
 ```
 
 The amount is optional: at most one posting per transaction may omit it
-(interpolation), although this is not yet enforced at the grammar level.
+(interpolation), although this is not yet enforced at the grammar level. A
+posting may also carry one transaction-cost annotation after its amount.
 
 ```pactole
   Expenses:Groceries 45.30 EUR
   Assets:Checking
 ```
 
-The current grammar accepts the dated `price` directive described below, but
-does not yet accept `@`/`@@` transaction-cost annotations on postings.
+`@` supplies a unit transaction cost and `@@` supplies a total transaction
+cost. A cost-annotated posting must have an explicit, non-zero amount; the
+written cost must be positive. The written value is stored exactly; `@@` does
+not require its equivalent unit cost to be exactly representable as a
+`Decimal`. The annotation's commodity is declared and used like any other
+commodity reference. These annotations do not yet affect transaction balancing;
+converted balancing is specified below and implemented in roadmap phase 2.4.
 
 ## Metadata (`property`)
 
@@ -201,11 +207,10 @@ its currency/commodity codes (e.g. `EUR`, `BTC.SAT-2`, `BRK'A`).
 ## Multi-currency model
 
 This section specifies the multi-currency model for Phase 2. The dated `price`
-directive is implemented; the `@`/`@@` examples remain planned syntax for
-Phase 2.3 and are **not accepted by the current grammar yet**. Pactole treats
-every commodity as a named unit: it does not distinguish currencies from
-shares or other assets. No lot tracking or cost-basis accounting is part of
-this phase.
+directive and `@`/`@@` transaction-cost annotations are implemented. Pactole
+treats every commodity as a named unit: it does not distinguish currencies
+from shares or other assets. No lot tracking or cost-basis accounting is part
+of this phase.
 
 ### Concepts
 
@@ -225,11 +230,12 @@ this phase.
 
 ### Transaction costs and balancing
 
-The planned `@` and `@@` posting annotations express a transaction cost in a
-second commodity:
+The `@` and `@@` posting annotations express a transaction cost in a second
+commodity:
 
 ```pactole
-; Planned syntax; not accepted by the current parser.
+; Transaction-cost annotation examples.
+; Illustrative only: converted balancing is not implemented until phase 2.4.
 2026-10-25 * "Currency exchange"
   Assets:USD -100 USD @ 0.93 EUR
   Assets:EUR 93 EUR
@@ -250,13 +256,15 @@ each resulting weight commodity; a market price is never substituted for a
 missing transaction cost.
 
 `@` and `@@` are alternative ways to express the same transaction-specific
-conversion, not lot annotations. Given an explicit amount, the equivalent
-unit or total cost is derived from whichever annotation is written; both
-annotations may not appear on one posting. The cost on a posting must be
-positive, and the amount on a cost-annotated posting must be explicit because
-the source commodity cannot otherwise be identified. An omitted amount
-continues to be inferred only when its commodity is unambiguous under the
-existing auto-balancing rules.
+conversion, not lot annotations. The exact value written after the annotation
+is retained; `@` requires its derived total to fit in `Decimal`, while `@@`
+remains valid even when its equivalent unit cost is repeating or otherwise not
+exactly representable. Both annotations may not appear on one posting. The cost
+on a posting must be positive, and the amount on a cost-annotated posting must
+be explicit because the source commodity cannot otherwise be identified. A
+zero posting amount cannot be annotated. An omitted amount continues to be
+inferred only when its commodity is unambiguous under the existing
+auto-balancing rules.
 
 Converted weights are calculated with `Decimal` without an implicit
 currency-minor-unit rounding step. They must balance exactly. Any rounding
@@ -434,9 +442,8 @@ For reference, a summary of the deliberate deviations from Beancount:
   exist in Beancount at all.
 - Status flags limited to `*`, `!`, `?` (no custom flags, no `txn`
   keyword).
-- No cost/price annotations on postings are accepted yet. Phase 2 specifies
-  `@`/`@@` as transaction costs for balancing; lot-cost annotations (`{}`)
-  remain out of scope.
+- `@`/`@@` posting annotations express transaction costs for balancing;
+  lot-cost annotations (`{}`) remain out of scope.
 - No enforced account root categories.
 - Added an effective date (`date=effective_date`) and a parenthesized
   reference (`(ref)`), borrowed from Ledger-cli.

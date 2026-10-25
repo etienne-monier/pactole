@@ -180,9 +180,16 @@ export default grammar({
         $._ws,
         $.account,
         optional(seq($._ws, $.amount)),
+        optional(seq($._ws, $.transaction_cost)),
         optional($._trailing_comment),
         $._newline,
         repeat($._property_or_comment),
+      ),
+
+    transaction_cost: ($) =>
+      choice(
+        seq("@", $._ws, field("amount", $.amount)),
+        seq("@@", $._ws, field("amount", $.amount)),
       ),
 
     amount: ($) => seq($.number, $._ws, $.commodity_name),

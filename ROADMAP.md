@@ -272,9 +272,9 @@ of scope.
 
 ### 2.3 — Add price annotations on postings
 
-- [ ] Support `@ unit_price` and `@@ total_price` on postings.
-- [ ] Infer the missing side of the price pair, as for implicit amounts.
-- [ ] Keep the canonical printing deterministic.
+- [x] Support `@ unit_price` and `@@ total_price` on postings.
+- [x] Infer the missing side of the price pair, as for implicit amounts.
+- [x] Keep the canonical printing deterministic.
 
 ### 2.4 — Balance on converted weights
 

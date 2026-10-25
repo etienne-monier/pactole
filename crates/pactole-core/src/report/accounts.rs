@@ -474,6 +474,7 @@ mod tests {
                         postings: vec![Posting {
                             account: account(account_name),
                             amount: Some(amount(number, "EUR")),
+                            transaction_cost: None,
                             meta: Metadata::new(),
                         }],
                         tags: Vec::new(),

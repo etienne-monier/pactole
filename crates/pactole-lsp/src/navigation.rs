@@ -379,16 +379,23 @@ fn occurrences_in(file: &ParsedFile) -> Vec<Occurrence<'_>> {
                             false,
                         );
                     }
-                    if let Some(amount) = named_child(posting, "amount")
-                        && let Some(commodity) = named_child(amount, "commodity_name")
+                    for amount in [
+                        named_child(posting, "amount"),
+                        named_child(posting, "transaction_cost")
+                            .and_then(|cost| named_child(cost, "amount")),
+                    ]
+                    .into_iter()
+                    .flatten()
                     {
-                        push_occurrence(
-                            &mut occurrences,
-                            source,
-                            commodity,
-                            SymbolKind::Commodity,
-                            false,
-                        );
+                        if let Some(commodity) = named_child(amount, "commodity_name") {
+                            push_occurrence(
+                                &mut occurrences,
+                                source,
+                                commodity,
+                                SymbolKind::Commodity,
+                                false,
+                            );
+                        }
                     }
                 }
             }
@@ -704,6 +711,22 @@ mod tests {
             .collect();
 
         assert_eq!(price_uses, ["USD", "EUR"]);
+    }
+
+    #[test]
+    fn transaction_cost_quote_is_a_commodity_reference() {
+        let source = "2026-01-01 commodity EUR\n\
+                      2026-01-01 commodity USD\n\
+                      2026-01-02 * \"Exchange\"\n\
+                      Assets:USD -100 USD @ 0.93 EUR\n";
+        let file = analyze_file(source);
+        let offset = source.find("@ 0.93 EUR").expect("unit cost annotation") + "@ 0.93 ".len();
+        assert_eq!(symbol_in_file(&file, offset), Some(commodity_symbol("EUR")));
+        assert!(occurrences_in(&file).iter().any(|occurrence| {
+            occurrence.kind == SymbolKind::Commodity
+                && !occurrence.is_definition
+                && occurrence.name == "EUR"
+        }));
     }
 
     #[test]

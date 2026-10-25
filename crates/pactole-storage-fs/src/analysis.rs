@@ -63,6 +63,10 @@ pub struct PostingSpans {
     pub account: Span,
     /// The posting commodity node, when an amount is present.
     pub commodity: Option<Span>,
+    /// The full transaction-cost annotation, when present.
+    pub transaction_cost: Option<Span>,
+    /// The transaction-cost quote commodity, when an annotation is present.
+    pub transaction_cost_commodity: Option<Span>,
 }
 
 /// A single `include` directive detected in the source, with its raw
@@ -397,9 +401,16 @@ fn entry_spans(directive: Node<'_>) -> EntrySpans {
         let commodity = named_child(child, "amount")
             .and_then(|amount| named_child(amount, "commodity_name"))
             .map(|node| Span::from_node(&node));
+        let transaction_cost = named_child(child, "transaction_cost");
+        let transaction_cost_commodity = transaction_cost
+            .and_then(|cost| named_child(cost, "amount"))
+            .and_then(|amount| named_child(amount, "commodity_name"))
+            .map(|node| Span::from_node(&node));
         spans.postings.push(PostingSpans {
             account: Span::from_node(&account),
             commodity,
+            transaction_cost: transaction_cost.map(|node| Span::from_node(&node)),
+            transaction_cost_commodity,
         });
     }
 
@@ -862,11 +873,21 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
                 .iter()
                 .zip(transaction_postings(&entry.entry).iter())
                 .find_map(|(spans, posting)| {
-                    posting
+                    if posting
                         .amount
                         .as_ref()
-                        .filter(|amount| amount.commodity == *commodity)
-                        .and(spans.commodity)
+                        .is_some_and(|amount| amount.commodity == *commodity)
+                    {
+                        spans.commodity
+                    } else if posting
+                        .transaction_cost
+                        .as_ref()
+                        .is_some_and(|cost| cost.amount.commodity == *commodity)
+                    {
+                        spans.transaction_cost_commodity
+                    } else {
+                        None
+                    }
                 })
                 .or_else(|| {
                     let Entry::Price(price) = &entry.entry else {
@@ -915,6 +936,18 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
         }
         ValidationError::PayeeUnused { .. } => entry.spans.payee.unwrap_or(entry.span),
         ValidationError::BalanceAssertionFailed { .. } => entry.span,
+        ValidationError::TransactionCostNotPositive { account, .. }
+        | ValidationError::TransactionCostInconsistent { account, .. } => entry
+            .spans
+            .postings
+            .iter()
+            .zip(transaction_postings(&entry.entry).iter())
+            .find_map(|(spans, posting)| {
+                (posting.account == *account && posting.transaction_cost.is_some())
+                    .then_some(spans.transaction_cost)
+                    .flatten()
+            })
+            .unwrap_or(entry.span),
         ValidationError::PriceNotPositive { .. } | ValidationError::PriceConflict { .. } => {
             entry.span
         }
@@ -1624,6 +1657,64 @@ mod tests {
         assert_eq!(
             diagnostic.span.byte_range(),
             expected_start..expected_start + "USD".len()
+        );
+    }
+
+    #[test]
+    fn a_transaction_cost_with_an_undeclared_commodity_points_at_that_commodity() {
+        let source = concat!(
+            "2026-01-01 commodity USD\n",
+            "2026-01-01 open Assets:USD\n",
+            "2026-01-01 open Assets:Counter\n",
+            "2026-01-02 * \"Exchange\"\n",
+            "  Assets:USD -100 USD @ 0.93 EUR\n",
+            "  Assets:Counter 100 USD\n",
+        );
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::CommodityNotDeclared)
+            .expect("undeclared transaction-cost commodity diagnostic");
+        let expected_start = source.find("EUR").unwrap();
+
+        assert_eq!(
+            diagnostic.span.byte_range(),
+            expected_start..expected_start + "EUR".len()
+        );
+    }
+
+    #[test]
+    fn transaction_cost_validation_points_at_cost_after_an_uncosted_same_account_posting() {
+        let source = concat!(
+            "2026-01-01 commodity USD\n",
+            "2026-01-01 commodity EUR\n",
+            "2026-01-01 open Assets:Checking\n",
+            "2026-01-01 open Assets:Counter\n",
+            "2026-01-02 * \"Exchange\"\n",
+            "  Assets:Checking 100 USD\n",
+            "  Assets:Checking 3 USD @@ -1 EUR\n",
+            "  Assets:Counter -103 USD\n",
+        );
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::TransactionCostNotPositive)
+            .expect("non-positive cost diagnostic");
+        let expected_start = source.find("@@ -1 EUR").unwrap();
+
+        assert_eq!(
+            diagnostic.span.byte_range(),
+            expected_start..expected_start + "@@ -1 EUR".len()
         );
     }
 

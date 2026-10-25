@@ -93,12 +93,12 @@ The `booking`, `booking_date` and `institution` keys are not special in
 Pactole: there is no booking algorithm to configure, so they are only kept as
 ordinary metadata if you write them yourself.
 
-## No transaction-cost annotations or lot tracking
+## Transaction costs, but no lot tracking
 
-Pactole supports the dated `price` directive for market quotes, but postings do
-not yet accept `@`/`@@` transaction-cost annotations or `{}` lot-cost
-annotations. Transaction costs are planned separately from market prices;
-tracking acquisition lots and cost basis is out of scope.
+Pactole supports the dated `price` directive for market quotes and `@`/`@@`
+posting annotations for transaction-specific balancing costs. These costs are
+separate from market prices. Lot-cost annotations (`{}`), acquisition-lot
+tracking and cost basis remain out of scope.
 
 Account and commodity amounts are therefore plain, single-commodity postings.
 

@@ -843,6 +843,27 @@
           "type": "CHOICE",
           "members": [
             {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_ws"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "transaction_cost"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
               "type": "SYMBOL",
               "name": "_trailing_comment"
             },
@@ -861,6 +882,53 @@
             "type": "SYMBOL",
             "name": "_property_or_comment"
           }
+        }
+      ]
+    },
+    "transaction_cost": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "@"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_ws"
+            },
+            {
+              "type": "FIELD",
+              "name": "amount",
+              "content": {
+                "type": "SYMBOL",
+                "name": "amount"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "@@"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_ws"
+            },
+            {
+              "type": "FIELD",
+              "name": "amount",
+              "content": {
+                "type": "SYMBOL",
+                "name": "amount"
+              }
+            }
+          ]
         }
       ]
     },

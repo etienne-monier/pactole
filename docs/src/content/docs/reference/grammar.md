@@ -111,17 +111,27 @@ transaction := date ("=" effective_date)? status? payee narration?
 ### Postings
 
 ```text
-posting := account amount? property*
+posting := account amount? ("@" amount | "@@" amount)? property*
 ```
 
 The amount is optional: at most one posting per transaction may omit it
-(interpolation). The `price` directive records market quotes; postings do not
-yet support `@`/`@@` transaction-cost annotations. Lot-cost annotations (`{}`)
+(interpolation). `@` and `@@` add a unit or total transaction cost in a second
+commodity. Cost annotations require an explicit, non-zero posting amount and a
+positive cost. The written value is stored exactly; `@@` does not require its
+equivalent unit cost to be exactly representable as a `Decimal`. They do not
+yet affect transaction balancing. The `price`
+directive records market quotes independently. Lot-cost annotations (`{}`)
 remain out of scope.
 
 ```pactole
   Expenses:Groceries 45.30 EUR
   Assets:Checking
+
+; Transaction costs are distinct from dated market prices.
+; Illustrative only: converted balancing is not implemented until phase 2.4.
+2026-10-25 * "Exchange"
+  Assets:USD -100 USD @ 0.93 EUR
+  Assets:EUR 93 EUR
 ```
 
 ## Metadata (`property`)
@@ -278,8 +288,8 @@ amounts and indentation to be freely aligned:
   Beancount at all.
 - Status flags are limited to `*`, `!`, `?` (no custom flags, no `txn` keyword);
   the status may be omitted and defaults to `?` (uncleared).
-- No `@`/`@@` transaction-cost annotations on postings yet; `{}` lot costs are
-  out of scope.
+- `@`/`@@` are transaction costs for balancing, not lot costs; `{}` lot costs
+  are out of scope.
 - No enforced account root categories.
 - Added an effective date (`date=effective_date`) and a parenthesized reference
   (`(ref)`), borrowed from Ledger-cli.

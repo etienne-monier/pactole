@@ -188,6 +188,7 @@ mod tests {
                 number: number.parse().unwrap(),
                 commodity: CommodityName::new(commodity).unwrap(),
             }),
+            transaction_cost: None,
             meta: Metadata::new(),
         }
     }

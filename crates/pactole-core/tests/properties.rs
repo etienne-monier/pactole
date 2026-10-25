@@ -59,6 +59,7 @@ fn posting(account_index: usize, commodity_index: usize, number: Decimal) -> Pos
             number,
             commodity: commodity(commodity_index),
         }),
+        transaction_cost: None,
         meta: Metadata::new(),
     }
 }
@@ -139,6 +140,7 @@ fn balanced(mut postings: Vec<Posting>) -> Vec<Posting> {
                 number: -sum,
                 commodity: CommodityName::new(commodity).expect("a commodity read from a posting"),
             }),
+            transaction_cost: None,
             meta: Metadata::new(),
         });
     }
@@ -215,6 +217,7 @@ proptest! {
             Posting {
                 account: account(2),
                 amount: None,
+                transaction_cost: None,
                 meta: Metadata::new(),
             },
         );
@@ -238,8 +241,8 @@ proptest! {
     ) {
         let postings = vec![
             posting(first.0, first.1, first.2),
-            Posting { account: account(1), amount: None, meta: Metadata::new() },
-            Posting { account: account(2), amount: None, meta: Metadata::new() },
+            Posting { account: account(1), amount: None, transaction_cost: None, meta: Metadata::new() },
+            Posting { account: account(2), amount: None, transaction_cost: None, meta: Metadata::new() },
             posting(second.0, second.1, second.2),
         ];
 
@@ -264,7 +267,7 @@ proptest! {
         let postings = vec![
             posting(first.0, first_index, first.2),
             posting(second.0, second_index, second.2),
-            Posting { account: account(2), amount: None, meta: Metadata::new() },
+            Posting { account: account(2), amount: None, transaction_cost: None, meta: Metadata::new() },
         ];
 
         let report = validate_journal_all(journal(postings));
@@ -530,6 +533,7 @@ fn balance_sheet_journal(movements: &[(usize, usize, Decimal)]) -> Journal {
                         number,
                         commodity: commodity(commodity_index),
                     }),
+                    transaction_cost: None,
                     meta: Metadata::new(),
                 },
                 Posting {
@@ -538,6 +542,7 @@ fn balance_sheet_journal(movements: &[(usize, usize, Decimal)]) -> Journal {
                         number: -number,
                         commodity: commodity(commodity_index),
                     }),
+                    transaction_cost: None,
                     meta: Metadata::new(),
                 },
             ]))

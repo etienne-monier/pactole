@@ -360,6 +360,10 @@
         {
           "type": "property",
           "named": true
+        },
+        {
+          "type": "transaction_cost",
+          "named": true
         }
       ]
     }
@@ -557,6 +561,22 @@
     }
   },
   {
+    "type": "transaction_cost",
+    "named": true,
+    "fields": {
+      "amount": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "amount",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "value",
     "named": true,
     "fields": {},
@@ -617,6 +637,14 @@
   },
   {
     "type": "?",
+    "named": false
+  },
+  {
+    "type": "@",
+    "named": false
+  },
+  {
+    "type": "@@",
     "named": false
   },
   {

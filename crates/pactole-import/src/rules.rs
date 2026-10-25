@@ -178,6 +178,7 @@ pub(crate) fn lower(
                 number: -record.amount,
                 commodity: commodity.clone(),
             }),
+            transaction_cost: None,
             meta: Metadata::new(),
         };
 
@@ -187,6 +188,7 @@ pub(crate) fn lower(
                 number: record.amount,
                 commodity,
             }),
+            transaction_cost: None,
             meta: Metadata::new(),
         };
 

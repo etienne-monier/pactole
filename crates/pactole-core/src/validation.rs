@@ -1,7 +1,9 @@
 //! Business validation and auto-balancing for Pactole journals.
 
 use crate::errors::ValidationError;
-use crate::models::{AccountName, Amount, CommodityName, Entry, Journal, Transaction};
+use crate::models::{
+    AccountName, Amount, CommodityName, Entry, Journal, Transaction, TransactionCostAnnotation,
+};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -54,8 +56,9 @@ pub struct ValidationIssue {
 ///   `commodity-not-allowed`) are suppressed for those names only, and the
 ///   names are treated as if they had been declared;
 /// - the *usage* axis (`used_accounts`, `used_commodities`, `used_payees`)
-///   lists the names a missing transaction, balance assertion or price
-///   directive may have used. The checks that depend on it (`balance-assertion-failed`,
+///   lists the names a missing transaction, balance assertion, price directive
+///   or transaction-cost annotation may have used. The checks that depend on
+///   it (`balance-assertion-failed`,
 ///   `account-unused`, `commodity-unused`, `payee-unused`) are suppressed for
 ///   those names only.
 ///
@@ -76,7 +79,8 @@ pub struct MissingData {
     pub payees: BTreeSet<String>,
     /// Accounts whose postings or balance assertions may be missing.
     pub used_accounts: BTreeSet<AccountName>,
-    /// Commodities whose amounts or price references may be missing.
+    /// Commodities whose amounts, price references or transaction-cost
+    /// references may be missing.
     pub used_commodities: BTreeSet<CommodityName>,
     /// Payees whose transactions may be missing.
     pub used_payees: BTreeSet<String>,
@@ -430,9 +434,10 @@ pub fn validate_journal_all_with(journal: Journal, missing: &MissingData) -> Val
 /// - an `open`ed account is used by a transaction posting or by a `balance`
 ///   assertion; merely `close`ing it does not count (an account exists to
 ///   hold postings, so opened-then-closed-without-ever-posting is reported);
-/// - a declared commodity is used by a transaction posting amount, by a
-///   `balance` assertion amount, by a `price` directive, or by the restricted
-///   list of an `open` directive (an explicit reference to the commodity);
+/// - a declared commodity is used by a transaction posting amount or cost
+///   annotation, by a `balance` assertion amount, by a `price` directive, or
+///   by the restricted list of an `open` directive (an explicit reference to
+///   the commodity);
 /// - a declared payee is used by a transaction's payee.
 ///
 /// A use counts even when the entry carrying it fails another validation
@@ -506,6 +511,9 @@ pub fn unused_declarations_with(journal: &Journal, missing: &MissingData) -> Vec
                     used_accounts.insert(posting.account.clone());
                     if let Some(amount) = &posting.amount {
                         used_commodities.insert(amount.commodity.clone());
+                    }
+                    if let Some(cost) = &posting.transaction_cost {
+                        used_commodities.insert(cost.amount.commodity.clone());
                     }
                 }
             }
@@ -583,6 +591,10 @@ fn validate_transaction(
                 date: transaction.date,
             });
         }
+        let mut checked_commodities = HashSet::new();
+        if let Some(amount) = &posting.amount {
+            checked_commodities.insert(amount.commodity.clone());
+        }
         if let Some(amount) = &posting.amount
             && !declared_commodities.contains(&amount.commodity)
             && !missing.commodity_may_be_declared(&amount.commodity)
@@ -591,6 +603,36 @@ fn validate_transaction(
                 commodity: amount.commodity.clone(),
                 date: transaction.date,
             });
+        }
+        if let Some(cost) = &posting.transaction_cost {
+            if checked_commodities.insert(cost.amount.commodity.clone())
+                && !declared_commodities.contains(&cost.amount.commodity)
+                && !missing.commodity_may_be_declared(&cost.amount.commodity)
+            {
+                errors.push(ValidationError::CommodityNotDeclared {
+                    commodity: cost.amount.commodity.clone(),
+                    date: transaction.date,
+                });
+            }
+            if cost.amount.number <= Decimal::ZERO {
+                errors.push(ValidationError::TransactionCostNotPositive {
+                    account: posting.account.clone(),
+                    date: transaction.date,
+                });
+            } else if !posting.amount.as_ref().is_some_and(|amount| {
+                !amount.number.is_zero()
+                    && (cost.annotation == TransactionCostAnnotation::Total
+                        || amount
+                            .number
+                            .abs()
+                            .checked_mul(cost.amount.number)
+                            .is_some())
+            }) {
+                errors.push(ValidationError::TransactionCostInconsistent {
+                    account: posting.account.clone(),
+                    date: transaction.date,
+                });
+            }
         }
     }
 
@@ -699,7 +741,8 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
 mod tests {
     use super::*;
     use crate::models::{
-        Balance, Close, Commodity, Metadata, Open, Payee, Posting, Price, TransactionStatus,
+        Balance, Close, Commodity, Metadata, Open, Payee, Posting, Price, TransactionCost,
+        TransactionCostAnnotation, TransactionStatus,
     };
 
     fn date(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
@@ -713,6 +756,7 @@ mod tests {
                 number: number.parse().unwrap(),
                 commodity: CommodityName::new(commodity).unwrap(),
             }),
+            transaction_cost: None,
             meta: Metadata::new(),
         }
     }
@@ -915,6 +959,191 @@ mod tests {
         };
 
         assert!(unused_declarations(&journal).is_empty());
+    }
+
+    #[test]
+    fn transaction_cost_quote_commodity_must_be_declared_and_counts_as_used() {
+        let mut converted_posting = posting("Assets:USD", Some(("-100", "USD")));
+        converted_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "0.93".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let exchange = Entry::Transaction(transaction(
+            date(2024, 1, 3),
+            vec![
+                converted_posting,
+                posting("Assets:Counter", Some(("100", "USD"))),
+            ],
+        ));
+
+        let undeclared = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:Counter"),
+                commodity(date(2024, 1, 1), "USD"),
+                exchange.clone(),
+            ],
+        });
+        assert!(undeclared.issues.iter().any(|issue| matches!(
+            &issue.error,
+            ValidationError::CommodityNotDeclared { commodity, .. }
+                if commodity.as_str() == "EUR"
+        )));
+
+        let journal = Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:Counter"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                exchange,
+            ],
+        };
+        assert!(validate_journal_all(journal.clone()).issues.is_empty());
+        assert!(unused_declarations(&journal).is_empty());
+    }
+
+    #[test]
+    fn total_transaction_cost_does_not_require_an_exact_unit_price() {
+        let mut shares_posting = posting("Assets:Shares", Some(("3", "AAPL")));
+        shares_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "100".parse().unwrap(),
+                commodity: CommodityName::new("USD").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Total,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:Shares"),
+                open(date(2024, 1, 1), "Assets:Cash"),
+                commodity(date(2024, 1, 1), "AAPL"),
+                commodity(date(2024, 1, 1), "USD"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![shares_posting, posting("Assets:Cash", Some(("-3", "AAPL")))],
+                )),
+            ],
+        });
+
+        assert!(
+            report.issues.is_empty(),
+            "a total annotation is authoritative even when its unit equivalent repeats: {:?}",
+            report.issues
+        );
+    }
+
+    #[test]
+    fn same_undeclared_commodity_is_reported_once_when_used_as_amount_and_cost() {
+        let mut converted_posting = posting("Assets:Checking", Some(("100", "EUR")));
+        converted_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "1".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:Checking"),
+                open(date(2024, 1, 1), "Assets:Counter"),
+                commodity(date(2024, 1, 1), "USD"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![
+                        converted_posting,
+                        posting("Assets:Counter", Some(("-100", "USD"))),
+                    ],
+                )),
+            ],
+        });
+        let undeclared_eur = report
+            .issues
+            .iter()
+            .filter(|issue| {
+                matches!(
+                    &issue.error,
+                    ValidationError::CommodityNotDeclared { commodity, .. }
+                        if commodity.as_str() == "EUR"
+                )
+            })
+            .count();
+
+        assert_eq!(undeclared_eur, 1);
+    }
+
+    #[test]
+    fn non_positive_transaction_cost_is_rejected() {
+        let mut converted_posting = posting("Assets:USD", Some(("-100", "USD")));
+        converted_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "-0.93".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:Counter"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![
+                        converted_posting,
+                        posting("Assets:Counter", Some(("100", "USD"))),
+                    ],
+                )),
+            ],
+        });
+
+        assert!(matches!(
+            report.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::TransactionCostNotPositive { .. },
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn transaction_cost_without_an_explicit_posting_amount_is_rejected() {
+        let mut converted_posting = posting("Assets:USD", Some(("-100", "USD")));
+        converted_posting.amount = None;
+        converted_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "0.93".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:Counter"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![
+                        converted_posting,
+                        posting("Assets:Counter", Some(("100", "USD"))),
+                    ],
+                )),
+            ],
+        });
+
+        assert!(matches!(
+            report.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::TransactionCostInconsistent { .. },
+                ..
+            }]
+        ));
     }
 
     fn balance(d: chrono::NaiveDate, account: &str, amount: (&str, &str)) -> Entry {

@@ -60,6 +60,10 @@ pub enum DiagnosticCode {
     PriceNotPositive,
     /// Two different market prices are declared for the same pair and date.
     PriceConflict,
+    /// A transaction-specific posting cost is zero or negative.
+    TransactionCostNotPositive,
+    /// A transaction cost is incompatible with its posting amount.
+    TransactionCostInconsistent,
     /// A payee is declared more than once.
     PayeeAlreadyDeclared,
     /// A transaction uses a payee that has not been declared.
@@ -106,6 +110,8 @@ impl DiagnosticCode {
         Self::CommodityNotDeclared,
         Self::PriceNotPositive,
         Self::PriceConflict,
+        Self::TransactionCostNotPositive,
+        Self::TransactionCostInconsistent,
         Self::PayeeAlreadyDeclared,
         Self::PayeeNotDeclared,
         Self::TooManyPostingsWithoutAmount,
@@ -135,6 +141,8 @@ impl DiagnosticCode {
             Self::CommodityNotDeclared => "commodity-not-declared",
             Self::PriceNotPositive => "price-not-positive",
             Self::PriceConflict => "price-conflict",
+            Self::TransactionCostNotPositive => "transaction-cost-not-positive",
+            Self::TransactionCostInconsistent => "transaction-cost-inconsistent",
             Self::PayeeAlreadyDeclared => "payee-already-declared",
             Self::PayeeNotDeclared => "payee-not-declared",
             Self::TooManyPostingsWithoutAmount => "too-many-postings-without-amount",

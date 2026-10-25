@@ -434,6 +434,7 @@ fn posting(account: AccountName, number: Decimal, commodity: &CommodityName) -> 
             number,
             commodity: commodity.clone(),
         }),
+        transaction_cost: None,
         meta: Metadata::new(),
     }
 }

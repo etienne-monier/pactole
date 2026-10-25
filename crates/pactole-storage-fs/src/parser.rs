@@ -2,7 +2,8 @@ use crate::errors::PactoleFsStorageError;
 use chrono::NaiveDate;
 use pactole_core::{
     AccountName, Amount, Balance, Close, Commodity, CommodityName, Entry, Metadata, MetadataKey,
-    Open, Payee, Posting, Price, Transaction, TransactionStatus,
+    Open, Payee, Posting, Price, Transaction, TransactionCost, TransactionCostAnnotation,
+    TransactionStatus,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -397,6 +398,10 @@ impl<'src> AstBuilder<'src> {
             .find_child(posting, "amount")
             .map(|n| self.build_amount(n))
             .transpose()?;
+        let transaction_cost = self
+            .find_child(posting, "transaction_cost")
+            .map(|node| self.build_transaction_cost(node, amount.as_ref()))
+            .transpose()?;
 
         let mut meta = Metadata::new();
         let mut cursor = posting.walk();
@@ -414,7 +419,43 @@ impl<'src> AstBuilder<'src> {
         Ok(Posting {
             account,
             amount,
+            transaction_cost,
             meta,
+        })
+    }
+
+    fn build_transaction_cost(
+        &self,
+        node: Node<'_>,
+        posting_amount: Option<&Amount>,
+    ) -> Result<TransactionCost, PactoleFsStorageError> {
+        let posting_amount = posting_amount.ok_or_else(|| {
+            self.error("a posting with a transaction-cost annotation must have an explicit amount")
+        })?;
+        let annotation_amount = self.build_amount(self.require_field(node, "amount")?)?;
+        let annotation = if self.text(node).starts_with("@@") {
+            TransactionCostAnnotation::Total
+        } else {
+            TransactionCostAnnotation::Unit
+        };
+
+        if posting_amount.number.is_zero() {
+            return Err(self.error(
+                "a transaction-cost annotation cannot be applied to a zero posting amount",
+            ));
+        }
+
+        if annotation == TransactionCostAnnotation::Unit {
+            posting_amount
+                .number
+                .abs()
+                .checked_mul(annotation_amount.number)
+                .ok_or_else(|| self.error("transaction total cost cannot be represented"))?;
+        }
+
+        Ok(TransactionCost {
+            amount: annotation_amount,
+            annotation,
         })
     }
 }
@@ -422,7 +463,9 @@ impl<'src> AstBuilder<'src> {
 #[cfg(test)]
 mod tests {
     use super::PactoleFsStorageError;
-    use pactole_core::{CommodityName, Entry, Journal, Price, TransactionStatus};
+    use pactole_core::{
+        CommodityName, Entry, Journal, Price, TransactionCostAnnotation, TransactionStatus,
+    };
     use std::path::Path;
 
     fn parse(source: &str, _base_dir: Option<&Path>) -> Result<Journal, PactoleFsStorageError> {
@@ -507,6 +550,73 @@ mod tests {
                     && quote.number == "0.92".parse().unwrap()
                     && quote.commodity.as_str() == "EUR"
         ));
+    }
+
+    #[test]
+    fn parses_unit_and_total_transaction_cost_annotations() {
+        let journal = parse(
+            "2026-10-25 * \"Exchange\"\n  Assets:USD -100 USD @ 0.93 EUR\n  Assets:EUR 93 EUR @@ 93 EUR\n",
+            None,
+        )
+        .unwrap();
+
+        let Entry::Transaction(transaction) = &journal.entries[0] else {
+            panic!("expected a transaction");
+        };
+        let unit_cost = transaction.postings[0]
+            .transaction_cost
+            .as_ref()
+            .expect("the first posting has a unit cost");
+        assert_eq!(unit_cost.annotation, TransactionCostAnnotation::Unit);
+        assert_eq!(unit_cost.amount.number, "0.93".parse().unwrap());
+        assert_eq!(unit_cost.amount.commodity.as_str(), "EUR");
+
+        let total_cost = transaction.postings[1]
+            .transaction_cost
+            .as_ref()
+            .expect("the second posting has a total cost");
+        assert_eq!(total_cost.annotation, TransactionCostAnnotation::Total);
+        assert_eq!(total_cost.amount.number, "93".parse().unwrap());
+        assert_eq!(total_cost.amount.commodity.as_str(), "EUR");
+    }
+
+    #[test]
+    fn rejects_a_transaction_cost_without_an_explicit_posting_amount() {
+        let error =
+            parse("2026-10-25 * \"Exchange\"\n  Assets:USD @ 0.93 EUR\n", None).unwrap_err();
+
+        assert!(error.to_string().contains("must have an explicit amount"));
+    }
+
+    #[test]
+    fn rejects_a_zero_posting_amount_with_a_transaction_cost() {
+        let error = parse(
+            "2026-10-25 * \"Exchange\"\n  Assets:USD 0 USD @ 0.93 EUR\n",
+            None,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("zero posting amount"));
+    }
+
+    #[test]
+    fn accepts_a_total_cost_whose_unit_price_is_not_exactly_representable() {
+        let journal = parse(
+            "2026-10-25 * \"Exchange\"\n  Assets:USD 3 USD @@ 1 EUR\n",
+            None,
+        )
+        .unwrap();
+
+        let Entry::Transaction(transaction) = &journal.entries[0] else {
+            panic!("expected a transaction");
+        };
+        let cost = transaction.postings[0]
+            .transaction_cost
+            .as_ref()
+            .expect("the posting has a total cost");
+        assert_eq!(cost.annotation, TransactionCostAnnotation::Total);
+        assert_eq!(cost.amount.number, "1".parse().unwrap());
+        assert_eq!(cost.amount.commodity.as_str(), "EUR");
     }
 
     #[test]

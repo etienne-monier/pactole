@@ -48,4 +48,4 @@
 
 ; Punctuation
 ":" @punctuation.delimiter
-["=" "~" ","] @operator
+["=" "~" "," "@" "@@"] @operator

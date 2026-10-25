@@ -184,6 +184,7 @@ mod tests {
         Posting {
             account: account(account_name),
             amount: Some(amount(number, commodity_name)),
+            transaction_cost: None,
             meta: Metadata::new(),
         }
     }
