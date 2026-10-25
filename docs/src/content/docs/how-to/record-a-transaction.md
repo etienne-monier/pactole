@@ -36,7 +36,8 @@ The header has this shape:
 ## Balance the postings
 
 Every posting is an indented line with an account and — usually — an amount.
-All postings in a transaction must sum to zero, per commodity:
+The postings' balancing weights must sum to zero per commodity. Without a cost
+annotation, each weight is the recorded amount in its original commodity:
 
 ```pactole
 2026-09-04 * "Bank" "Transfer between accounts"
@@ -45,13 +46,20 @@ All postings in a transaction must sum to zero, per commodity:
 ```
 
 At most one posting may omit its amount; Pactole infers it so that the
-transaction balances:
+transaction balances. The commodity is inferred from the other postings'
+balancing weights:
 
 ```pactole
 2026-09-03 * "Whole Foods" "Weekly groceries"
   Expenses:Groceries 45.30 EUR
   Assets:Checking
 ```
+
+Use `@ UNIT_PRICE COMMODITY` or `@@ TOTAL_PRICE COMMODITY` on a posting to
+balance a conversion in the cost commodity. The recorded account amount remains
+in its original commodity; market `price` directives do not participate in
+transaction balancing. See the
+[grammar reference](/reference/grammar/#postings) for the exact weight rules.
 
 ## Satisfy the journal's rules
 

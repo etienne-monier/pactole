@@ -79,7 +79,8 @@ Let's read this file top to bottom:
   optional status flag (`*` means "cleared"), then the payee and an optional
   narration. If the status is omitted, the transaction is uncleared. Its two
   **postings** (indented lines) move 45.30 EUR out of `Assets:Checking` and into
-  `Expenses:Groceries`. Postings always sum to zero.
+  `Expenses:Groceries`. Their balancing weights sum to zero per commodity (for
+  these unconverted postings, the weights are the amounts themselves).
 
 ## 4. Check the ledger
 

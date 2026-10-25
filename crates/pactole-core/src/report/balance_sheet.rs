@@ -113,8 +113,10 @@ pub(super) enum Category {
 /// The sheet is made of three sections, *Assets*, *Liabilities* and *Equity*,
 /// plus an *Unclassified* section when some accounts match no configured root.
 /// Liabilities and equity are presented with a positive sign (their credit
-/// balance), so a fully classified, balanced journal satisfies
-/// `Assets = Liabilities + Equity` per commodity.
+/// balance), so a fully classified journal without cross-commodity transaction
+/// costs satisfies `Assets = Liabilities + Equity` per commodity. A converted
+/// transaction can balance on its cost weights while leaving original-commodity
+/// account balances that do not satisfy this unconverted equation.
 ///
 /// Income and expense accounts are not sections of their own: their net
 /// result is added to the equity section as an `Unclosed result` line,
@@ -125,8 +127,9 @@ pub(super) enum Category {
 /// hidden (the section heading plays that role) unless the root account itself
 /// carries postings; the remaining depths are shifted accordingly.
 ///
-/// The report total is the algebraic sum of the exact ledger balances, so it
-/// is zero for a balanced, fully classified journal.
+/// The report total is the algebraic sum of the exact ledger balances. It is
+/// zero for a balanced, fully classified journal only when transaction weights
+/// coincide with the recorded amounts commodity by commodity.
 pub fn balance_sheet(
     journal: &Journal,
     as_of: ReferenceDate,
@@ -263,7 +266,8 @@ pub(super) fn root(account: &AccountName) -> &str {
 mod tests {
     use super::*;
     use crate::models::{
-        Amount, CommodityName, Entry, Metadata, Posting, Transaction, TransactionStatus,
+        Amount, CommodityName, Entry, Metadata, Posting, Transaction, TransactionCost,
+        TransactionCostAnnotation, TransactionStatus,
     };
     use chrono::NaiveDate;
     use rust_decimal::Decimal;
@@ -634,6 +638,35 @@ mod tests {
             Some("20.00".parse().unwrap())
         );
         assert!(report.totals.is_empty());
+    }
+
+    #[test]
+    fn cross_commodity_cost_weights_do_not_convert_balance_sheet_amounts() {
+        let mut converted = posting("Assets:USD", "-100", "USD");
+        converted.transaction_cost = Some(TransactionCost {
+            amount: amount("0.92", "EUR"),
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let journal = journal(vec![transaction(
+            date(2026, 1, 2),
+            vec![converted, posting("Assets:EUR", "92", "EUR")],
+        )]);
+
+        let report = balance_sheet(
+            &journal,
+            ReferenceDate::new(date(2026, 1, 2)),
+            &AccountClassification::default(),
+            AccountGrouping::Exact,
+        );
+
+        assert_eq!(
+            report.totals.get(&CommodityName::new("USD").unwrap()),
+            Some(Decimal::new(-100, 0))
+        );
+        assert_eq!(
+            report.totals.get(&CommodityName::new("EUR").unwrap()),
+            Some(Decimal::new(92, 0))
+        );
     }
 
     #[test]

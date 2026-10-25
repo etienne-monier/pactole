@@ -24,9 +24,10 @@ Read this as: `Assets:Checking` decreased by 45.30 EUR, and
 `Expenses:Groceries` increased by the same amount. The two postings are the two
 sides of one event.
 
-## The rule: postings sum to zero
+## The rule: balancing weights sum to zero
 
-Each transaction's postings must sum to zero, per commodity:
+Each transaction's posting weights must sum to zero, per commodity. For
+unconverted postings, the weight is simply the recorded amount:
 
 ```text
 +45.30 EUR  (Expenses:Groceries)
@@ -34,8 +35,11 @@ Each transaction's postings must sum to zero, per commodity:
 = 0
 ```
 
-This is why Pactole can sometimes infer an amount: if a transaction has one
-posting without an amount, its value is whatever balances the rest. It is also
+With `@` or `@@`, a posting's weight is expressed in the transaction-cost
+commodity while its recorded amount stays in the original commodity. This is
+why Pactole can sometimes infer an amount: if a transaction has one posting
+without an amount, its value is whatever balances the rest, provided the
+weights identify one commodity. It is also
 why a typo in one amount is caught immediately — the transaction no longer adds
 up.
 

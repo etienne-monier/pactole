@@ -278,12 +278,15 @@ of scope.
 
 ### 2.4 — Balance on converted weights
 
-- [ ] Compute the converted weight of each posting, and balance the
+- [x] Compute the converted weight of each posting, and balance the
   transaction on it.
-- [ ] Report a dedicated diagnostic for an unbalanced multi-commodity
-  transaction, and for a missing price.
-- [ ] Apply the documented tolerance and rounding rules.
-- [ ] Keep single-commodity transactions byte-for-byte identical to today.
+- [x] Report a dedicated diagnostic for an unbalanced multi-commodity
+  transaction. Market prices are not used for balancing; missing market prices
+  are reported during report valuation in 2.5.
+- [x] Apply the documented exact-Decimal rules: no implicit rounding or
+  transaction tolerance.
+- [x] Keep transactions without cost annotations balanced as before, and keep
+  their canonical text unchanged.
 
 ### 2.5 — Value the reports
 

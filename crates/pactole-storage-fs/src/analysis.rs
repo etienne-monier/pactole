@@ -953,7 +953,9 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
         }
         ValidationError::TooManyPostingsWithoutAmount { .. }
         | ValidationError::AmbiguousAutoBalanceCommodity { .. }
-        | ValidationError::TransactionNotBalanced { .. } => entry.span,
+        | ValidationError::TransactionNotBalanced { .. }
+        | ValidationError::MultiCommodityTransactionNotBalanced { .. }
+        | ValidationError::TransactionWeightUnrepresentable { .. } => entry.span,
     }
 }
 
@@ -1370,6 +1372,36 @@ mod tests {
         assert_eq!(diagnostics[0].code, DiagnosticCode::PayeeNotDeclared);
         assert_eq!(diagnostics[0].span.start.row, 0);
         assert_eq!(diagnostics[0].code.as_str(), "payee-not-declared");
+    }
+
+    #[test]
+    fn multi_commodity_imbalance_is_published_as_its_own_diagnostic() {
+        let source = "2026-01-01 commodity EUR\n\
+                      2026-01-01 commodity USD\n\
+                      2026-01-01 open Assets:USD\n\
+                      2026-01-01 open Assets:EUR\n\
+                      payee \"Exchange\"\n\
+                      2026-01-02 price USD 0.92 EUR\n\
+                      2026-01-03 * \"Exchange\"\n\
+                      \u{20}\u{20}Assets:USD -100 USD\n\
+                      \u{20}\u{20}Assets:EUR 92 EUR\n";
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+        let project = analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader)
+            .expect("entry file is available");
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| {
+                diagnostic.code == DiagnosticCode::MultiCommodityTransactionNotBalanced
+            })
+            .expect("multi-commodity imbalance diagnostic");
+
+        assert_eq!(
+            diagnostic.code.as_str(),
+            "multi-commodity-transaction-not-balanced"
+        );
+        assert_eq!(diagnostic.span.start.row, 6);
     }
 
     fn undeclared_payee_project() -> (InMemorySourceLoader, &'static str) {

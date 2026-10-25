@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Converted transaction balancing (roadmap 2.4):** posting `@`/`@@`
+  annotations now determine transaction-balancing weights while recorded
+  amounts and account balances remain in their original commodities. Weights
+  balance exactly per commodity with no implicit rounding or transaction
+  tolerance; market prices are never used for balancing. Multi-commodity
+  imbalances and weights that cannot be represented exactly have dedicated
+  diagnostics.
+
 - **Market-price directive (roadmap 2.2):** `DATE price BASE RATE QUOTE` adds
   dated, directed market quotes to the domain model. Quotes are validated
   against commodity declaration dates; conflicting values for the same pair
@@ -22,13 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   derived unit cost is not exactly representable. Annotations require an
   explicit non-zero amount and a positive cost. The canonical formatter, serializer
   and LSP commodity completion/navigation understand the annotations. Converted
-  weights do not affect transaction balancing yet; that remains roadmap 2.4.
+  weights are applied to transaction balancing as described above.
+
+### Changed
+
+- **Transaction-cost exactness:** `@` products that require rounding are now
+  rejected rather than silently accepted by `Decimal` multiplication. Use `@@`
+  when the exact total is representable but its equivalent unit cost is
+  repeating. `transaction-cost-inconsistent` now covers a unit-cost total that
+  is not exactly representable as a `Decimal`.
 
 ### Documentation
 
 - **Multi-currency model (roadmap 2.1):** `GRAMMAR.md` now specifies amounts,
   transaction costs (`TransactionCost`), dated market prices and derived
-  report values as separate concepts. Transaction costs will affect balancing;
+  report values as separate concepts. Transaction costs affect balancing;
   market prices are for report valuation only. Converted transactions balance
   exactly without implicit rounding or tolerance, and reports flag missing
   direct prices while retaining unconverted amounts. Commodity kinds and lot

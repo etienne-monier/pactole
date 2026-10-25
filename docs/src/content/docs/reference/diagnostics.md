@@ -167,12 +167,14 @@ reported), `warn` (reported as a warning) or `error` (blocking).
 | `price-not-positive` | — | error | A market-price rate is zero or negative. |
 | `price-conflict` | — | error | Different rates are declared for the same directed commodity pair on the same date. |
 | `transaction-cost-not-positive` | — | error | A posting's unit or total transaction cost is zero or negative. |
-| `transaction-cost-inconsistent` | — | error | A domain transaction cost has no explicit non-zero posting amount, or a unit cost cannot be converted to a total without overflow. Parsed postings missing an explicit amount are reported as `lowering-error`. |
+| `transaction-cost-inconsistent` | — | error | A domain transaction cost has no explicit non-zero posting amount, or its unit-cost total is not exactly representable as a `Decimal`. Parsed postings missing an explicit amount are reported as `lowering-error`. |
 | `payee-already-declared` | — | error | A payee is declared more than once. |
 | `payee-not-declared` | `payee` | error | A transaction uses a payee with no `payee` declaration. |
 | `too-many-postings-without-amount` | — | error | More than one posting of a transaction omits its amount; at most one may omit it, so that it can be inferred. |
 | `ambiguous-auto-balance-commodity` | — | error | The commodity of the inferred amount cannot be determined from the other postings. |
-| `transaction-not-balanced` | — | error | The postings of a transaction do not sum to zero for a commodity. |
+| `transaction-not-balanced` | — | error | The posting weights do not sum to zero for one commodity. |
+| `multi-commodity-transaction-not-balanced` | — | error | The posting weights have non-zero sums in multiple commodities. |
+| `transaction-weight-unrepresentable` | — | error | The exact sum of posting weights cannot be represented as a `Decimal`. An inexact `@` product is reported as `transaction-cost-inconsistent`. |
 | `commodity-not-allowed` | — | error | A posting uses a commodity excluded by the account's `open` restriction. |
 | `balance-assertion-failed` | — | error | A `balance` assertion differs from the computed balance beyond its tolerance. |
 | `account-unused` | `unused` | warn | An account is opened but neither a transaction nor a balance assertion uses it. |

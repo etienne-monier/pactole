@@ -145,8 +145,8 @@ cost. A cost-annotated posting must have an explicit, non-zero amount; the
 written cost must be positive. The written value is stored exactly; `@@` does
 not require its equivalent unit cost to be exactly representable as a
 `Decimal`. The annotation's commodity is declared and used like any other
-commodity reference. These annotations do not yet affect transaction balancing;
-converted balancing is specified below and implemented in roadmap phase 2.4.
+commodity reference. The annotation determines the posting's
+transaction-balancing weight, as specified below.
 
 ## Metadata (`property`)
 
@@ -235,7 +235,6 @@ commodity:
 
 ```pactole
 ; Transaction-cost annotation examples.
-; Illustrative only: converted balancing is not implemented until phase 2.4.
 2026-10-25 * "Currency exchange"
   Assets:USD -100 USD @ 0.93 EUR
   Assets:EUR 93 EUR
@@ -251,27 +250,29 @@ For an amount `q C`:
 Thus the example's USD posting retains its `-100 USD` amount in the account,
 but has a `-93 EUR` weight for balancing against the EUR posting. Without a
 transaction-cost annotation, a posting's weight is its amount in its own
-commodity, as it is today. The transaction must sum to zero separately for
-each resulting weight commodity; a market price is never substituted for a
-missing transaction cost.
+commodity. The transaction must sum to zero separately for each resulting
+weight commodity; a market price is never substituted for a missing transaction
+cost. A transaction with non-zero weight sums in multiple commodities receives
+a dedicated multi-commodity imbalance diagnostic.
 
 `@` and `@@` are alternative ways to express the same transaction-specific
 conversion, not lot annotations. The exact value written after the annotation
-is retained; `@` requires its derived total to fit in `Decimal`, while `@@`
+is retained; `@` requires its derived total to be exactly representable as a
+`Decimal`, while `@@`
 remains valid even when its equivalent unit cost is repeating or otherwise not
 exactly representable. Both annotations may not appear on one posting. The cost
 on a posting must be positive, and the amount on a cost-annotated posting must
 be explicit because the source commodity cannot otherwise be identified. A
 zero posting amount cannot be annotated. An omitted amount continues to be
-inferred only when its commodity is unambiguous under the existing
-auto-balancing rules.
+inferred only when its commodity is unambiguous from the other postings'
+balancing weights.
 
 Converted weights are calculated with `Decimal` without an implicit
 currency-minor-unit rounding step. They must balance exactly. Any rounding
 difference must be represented by an explicit posting; the tolerance on a
-`balance` assertion does not apply to transaction balancing. If a conversion
-cannot be represented or calculated, it is an error rather than a silently
-rounded value.
+`balance` assertion does not apply to transaction balancing. If a weight or
+the exact sum cannot be represented as a `Decimal`, validation reports an error
+rather than silently rounding it.
 
 ### Market prices and report values
 

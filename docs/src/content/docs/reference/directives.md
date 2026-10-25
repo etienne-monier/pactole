@@ -130,8 +130,10 @@ DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]
 ```
 
 Records a movement of funds. The optional status defaults to `?` (uncleared).
-All postings must sum to zero per commodity; at most one posting may omit its
-amount (it is inferred).
+The postings' balancing weights must sum to zero per commodity; `@` and `@@`
+annotations can express a conversion without changing the recorded amounts.
+At most one posting may omit its amount (it is inferred from the other postings'
+weights when their commodity is unambiguous).
 
 ```pactole
 2026-09-03=2026-09-05 * "Whole Foods" "Weekly groceries" #food (CB-00123)
@@ -171,7 +173,9 @@ See [Split a journal with includes](/how-to/split-a-journal-with-includes/).
 4. **Declared payees** — every transaction's payee must be declared (the only
    configurable invariant: `[validation] payee = "warn"` reports it as a
    warning instead).
-5. **Balanced transactions** — the postings of each transaction sum to zero per
-   commodity.
+5. **Balanced transactions** — the posting weights of each transaction sum to
+   zero per commodity. Without a cost annotation, a posting's weight is its
+   amount in its original commodity; see the
+   [grammar reference](/reference/grammar/#postings).
 6. **Balance assertions** — each `balance` assertion must match the account's
    running balance up to its date, within the given tolerance.

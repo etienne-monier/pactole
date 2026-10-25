@@ -43,7 +43,7 @@ pub struct Posting {
     /// there is exactly one missing posting amount.
     pub amount: Option<Amount>,
     /// Transaction-specific conversion annotation, retained separately from
-    /// the recorded amount. Converted weights are not used for balancing yet.
+    /// the recorded amount and used to derive this posting's balancing weight.
     pub transaction_cost: Option<TransactionCost>,
     /// Metadata attached to the posting.
     pub meta: Metadata,

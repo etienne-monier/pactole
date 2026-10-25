@@ -72,8 +72,12 @@ pub enum DiagnosticCode {
     TooManyPostingsWithoutAmount,
     /// The commodity of an inferred amount cannot be determined.
     AmbiguousAutoBalanceCommodity,
-    /// The postings of a transaction do not sum to zero for a commodity.
+    /// The posting weights of a transaction do not sum to zero for a commodity.
     TransactionNotBalanced,
+    /// A transaction has non-zero balancing weights in multiple commodities.
+    MultiCommodityTransactionNotBalanced,
+    /// A posting weight or a sum of transaction weights cannot be represented exactly.
+    TransactionWeightUnrepresentable,
     /// A posting uses a commodity excluded by the account's `open`
     /// restriction.
     CommodityNotAllowed,
@@ -117,6 +121,8 @@ impl DiagnosticCode {
         Self::TooManyPostingsWithoutAmount,
         Self::AmbiguousAutoBalanceCommodity,
         Self::TransactionNotBalanced,
+        Self::MultiCommodityTransactionNotBalanced,
+        Self::TransactionWeightUnrepresentable,
         Self::CommodityNotAllowed,
         Self::BalanceAssertionFailed,
         Self::AccountUnused,
@@ -148,6 +154,10 @@ impl DiagnosticCode {
             Self::TooManyPostingsWithoutAmount => "too-many-postings-without-amount",
             Self::AmbiguousAutoBalanceCommodity => "ambiguous-auto-balance-commodity",
             Self::TransactionNotBalanced => "transaction-not-balanced",
+            Self::MultiCommodityTransactionNotBalanced => {
+                "multi-commodity-transaction-not-balanced"
+            }
+            Self::TransactionWeightUnrepresentable => "transaction-weight-unrepresentable",
             Self::CommodityNotAllowed => "commodity-not-allowed",
             Self::BalanceAssertionFailed => "balance-assertion-failed",
             Self::AccountUnused => "account-unused",

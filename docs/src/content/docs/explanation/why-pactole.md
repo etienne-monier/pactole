@@ -30,8 +30,10 @@ of a reflow.
 ## Double-entry, so mistakes surface
 
 Pactole is a **double-entry** system: every transaction moves money between at
-least two accounts, and the postings must sum to zero. That single rule catches
-a large class of errors automatically. On top of it, `pactole check` validates
+least two accounts, and its posting weights must sum to zero per commodity.
+`@`/`@@` annotations express transaction-specific conversions; otherwise a
+weight is the recorded amount in its own commodity. That rule catches a large
+class of errors automatically. On top of it, `pactole check` validates
 account lifecycles, declared commodities, declared payees and balance
 assertions — see [Double-entry accounting](/explanation/double-entry-accounting/)
 for the reasoning, and the

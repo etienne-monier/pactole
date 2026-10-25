@@ -161,8 +161,11 @@ pactole register path/to/file.pactole --format json
 
 Build the balance sheet of a file as of a date. Liabilities and equity are
 shown with a positive sign, and the net result of the income and expense
-accounts closes into equity, so a fully classified, balanced journal
-satisfies `Assets = Liabilities + Equity` per commodity:
+accounts closes into equity. For a fully classified journal without
+cross-commodity transaction-cost annotations, the sheet satisfies
+`Assets = Liabilities + Equity` per commodity. Converted transactions balance
+on their `@`/`@@` weights while account balances retain their original
+commodities, so their unconverted balance sheet can show a non-zero total:
 
 ```sh
 pactole balance path/to/file.pactole

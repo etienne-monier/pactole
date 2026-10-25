@@ -95,7 +95,7 @@ pub enum ValidationError {
         date: NaiveDate,
     },
     /// A transaction-cost annotation has no explicit non-zero posting amount,
-    /// or a unit cost cannot be converted to a total without overflow.
+    /// or a unit cost cannot be converted to an exactly representable total.
     #[error(
         "transaction cost on account `{account}` is inconsistent with its posting amount on {date}"
     )]
@@ -141,16 +141,35 @@ pub enum ValidationError {
         /// Date of the transaction.
         date: NaiveDate,
     },
-    /// Explicit transaction postings do not balance.
+    /// Transaction posting weights do not balance in one commodity.
     #[error(
-        "transaction on {date} is not balanced: postings for commodity `{commodity}` sum to \
-         `{sum}` instead of zero"
+        "transaction on {date} is not balanced: posting weights for commodity `{commodity}` sum \
+         to `{sum}` instead of zero"
     )]
     TransactionNotBalanced {
-        /// Commodity whose postings do not sum to zero.
+        /// Commodity whose posting weights do not sum to zero.
         commodity: String,
-        /// Non-zero sum of the postings.
+        /// Non-zero sum of the posting weights.
         sum: Decimal,
+        /// Date of the transaction.
+        date: NaiveDate,
+    },
+    /// A transaction has non-zero converted weights in more than one commodity.
+    #[error(
+        "transaction on {date} is not balanced across commodities: {formatted_imbalances}",
+        formatted_imbalances = format_imbalances(.imbalances)
+    )]
+    MultiCommodityTransactionNotBalanced {
+        /// Non-zero weight sums, ordered by commodity.
+        imbalances: Vec<(CommodityName, Decimal)>,
+        /// Date of the transaction.
+        date: NaiveDate,
+    },
+    /// A posting weight or a sum of transaction weights cannot be represented exactly.
+    #[error("transaction weight for `{commodity}` cannot be represented exactly on {date}")]
+    TransactionWeightUnrepresentable {
+        /// Commodity whose weight cannot be represented exactly.
+        commodity: CommodityName,
         /// Date of the transaction.
         date: NaiveDate,
     },
@@ -222,6 +241,14 @@ pub enum ValidationError {
     },
 }
 
+fn format_imbalances(imbalances: &[(CommodityName, Decimal)]) -> String {
+    imbalances
+        .iter()
+        .map(|(commodity, sum)| format!("{commodity} {sum}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 impl ValidationError {
     /// Returns the stable diagnostic code identifying this kind of error.
     ///
@@ -247,6 +274,12 @@ impl ValidationError {
                 DiagnosticCode::AmbiguousAutoBalanceCommodity
             }
             Self::TransactionNotBalanced { .. } => DiagnosticCode::TransactionNotBalanced,
+            Self::MultiCommodityTransactionNotBalanced { .. } => {
+                DiagnosticCode::MultiCommodityTransactionNotBalanced
+            }
+            Self::TransactionWeightUnrepresentable { .. } => {
+                DiagnosticCode::TransactionWeightUnrepresentable
+            }
             Self::CommodityNotAllowed { .. } => DiagnosticCode::CommodityNotAllowed,
             Self::BalanceAssertionFailed { .. } => DiagnosticCode::BalanceAssertionFailed,
             Self::AccountUnused { .. } => DiagnosticCode::AccountUnused,
@@ -324,6 +357,14 @@ mod tests {
                 sum: Decimal::ONE,
                 date,
             },
+            ValidationError::MultiCommodityTransactionNotBalanced {
+                imbalances: vec![(commodity.clone(), Decimal::ONE)],
+                date,
+            },
+            ValidationError::TransactionWeightUnrepresentable {
+                commodity: commodity.clone(),
+                date,
+            },
             ValidationError::CommodityNotAllowed {
                 account: account.clone(),
                 commodity: commodity.clone(),
@@ -367,5 +408,21 @@ mod tests {
                     | DiagnosticCode::IncludeCycle
             )
         }));
+    }
+
+    #[test]
+    fn multi_commodity_imbalance_message_formats_each_weight_clearly() {
+        let error = ValidationError::MultiCommodityTransactionNotBalanced {
+            imbalances: vec![
+                (CommodityName::new("EUR").unwrap(), Decimal::new(92, 0)),
+                (CommodityName::new("USD").unwrap(), Decimal::new(-100, 0)),
+            ],
+            date: NaiveDate::from_ymd_opt(2026, 1, 2).unwrap(),
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "transaction on 2026-01-02 is not balanced across commodities: EUR 92, USD -100"
+        );
     }
 }

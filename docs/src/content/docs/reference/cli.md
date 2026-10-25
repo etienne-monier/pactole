@@ -254,8 +254,11 @@ pactole balance <FILE> [--date <DATE>] [--format <FORMAT>] [--depth <N>]
 Builds the balance sheet of a file as of a reference date. It has an *Assets*
 section, a *Liabilities* section and an *Equity* section, each with its own
 subtotal per commodity. Liabilities and equity are shown with a positive sign,
-so a fully classified, balanced journal satisfies `Assets = Liabilities +
-Equity` for every commodity.
+so a fully classified journal without cross-commodity transaction-cost
+annotations satisfies `Assets = Liabilities + Equity` for every commodity.
+Converted transactions balance on their `@`/`@@` weights, but the balance sheet
+uses recorded account amounts in their original commodities; its unconverted
+totals can therefore be non-zero for such a journal.
 
 | Option | Description |
 |---|---|
@@ -334,10 +337,11 @@ tags is counted under each tag and untagged transactions appear as
 subtotal, but the subtotal and the net result are computed from the exact
 amounts.
 
-**Multi-commodity behaviour:** amounts are never converted implicitly until
-Phase 2. Each commodity keeps its own totals, so income and expenses in
-different currencies appear side by side and the net result is reported per
-commodity.
+**Multi-commodity behaviour:** report amounts are not converted implicitly.
+Each commodity keeps its own totals, so income and expenses in different
+currencies appear side by side and the net result is reported per commodity.
+Posting `@`/`@@` annotations affect transaction balancing only; report
+valuation remains a separate feature.
 
 The report is built from the validated journal, so an invalid ledger fails the
 command like `pactole check` does. The JSON rendering exposes the same

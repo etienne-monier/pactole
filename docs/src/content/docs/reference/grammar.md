@@ -119,16 +119,17 @@ The amount is optional: at most one posting per transaction may omit it
 commodity. Cost annotations require an explicit, non-zero posting amount and a
 positive cost. The written value is stored exactly; `@@` does not require its
 equivalent unit cost to be exactly representable as a `Decimal`. They do not
-yet affect transaction balancing. The `price`
-directive records market quotes independently. Lot-cost annotations (`{}`)
-remain out of scope.
+change the recorded posting amount, but determine its transaction-balancing
+weight. Converted weights must sum to zero exactly per commodity, without
+implicit rounding or transaction tolerance. Market prices are separate and are
+never substituted for transaction costs. Lot-cost annotations (`{}`) remain out
+of scope.
 
 ```pactole
   Expenses:Groceries 45.30 EUR
   Assets:Checking
 
 ; Transaction costs are distinct from dated market prices.
-; Illustrative only: converted balancing is not implemented until phase 2.4.
 2026-10-25 * "Exchange"
   Assets:USD -100 USD @ 0.93 EUR
   Assets:EUR 93 EUR

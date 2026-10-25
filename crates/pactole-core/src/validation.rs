@@ -622,10 +622,7 @@ fn validate_transaction(
             } else if !posting.amount.as_ref().is_some_and(|amount| {
                 !amount.number.is_zero()
                     && (cost.annotation == TransactionCostAnnotation::Total
-                        || amount
-                            .number
-                            .abs()
-                            .checked_mul(cost.amount.number)
+                        || checked_exact_decimal_product(amount.number.abs(), cost.amount.number)
                             .is_some())
             }) {
                 errors.push(ValidationError::TransactionCostInconsistent {
@@ -677,9 +674,11 @@ fn validate_transaction(
 /// case, and the other postings all share the same commodity, the
 /// missing amount is computed and filled in so that the transaction
 /// balances. If more than one posting has no amount, or the known
-/// amounts use several commodities while one is missing, an error is
-/// returned. If every posting already has an amount, the postings must
-/// sum to zero for each commodity.
+/// amounts' balancing weights use several commodities while one is missing,
+/// an error is returned. If every posting already has an amount, the posting
+/// weights must sum to zero for each commodity. A transaction cost (`@` or
+/// `@@`) changes only the balancing weight, never the amount stored on a
+/// posting; market prices are not consulted.
 fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationError> {
     let missing: Vec<usize> = transaction
         .postings
@@ -696,45 +695,269 @@ fn balance_transaction(transaction: &mut Transaction) -> Result<(), ValidationEr
         });
     }
 
-    let mut sums: BTreeMap<&str, (CommodityName, Decimal)> = BTreeMap::new();
+    let mut sums: BTreeMap<CommodityName, ExactDecimalSum> = BTreeMap::new();
     for posting in &transaction.postings {
-        if let Some(amount) = &posting.amount {
-            sums.entry(amount.commodity.as_str())
-                .or_insert_with(|| (amount.commodity.clone(), Decimal::ZERO))
-                .1 += amount.number;
+        if posting.amount.is_some() {
+            let (weight, commodity) = posting_weight(posting).ok_or_else(|| {
+                ValidationError::TransactionCostInconsistent {
+                    account: posting.account.clone(),
+                    date: transaction.date,
+                }
+            })?;
+            sums.entry(commodity).or_default().add(weight);
         }
     }
 
+    let sums: BTreeMap<CommodityName, Decimal> = sums
+        .into_iter()
+        .map(|(commodity, sum)| {
+            sum.into_decimal()
+                .map(|sum| (commodity.clone(), sum))
+                .ok_or(ValidationError::TransactionWeightUnrepresentable {
+                    commodity,
+                    date: transaction.date,
+                })
+        })
+        .collect::<Result<_, _>>()?;
+
     if let Some(index) = missing.first().copied() {
         if sums.len() != 1 {
-            let commodities: Vec<String> = sums.keys().map(|k| k.to_string()).collect();
+            let commodities: Vec<String> = sums.keys().map(ToString::to_string).collect();
             return Err(ValidationError::AmbiguousAutoBalanceCommodity {
                 commodities,
                 date: transaction.date,
             });
         }
 
-        let Some((_, (commodity, sum))) = sums.into_iter().next() else {
+        let Some((commodity, sum)) = sums.into_iter().next() else {
             unreachable!("a missing amount requires exactly one commodity sum");
         };
-        transaction.postings[index].amount = Some(Amount {
-            number: -sum,
-            commodity,
-        });
+        let number = Decimal::ZERO.checked_sub(sum).ok_or_else(|| {
+            ValidationError::TransactionWeightUnrepresentable {
+                commodity: commodity.clone(),
+                date: transaction.date,
+            }
+        })?;
+        transaction.postings[index].amount = Some(Amount { number, commodity });
         return Ok(());
     }
 
-    for (_, (commodity, sum)) in sums {
-        if !sum.is_zero() {
-            return Err(ValidationError::TransactionNotBalanced {
-                commodity: commodity.as_str().to_string(),
-                sum,
-                date: transaction.date,
-            });
+    let imbalances: Vec<(CommodityName, Decimal)> =
+        sums.into_iter().filter(|(_, sum)| !sum.is_zero()).collect();
+    match imbalances.as_slice() {
+        [] => Ok(()),
+        [(commodity, sum)] => Err(ValidationError::TransactionNotBalanced {
+            commodity: commodity.to_string(),
+            sum: *sum,
+            date: transaction.date,
+        }),
+        _ => Err(ValidationError::MultiCommodityTransactionNotBalanced {
+            imbalances,
+            date: transaction.date,
+        }),
+    }
+}
+
+/// Returns the signed balancing weight and its commodity for one valued posting.
+/// `None` means the amount is absent or the converted value is not exactly
+/// representable. In valid transactions the latter is already rejected by
+/// `validate_transaction` as `TransactionCostInconsistent`.
+fn posting_weight(posting: &crate::Posting) -> Option<(Decimal, CommodityName)> {
+    let amount = posting.amount.as_ref()?;
+    let Some(cost) = &posting.transaction_cost else {
+        return Some((amount.number, amount.commodity.clone()));
+    };
+
+    let weight = match cost.annotation {
+        TransactionCostAnnotation::Unit => {
+            checked_exact_decimal_product(amount.number, cost.amount.number)?
+        }
+        TransactionCostAnnotation::Total if amount.number.is_sign_negative() => {
+            Decimal::ZERO.checked_sub(cost.amount.number)?
+        }
+        TransactionCostAnnotation::Total => cost.amount.number,
+    };
+    Some((weight, cost.amount.commodity.clone()))
+}
+
+/// Multiplies two decimals only when the exact result is representable by `Decimal`.
+fn checked_exact_decimal_product(left: Decimal, right: Decimal) -> Option<Decimal> {
+    let product = left.checked_mul(right)?;
+    if left.is_zero() || right.is_zero() {
+        return Some(product);
+    }
+
+    // Decimal's checked multiplication may round when it has to reduce scale.
+    // The product of the coefficients must contain enough factors of both 2
+    // and 5 for every discarded decimal place to be exact.
+    let discarded_scale = left
+        .scale()
+        .saturating_add(right.scale())
+        .saturating_sub(product.scale());
+    if discarded_scale == 0 {
+        return Some(product);
+    }
+
+    let left_mantissa = left.mantissa().unsigned_abs();
+    let right_mantissa = right.mantissa().unsigned_abs();
+    let factor_count = |mut value: u128, prime: u128| {
+        let mut count = 0;
+        while value != 0 && value.is_multiple_of(prime) {
+            value /= prime;
+            count += 1;
+        }
+        count
+    };
+    [2, 5]
+        .into_iter()
+        .all(|prime| {
+            factor_count(left_mantissa, prime) + factor_count(right_mantissa, prime)
+                >= discarded_scale
+        })
+        .then_some(product)
+}
+
+/// Exact signed decimal sum represented as an integer coefficient and scale.
+/// The coefficient grows as needed, so intermediate posting order cannot
+/// overflow or round a sum whose final result is representable.
+#[derive(Default)]
+struct ExactDecimalSum {
+    magnitude: Vec<u32>,
+    negative: bool,
+    scale: u32,
+}
+
+impl ExactDecimalSum {
+    fn add(&mut self, value: Decimal) {
+        if value.is_zero() {
+            return;
+        }
+
+        let target_scale = self.scale.max(value.scale());
+        multiply_magnitude_by_power_of_ten(&mut self.magnitude, target_scale - self.scale);
+        let mut value_magnitude = magnitude_from_u128(value.mantissa().unsigned_abs());
+        multiply_magnitude_by_power_of_ten(&mut value_magnitude, target_scale - value.scale());
+        self.scale = target_scale;
+
+        if self.magnitude.is_empty() {
+            self.magnitude = value_magnitude;
+            self.negative = value.is_sign_negative();
+        } else if self.negative == value.is_sign_negative() {
+            add_magnitudes(&mut self.magnitude, &value_magnitude);
+        } else {
+            match compare_magnitudes(&self.magnitude, &value_magnitude) {
+                std::cmp::Ordering::Greater => {
+                    subtract_magnitude(&mut self.magnitude, &value_magnitude)
+                }
+                std::cmp::Ordering::Less => {
+                    subtract_magnitude(&mut value_magnitude, &self.magnitude);
+                    self.magnitude = value_magnitude;
+                    self.negative = value.is_sign_negative();
+                }
+                std::cmp::Ordering::Equal => {
+                    self.magnitude.clear();
+                    self.negative = false;
+                }
+            }
         }
     }
 
-    Ok(())
+    fn into_decimal(mut self) -> Option<Decimal> {
+        while self.magnitude.len() > 3 && self.scale > 0 {
+            if divide_magnitude(&mut self.magnitude, 10) != 0 {
+                return None;
+            }
+            self.scale -= 1;
+        }
+        if self.magnitude.len() > 3 {
+            return None;
+        }
+
+        let mut parts = [0; 3];
+        parts[..self.magnitude.len()].copy_from_slice(&self.magnitude);
+        Some(Decimal::from_parts(
+            parts[0],
+            parts[1],
+            parts[2],
+            self.negative,
+            self.scale,
+        ))
+    }
+}
+
+fn magnitude_from_u128(mut value: u128) -> Vec<u32> {
+    let mut magnitude = Vec::new();
+    while value != 0 {
+        magnitude.push(value as u32);
+        value >>= 32;
+    }
+    magnitude
+}
+
+fn multiply_magnitude_by_power_of_ten(magnitude: &mut Vec<u32>, power: u32) {
+    for _ in 0..power {
+        let mut carry = 0u64;
+        for limb in magnitude.iter_mut() {
+            let product = u64::from(*limb) * 10 + carry;
+            *limb = product as u32;
+            carry = product >> 32;
+        }
+        if carry != 0 {
+            magnitude.push(carry as u32);
+        }
+    }
+}
+
+fn add_magnitudes(left: &mut Vec<u32>, right: &[u32]) {
+    left.resize(left.len().max(right.len()), 0);
+    let mut carry = 0u64;
+    for (index, left_limb) in left.iter_mut().enumerate() {
+        let sum = u64::from(*left_limb) + u64::from(*right.get(index).unwrap_or(&0)) + carry;
+        *left_limb = sum as u32;
+        carry = sum >> 32;
+    }
+    if carry != 0 {
+        left.push(carry as u32);
+    }
+}
+
+fn compare_magnitudes(left: &[u32], right: &[u32]) -> std::cmp::Ordering {
+    left.len()
+        .cmp(&right.len())
+        .then_with(|| left.iter().rev().cmp(right.iter().rev()))
+}
+
+/// Subtracts `right` from `left`; the caller guarantees `left >= right`.
+fn subtract_magnitude(left: &mut Vec<u32>, right: &[u32]) {
+    let mut borrow = 0i64;
+    for (index, left_limb) in left.iter_mut().enumerate() {
+        let difference =
+            i64::from(*left_limb) - i64::from(*right.get(index).unwrap_or(&0)) - borrow;
+        if difference < 0 {
+            *left_limb = (difference + (1i64 << 32)) as u32;
+            borrow = 1;
+        } else {
+            *left_limb = difference as u32;
+            borrow = 0;
+        }
+    }
+    while left.last() == Some(&0) {
+        left.pop();
+    }
+}
+
+/// Divides the magnitude by a small integer, returning the remainder.
+fn divide_magnitude(magnitude: &mut Vec<u32>, divisor: u32) -> u32 {
+    let mut remainder = 0u64;
+    for limb in magnitude.iter_mut().rev() {
+        let value = (remainder << 32) | u64::from(*limb);
+        *limb = (value / u64::from(divisor)) as u32;
+        remainder = value % u64::from(divisor);
+    }
+    while magnitude.last() == Some(&0) {
+        magnitude.pop();
+    }
+    remainder as u32
 }
 
 #[cfg(test)]
@@ -975,7 +1198,7 @@ mod tests {
             date(2024, 1, 3),
             vec![
                 converted_posting,
-                posting("Assets:Counter", Some(("100", "USD"))),
+                posting("Assets:Counter", Some(("93", "EUR"))),
             ],
         ));
 
@@ -1008,6 +1231,36 @@ mod tests {
 
     #[test]
     fn total_transaction_cost_does_not_require_an_exact_unit_price() {
+        let mut shares_posting = posting("Assets:Shares", Some(("-3", "AAPL")));
+        shares_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "100".parse().unwrap(),
+                commodity: CommodityName::new("USD").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Total,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:Shares"),
+                open(date(2024, 1, 1), "Assets:Cash"),
+                commodity(date(2024, 1, 1), "AAPL"),
+                commodity(date(2024, 1, 1), "USD"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![shares_posting, posting("Assets:Cash", Some(("100", "USD")))],
+                )),
+            ],
+        });
+
+        assert!(
+            report.issues.is_empty(),
+            "a total annotation is authoritative even when its unit equivalent repeats: {:?}",
+            report.issues
+        );
+    }
+
+    #[test]
+    fn total_transaction_cost_uses_the_posting_sign_for_positive_amounts() {
         let mut shares_posting = posting("Assets:Shares", Some(("3", "AAPL")));
         shares_posting.transaction_cost = Some(TransactionCost {
             amount: Amount {
@@ -1024,16 +1277,194 @@ mod tests {
                 commodity(date(2024, 1, 1), "USD"),
                 Entry::Transaction(transaction(
                     date(2024, 1, 3),
-                    vec![shares_posting, posting("Assets:Cash", Some(("-3", "AAPL")))],
+                    vec![
+                        shares_posting,
+                        posting("Assets:Cash", Some(("-100", "USD"))),
+                    ],
                 )),
             ],
         });
 
-        assert!(
-            report.issues.is_empty(),
-            "a total annotation is authoritative even when its unit equivalent repeats: {:?}",
-            report.issues
+        assert!(report.issues.is_empty(), "{:?}", report.issues);
+    }
+
+    #[test]
+    fn unit_transaction_cost_balances_in_quote_commodity_without_changing_amounts() {
+        let mut usd_posting = posting("Assets:USD", Some(("-100", "USD")));
+        usd_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "0.92".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![usd_posting, posting("Assets:EUR", Some(("92", "EUR")))],
+                )),
+            ],
+        });
+
+        assert!(report.issues.is_empty(), "{:?}", report.issues);
+        let transaction = report
+            .journal
+            .entries
+            .iter()
+            .find_map(|entry| match entry {
+                Entry::Transaction(transaction) => Some(transaction),
+                _ => None,
+            })
+            .expect("expected the transaction to remain in the journal");
+        assert_eq!(
+            transaction.postings[0].amount.as_ref().unwrap().number,
+            "-100".parse().unwrap()
         );
+        assert_eq!(
+            transaction.postings[0]
+                .amount
+                .as_ref()
+                .unwrap()
+                .commodity
+                .as_str(),
+            "USD"
+        );
+    }
+
+    #[test]
+    fn market_prices_do_not_balance_transactions() {
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                price(date(2024, 1, 2), "USD", "0.92", "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![
+                        posting("Assets:USD", Some(("-100", "USD"))),
+                        posting("Assets:EUR", Some(("92", "EUR"))),
+                    ],
+                )),
+            ],
+        });
+
+        assert!(matches!(
+            report.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::MultiCommodityTransactionNotBalanced { imbalances, .. },
+                ..
+            }] if imbalances == &vec![
+                (CommodityName::new("EUR").unwrap(), "92".parse().unwrap()),
+                (CommodityName::new("USD").unwrap(), "-100".parse().unwrap()),
+            ]
+        ));
+    }
+
+    #[test]
+    fn converted_weight_imbalance_is_reported_in_the_converted_commodity() {
+        let mut usd_posting = posting("Assets:USD", Some(("-100", "USD")));
+        usd_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "0.92".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![usd_posting, posting("Assets:EUR", Some(("90", "EUR")))],
+                )),
+            ],
+        });
+
+        assert!(matches!(
+            report.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::TransactionNotBalanced { commodity, sum, .. },
+                ..
+            }] if commodity == "EUR" && *sum == "-2".parse().unwrap()
+        ));
+    }
+
+    #[test]
+    fn auto_balance_infers_amount_from_the_single_weight_commodity() {
+        let mut usd_posting = posting("Assets:USD", Some(("-100", "USD")));
+        usd_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "0.92".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:USD"),
+                open(date(2024, 1, 1), "Assets:EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 3),
+                    vec![usd_posting, posting("Assets:EUR", None)],
+                )),
+            ],
+        });
+
+        assert!(report.issues.is_empty(), "{:?}", report.issues);
+        let transaction = report
+            .journal
+            .entries
+            .iter()
+            .find_map(|entry| match entry {
+                Entry::Transaction(transaction) => Some(transaction),
+                _ => None,
+            })
+            .expect("expected the transaction to remain in the journal");
+        let inferred = transaction.postings[1].amount.as_ref().unwrap();
+        assert_eq!(inferred.number, "92".parse().unwrap());
+        assert_eq!(inferred.commodity.as_str(), "EUR");
+    }
+
+    #[test]
+    fn transaction_weight_sum_overflow_is_reported() {
+        let mut transaction = transaction(
+            date(2024, 1, 3),
+            vec![
+                posting("Assets:One", Some(("1", "EUR"))),
+                posting("Assets:Two", Some(("1", "EUR"))),
+            ],
+        );
+        for posting in &mut transaction.postings {
+            posting.amount.as_mut().unwrap().number = Decimal::MAX;
+        }
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:One"),
+                open(date(2024, 1, 1), "Assets:Two"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction),
+            ],
+        });
+
+        assert!(matches!(
+            report.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::TransactionWeightUnrepresentable { commodity, .. },
+                ..
+            }] if commodity.as_str() == "EUR"
+        ));
     }
 
     #[test]
@@ -1144,6 +1575,72 @@ mod tests {
                 ..
             }]
         ));
+    }
+
+    #[test]
+    fn unit_transaction_cost_that_would_round_is_rejected() {
+        let mut tiny_posting = posting(
+            "Assets:Tiny",
+            Some(("0.0000000000000000000000000001", "USD")),
+        );
+        tiny_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "0.0000000000000000000000000001".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let report = validate_journal_all(Journal {
+            entries: vec![
+                open(date(2024, 1, 1), "Assets:Tiny"),
+                commodity(date(2024, 1, 1), "USD"),
+                commodity(date(2024, 1, 1), "EUR"),
+                Entry::Transaction(transaction(date(2024, 1, 3), vec![tiny_posting])),
+            ],
+        });
+
+        assert!(matches!(
+            report.issues.as_slice(),
+            [ValidationIssue {
+                error: ValidationError::TransactionCostInconsistent { .. },
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn exact_decimal_weight_arithmetic_handles_scale_and_order_exactly() {
+        let left = Decimal::from_i128_with_scale(268_435_456, 28);
+        let right = Decimal::from_i128_with_scale(37_252_902_984_619_140_625, 28);
+        assert_eq!(
+            checked_exact_decimal_product(left, right),
+            Some(Decimal::new(1, 28))
+        );
+        assert_eq!(
+            checked_exact_decimal_product(Decimal::new(1, 28), Decimal::new(1, 28)),
+            None
+        );
+        for values in [
+            [Decimal::MAX, Decimal::MAX, -Decimal::MAX, -Decimal::MAX],
+            [-Decimal::MAX, Decimal::MAX, -Decimal::MAX, Decimal::MAX],
+            [
+                Decimal::MAX,
+                Decimal::new(1, 1),
+                -Decimal::MAX,
+                Decimal::new(-1, 1),
+            ],
+        ] {
+            let mut sum = ExactDecimalSum::default();
+            for value in values {
+                sum.add(value);
+            }
+            assert_eq!(sum.into_decimal(), Some(Decimal::ZERO));
+        }
+
+        let mut unrepresentable = ExactDecimalSum::default();
+        unrepresentable.add(Decimal::MAX);
+        unrepresentable.add(Decimal::new(1, 1));
+        assert_eq!(unrepresentable.into_decimal(), None);
     }
 
     fn balance(d: chrono::NaiveDate, account: &str, amount: (&str, &str)) -> Entry {

@@ -2,8 +2,8 @@
 //!
 //! The unit tests next to the validator cover hand-written cases; these
 //! generate arbitrary posting lists and check the invariants that must hold
-//! for every journal: a transaction balances if and only if its postings sum
-//! to zero per commodity, a single missing amount is inferred so that it
+//! for every journal: a transaction balances if and only if its posting weights
+//! sum to zero per commodity, a single missing amount is inferred so that it
 //! does, and neither the order of the postings nor the entry point used to
 //! validate the journal changes the verdict.
 
@@ -11,8 +11,9 @@ use chrono::NaiveDate;
 use pactole_core::{
     AccountBalances, AccountClassification, AccountGrouping, AccountName, Amount, Amounts,
     Commodity, CommodityName, Entry, Journal, Metadata, Open, Period, Posting, ReferenceDate,
-    Report, ReportFormat, ReportLine, ReportScope, Transaction, TransactionStatus, ValidationError,
-    balance_sheet, validate_journal, validate_journal_all,
+    Report, ReportFormat, ReportLine, ReportScope, Transaction, TransactionCost,
+    TransactionCostAnnotation, TransactionStatus, ValidationError, balance_sheet, validate_journal,
+    validate_journal_all,
 };
 use proptest::prelude::*;
 use rust_decimal::Decimal;
@@ -174,6 +175,93 @@ proptest! {
             "the accepted transaction is not balanced: {:?}",
             sums(&validated_transaction(&report).postings)
         );
+    }
+
+    #[test]
+    fn converted_postings_balance_on_exact_transaction_cost_weights(
+        quantity in 1i64..=1_000_000,
+        rate_millis in 1i64..=1_000,
+        reverse in any::<bool>(),
+    ) {
+        let quantity = Decimal::new(quantity, 0);
+        let rate = Decimal::new(rate_millis, 3);
+        let total = quantity * rate;
+        let mut converted = posting(0, 0, -quantity);
+        converted.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: rate,
+                commodity: commodity(1),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+        let counter = posting(1, 1, total);
+        let postings = if reverse {
+            vec![counter, converted]
+        } else {
+            vec![converted, counter]
+        };
+
+        let report = validate_journal_all(journal(postings));
+
+        prop_assert!(report.issues.is_empty(), "{:?}", report.issues);
+        let transaction = validated_transaction(&report);
+        prop_assert_eq!(transaction.postings.len(), 2);
+        let (converted, counter) = if reverse {
+            (&transaction.postings[1], &transaction.postings[0])
+        } else {
+            (&transaction.postings[0], &transaction.postings[1])
+        };
+        prop_assert_eq!(converted.amount.as_ref().unwrap().number, -quantity);
+        prop_assert_eq!(
+            converted.amount.as_ref().unwrap().commodity.as_str(),
+            COMMODITIES[0]
+        );
+        prop_assert_eq!(counter.amount.as_ref().unwrap().number, total);
+        prop_assert_eq!(
+            counter.amount.as_ref().unwrap().commodity.as_str(),
+            COMMODITIES[1]
+        );
+    }
+
+    #[test]
+    fn exact_weight_sum_and_diagnostic_are_independent_of_posting_order(
+        values in prop::collection::vec(
+            (0..ACCOUNTS.len(), -1_000_000i64..=1_000_000, 0u32..=18),
+            1..20,
+        ),
+    ) {
+        let scale = values.iter().map(|(_, _, scale)| *scale).max().unwrap();
+        let expected_coefficient: i128 = values
+            .iter()
+            .map(|(_, coefficient, value_scale)| {
+                i128::from(*coefficient) * 10i128.pow(scale - value_scale)
+            })
+            .sum();
+        let expected = Decimal::try_from_i128_with_scale(expected_coefficient, scale)
+            .expect("generated exact sum fits within Decimal");
+        let mut postings: Vec<Posting> = values
+            .iter()
+            .map(|&(account_index, coefficient, value_scale)| {
+                posting(account_index, 0, Decimal::new(coefficient, value_scale))
+            })
+            .collect();
+
+        let forward = validate_journal_all(journal(postings.clone()));
+        postings.reverse();
+        let reversed = validate_journal_all(journal(postings));
+
+        prop_assert_eq!(&forward.issues, &reversed.issues);
+        if expected.is_zero() {
+            prop_assert!(forward.issues.is_empty());
+        } else {
+            prop_assert_eq!(forward.issues.len(), 1);
+            match &forward.issues[0].error {
+                ValidationError::TransactionNotBalanced { sum, .. } => {
+                    prop_assert_eq!(*sum, expected);
+                }
+                other => prop_assert!(false, "unexpected validation error: {other:?}"),
+            }
+        }
     }
 
     #[test]
@@ -519,7 +607,8 @@ fn balance_sheet_movement() -> impl Strategy<Value = (usize, usize, Decimal)> {
 /// A journal with one balanced transaction per movement.
 ///
 /// Each movement is paired with its opposite on `Equity:Suspense`, so every
-/// transaction balances per commodity and every account is classified.
+/// transaction balances per commodity and every account is classified. These
+/// generated postings have no transaction-cost annotations.
 fn balance_sheet_journal(movements: &[(usize, usize, Decimal)]) -> Journal {
     let suspense = AccountName::new("Equity:Suspense").expect("a valid account name");
     let entries = movements
