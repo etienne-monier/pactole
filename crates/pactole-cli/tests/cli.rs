@@ -729,6 +729,69 @@ fn graph_reports_missing_includes_as_errors_in_json() {
 }
 
 #[test]
+fn graph_resolves_mixed_and_parent_relative_paths() {
+    let directory =
+        std::env::temp_dir().join(format!("pactole-graph-paths-{}", std::process::id()));
+    let working = directory.join("working");
+    std::fs::create_dir_all(&working).unwrap();
+    let root = directory.join("root.pactole");
+    std::fs::write(&root, "include \"included.pactole\"\n").unwrap();
+    std::fs::write(directory.join("included.pactole"), "\n").unwrap();
+    std::fs::write(directory.join("orphan.pactole"), "\n").unwrap();
+
+    let absolute_root_relative_scan = pactole_cmd()
+        .current_dir(&working)
+        .args([
+            "graph",
+            root.to_str().unwrap(),
+            "--scan",
+            "..",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+    let parent_relative_root_absolute_scan = pactole_cmd()
+        .current_dir(&working)
+        .args([
+            "graph",
+            "../root.pactole",
+            "--scan",
+            directory.to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_dir_all(&directory).ok();
+
+    for output in [
+        absolute_root_relative_scan,
+        parent_relative_root_absolute_scan,
+    ] {
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["unreachable"].as_array().unwrap().len(), 1);
+        assert!(
+            json["unreachable"][0]
+                .as_str()
+                .unwrap()
+                .ends_with("orphan.pactole")
+        );
+        assert!(json["files"].as_array().unwrap().iter().any(|file| {
+            file["state"] == "reachable"
+                && file["path"].as_str().unwrap().ends_with("included.pactole")
+        }));
+    }
+}
+
+#[test]
 fn register_filters_by_account() {
     let path = write_register_fixture();
 

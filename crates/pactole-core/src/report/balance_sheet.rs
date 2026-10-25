@@ -234,12 +234,17 @@ pub(super) fn section_lines(
     if grouping == AccountGrouping::Full {
         // The root line duplicates the section heading, unless the root
         // account itself carries postings.
-        lines.retain(|line| line.depth != 0 || direct_roots.contains(&line.label));
-        for line in &mut lines {
-            if line.depth > 0 {
+        lines.retain_mut(|line| {
+            let root = line.label.split(':').next().unwrap_or(&line.label);
+            let root_is_direct = direct_roots.contains(root);
+            if line.depth == 0 && !root_is_direct {
+                return false;
+            }
+            if !root_is_direct && line.depth > 0 {
                 line.depth -= 1;
             }
-        }
+            true
+        });
     }
 
     lines
@@ -550,6 +555,33 @@ mod tests {
         );
 
         assert_eq!(labels(section(&report, "Assets")), vec![("Assets", 0)]);
+    }
+
+    #[test]
+    fn full_grouping_keeps_children_below_direct_roots_and_shifts_other_roots() {
+        let journal = journal(vec![transaction(
+            date(2026, 1, 5),
+            vec![
+                posting("Assets", "10.00", "EUR"),
+                posting("Assets:Bank", "5.00", "EUR"),
+                posting("CurrentAssets:Cash", "5.00", "EUR"),
+                posting("Equity:Opening", "-20.00", "EUR"),
+            ],
+        )]);
+        let classification = AccountClassification::default()
+            .with_assets(vec!["Assets".to_string(), "CurrentAssets".to_string()]);
+
+        let report = balance_sheet(
+            &journal,
+            ReferenceDate::new(date(2026, 1, 31)),
+            &classification,
+            AccountGrouping::Full,
+        );
+
+        assert_eq!(
+            labels(section(&report, "Assets")),
+            vec![("Assets", 0), ("Assets:Bank", 1), ("CurrentAssets:Cash", 0)]
+        );
     }
 
     #[test]

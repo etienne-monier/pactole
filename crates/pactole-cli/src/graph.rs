@@ -17,21 +17,22 @@ struct Edge {
 }
 
 pub(crate) fn run(file: PathBuf, scan: Option<PathBuf>, format: GraphFormatArg) -> ExitCode {
-    let project = match pactole_storage_fs::analyze_file_with_loader(&file, &FsSourceLoader) {
-        Ok(project) => project,
-        Err(error) => {
-            return fail(format, format!("{}: {error}", file.display()));
-        }
+    let analysis_path = match absolute_lexically(&file) {
+        Ok(path) => path,
+        Err(error) => return fail(format, format!("{}: {error}", file.display())),
     };
+    let project =
+        match pactole_storage_fs::analyze_file_with_loader(&analysis_path, &FsSourceLoader) {
+            Ok(project) => project,
+            Err(error) => {
+                return fail(format, format!("{}: {error}", file.display()));
+            }
+        };
 
-    let scan_root = scan.map(|path| {
-        let path = normalize_lexically(&path);
-        if path.as_os_str().is_empty() {
-            PathBuf::from(".")
-        } else {
-            path
-        }
-    });
+    let scan_root = match scan.as_deref().map(absolute_lexically).transpose() {
+        Ok(scan_root) => scan_root,
+        Err(error) => return fail(format, error.to_string()),
+    };
     let scanned = match scan_root.as_deref().map(find_pactole_files).transpose() {
         Ok(Some(files)) => files,
         Ok(None) => BTreeSet::new(),
@@ -71,6 +72,10 @@ pub(crate) fn run(file: PathBuf, scan: Option<PathBuf>, format: GraphFormatArg) 
     } else {
         ExitCode::SUCCESS
     }
+}
+
+fn absolute_lexically(path: &Path) -> std::io::Result<PathBuf> {
+    std::path::absolute(path).map(|absolute| normalize_lexically(&absolute))
 }
 
 fn edges(project: &AnalyzedProject) -> Vec<Edge> {

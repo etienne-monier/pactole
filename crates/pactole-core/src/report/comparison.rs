@@ -30,6 +30,8 @@ pub enum DiffMode {
 /// One line in a comparison report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComparisonLine {
+    /// Title of the source report section, if the line belongs to a named section.
+    pub section: Option<String>,
     /// Label of the line.
     pub label: String,
     /// Hierarchical indentation.
@@ -58,6 +60,9 @@ pub struct ComparisonReport {
     /// Display mode.
     pub mode: DiffMode,
 }
+
+type ComparisonKey = (Option<String>, String);
+type ComparisonValues = (usize, Amounts, Amounts);
 
 impl ComparisonReport {
     /// Render the comparison report.
@@ -128,28 +133,36 @@ pub fn compare_reports(
     direction: DiffDirection,
     mode: DiffMode,
 ) -> ComparisonReport {
-    // Build a map of label -> (current amounts, previous amounts)
-    let mut map: BTreeMap<String, (usize, Amounts, Amounts)> = BTreeMap::new();
+    // Keep report sections in the key so equal labels in different sections
+    // remain separate comparison lines.
+    let mut map: BTreeMap<ComparisonKey, ComparisonValues> = BTreeMap::new();
     let mut labels = Vec::new();
-    for line in current.lines() {
-        let values = map.entry(line.label.clone()).or_insert_with(|| {
-            labels.push(line.label.clone());
-            (line.depth, Amounts::new(), Amounts::new())
-        });
-        values.1.merge(&line.amounts);
+    for section in &current.sections {
+        for line in &section.lines {
+            let key = (section.title.clone(), line.label.clone());
+            let values = map.entry(key.clone()).or_insert_with(|| {
+                labels.push(key.clone());
+                (line.depth, Amounts::new(), Amounts::new())
+            });
+            values.1.merge(&line.amounts);
+        }
     }
-    for line in previous.lines() {
-        let values = map.entry(line.label.clone()).or_insert_with(|| {
-            labels.push(line.label.clone());
-            (line.depth, Amounts::new(), Amounts::new())
-        });
-        values.2.merge(&line.amounts);
+    for section in &previous.sections {
+        for line in &section.lines {
+            let key = (section.title.clone(), line.label.clone());
+            let values = map.entry(key.clone()).or_insert_with(|| {
+                labels.push(key.clone());
+                (line.depth, Amounts::new(), Amounts::new())
+            });
+            values.2.merge(&line.amounts);
+        }
     }
     let lines: Vec<ComparisonLine> = labels
         .into_iter()
-        .filter_map(|label| {
-            map.remove(&label)
+        .filter_map(|(section, label)| {
+            map.remove(&(section.clone(), label.clone()))
                 .map(|(depth, current, previous)| ComparisonLine {
+                    section,
                     label,
                     depth,
                     current,
@@ -172,6 +185,7 @@ pub fn compare_reports(
         previous_period,
         lines,
         totals: ComparisonLine {
+            section: None,
             label: "Total".to_string(),
             depth: 0,
             current: current.totals.clone(),
@@ -216,11 +230,26 @@ fn render_text(report: &ComparisonReport) -> String {
         DiffDirection::PreviousMinusCurrent => "Difference (previous − current)",
     };
     let mut rows = Vec::new();
-    for line in report.lines.iter().chain(std::iter::once(&report.totals)) {
+    let mut active_section: Option<&str> = None;
+    for line in &report.lines {
+        if let Some(section) = line.section.as_deref() {
+            if active_section != Some(section) {
+                rows.push((
+                    section.to_string(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                ));
+                active_section = Some(section);
+            }
+        } else {
+            active_section = None;
+        }
         let commodities = commodities(&line.current, &line.previous);
+        let indent = line.depth + if line.section.is_some() { 1 } else { 0 };
         if commodities.is_empty() {
             rows.push((
-                format!("{}{}", "  ".repeat(line.depth), line.label),
+                format!("{}{}", "  ".repeat(indent), line.label),
                 String::new(),
                 String::new(),
                 String::new(),
@@ -232,12 +261,33 @@ fn render_text(report: &ComparisonReport) -> String {
             let difference =
                 format_difference(current, previous, &commodity, report.direction, report.mode);
             rows.push((
-                format!("{}{}", "  ".repeat(line.depth), line.label),
+                format!("{}{}", "  ".repeat(indent), line.label),
                 format!("{current} {commodity}"),
                 format!("{previous} {commodity}"),
                 difference,
             ));
         }
+    }
+    let line = &report.totals;
+    for commodity in commodities(&line.current, &line.previous) {
+        let current = line.current.get(&commodity).unwrap_or(Decimal::ZERO);
+        let previous = line.previous.get(&commodity).unwrap_or(Decimal::ZERO);
+        let difference =
+            format_difference(current, previous, &commodity, report.direction, report.mode);
+        rows.push((
+            line.label.clone(),
+            format!("{current} {commodity}"),
+            format!("{previous} {commodity}"),
+            difference,
+        ));
+    }
+    if commodities(&line.current, &line.previous).is_empty() {
+        rows.push((
+            line.label.clone(),
+            String::new(),
+            String::new(),
+            String::new(),
+        ));
     }
     if rows.iter().all(|row| row.1.is_empty() && row.2.is_empty()) {
         return format!("{} (comparison)\nNo entries\n", report.title);
@@ -312,17 +362,25 @@ fn render_json(report: &ComparisonReport) -> String {
         DiffMode::Percent => "percent",
     };
     let mut lines_json = Vec::new();
+    let has_sections = report.lines.iter().any(|line| line.section.is_some());
     for line in &report.lines {
         let commodities = commodities(&line.current, &line.previous);
         if commodities.is_empty() {
-            lines_json.push(json!({
+            let mut value = json!({
                 "label": line.label,
                 "depth": line.depth,
                 "commodity": serde_json::Value::Null,
                 "current": serde_json::Value::Null,
                 "previous": serde_json::Value::Null,
                 "difference": serde_json::Value::Null,
-            }));
+            });
+            if has_sections {
+                value["section"] = line
+                    .section
+                    .as_ref()
+                    .map_or(serde_json::Value::Null, |section| json!(section));
+            }
+            lines_json.push(value);
         }
         for c in &commodities {
             let cur = line.current.get(c).unwrap_or(Decimal::ZERO);
@@ -333,14 +391,21 @@ fn render_json(report: &ComparisonReport) -> String {
                 (Some(d), DiffMode::Percent) => json!(format!("{}%", d.round_dp(2))),
                 (None, _) => serde_json::Value::Null,
             };
-            lines_json.push(json!({
+            let mut value = json!({
                 "label": line.label,
                 "depth": line.depth,
                 "commodity": c.as_str(),
                 "current": cur.to_string(),
                 "previous": prev.to_string(),
                 "difference": diff_json,
-            }));
+            });
+            if has_sections {
+                value["section"] = line
+                    .section
+                    .as_ref()
+                    .map_or(serde_json::Value::Null, |section| json!(section));
+            }
+            lines_json.push(value);
         }
     }
     let mut totals_json = Vec::new();
@@ -391,24 +456,43 @@ fn render_csv(report: &ComparisonReport) -> String {
         DiffMode::Absolute => "absolute",
         DiffMode::Percent => "percent",
     };
-    let mut rows = vec![
-        "report,direction,mode,current_start,current_end,previous_start,previous_end,label,depth,commodity,current,previous,difference".to_string(),
-    ];
+    let has_sections = report.lines.iter().any(|line| line.section.is_some());
+    let mut rows = vec![if has_sections {
+        "report,direction,mode,current_start,current_end,previous_start,previous_end,section,label,depth,commodity,current,previous,difference".to_string()
+    } else {
+        "report,direction,mode,current_start,current_end,previous_start,previous_end,label,depth,commodity,current,previous,difference".to_string()
+    }];
     for line in &report.lines {
         let commodities = commodities(&line.current, &line.previous);
         if commodities.is_empty() {
-            rows.push(format!(
-                "{},{},{},{},{},{},{},{},{},,,,",
-                csv_escape(&report.title),
-                dir_str,
-                mode_str,
-                report.current_period.start(),
-                report.current_period.end(),
-                report.previous_period.start(),
-                report.previous_period.end(),
-                csv_escape(&line.label),
-                line.depth,
-            ));
+            if has_sections {
+                rows.push(format!(
+                    "{},{},{},{},{},{},{},{},{},{},,,,",
+                    csv_escape(&report.title),
+                    dir_str,
+                    mode_str,
+                    report.current_period.start(),
+                    report.current_period.end(),
+                    report.previous_period.start(),
+                    report.previous_period.end(),
+                    csv_escape(line.section.as_deref().unwrap_or("")),
+                    csv_escape(&line.label),
+                    line.depth,
+                ));
+            } else {
+                rows.push(format!(
+                    "{},{},{},{},{},{},{},{},{},,,,",
+                    csv_escape(&report.title),
+                    dir_str,
+                    mode_str,
+                    report.current_period.start(),
+                    report.current_period.end(),
+                    report.previous_period.start(),
+                    report.previous_period.end(),
+                    csv_escape(&line.label),
+                    line.depth,
+                ));
+            }
         }
         for c in &commodities {
             let cur = line.current.get(c).unwrap_or(Decimal::ZERO);
@@ -419,22 +503,42 @@ fn render_csv(report: &ComparisonReport) -> String {
                 (Some(d), DiffMode::Percent) => format!("{}%", d.round_dp(2)),
                 (None, _) => "n/a".to_string(),
             };
-            rows.push(format!(
-                "{},{},{},{},{},{},{},{},{},{},{},{},{}",
-                csv_escape(&report.title),
-                dir_str,
-                mode_str,
-                report.current_period.start(),
-                report.current_period.end(),
-                report.previous_period.start(),
-                report.previous_period.end(),
-                csv_escape(&line.label),
-                line.depth,
-                c.as_str(),
-                cur,
-                prev,
-                csv_escape(&diff_str),
-            ));
+            if has_sections {
+                rows.push(format!(
+                    "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                    csv_escape(&report.title),
+                    dir_str,
+                    mode_str,
+                    report.current_period.start(),
+                    report.current_period.end(),
+                    report.previous_period.start(),
+                    report.previous_period.end(),
+                    csv_escape(line.section.as_deref().unwrap_or("")),
+                    csv_escape(&line.label),
+                    line.depth,
+                    c.as_str(),
+                    cur,
+                    prev,
+                    csv_escape(&diff_str),
+                ));
+            } else {
+                rows.push(format!(
+                    "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                    csv_escape(&report.title),
+                    dir_str,
+                    mode_str,
+                    report.current_period.start(),
+                    report.current_period.end(),
+                    report.previous_period.start(),
+                    report.previous_period.end(),
+                    csv_escape(&line.label),
+                    line.depth,
+                    c.as_str(),
+                    cur,
+                    prev,
+                    csv_escape(&diff_str),
+                ));
+            }
         }
     }
     // totals
@@ -455,22 +559,42 @@ fn render_csv(report: &ComparisonReport) -> String {
             (Some(d), DiffMode::Percent) => format!("{}%", d.round_dp(2)),
             (None, _) => "n/a".to_string(),
         };
-        rows.push(format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{}",
-            csv_escape(&report.title),
-            dir_str,
-            mode_str,
-            report.current_period.start(),
-            report.current_period.end(),
-            report.previous_period.start(),
-            report.previous_period.end(),
-            "Total",
-            "",
-            c.as_str(),
-            cur,
-            prev,
-            csv_escape(&diff_str),
-        ));
+        if has_sections {
+            rows.push(format!(
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                csv_escape(&report.title),
+                dir_str,
+                mode_str,
+                report.current_period.start(),
+                report.current_period.end(),
+                report.previous_period.start(),
+                report.previous_period.end(),
+                "",
+                "Total",
+                "",
+                c.as_str(),
+                cur,
+                prev,
+                csv_escape(&diff_str),
+            ));
+        } else {
+            rows.push(format!(
+                "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                csv_escape(&report.title),
+                dir_str,
+                mode_str,
+                report.current_period.start(),
+                report.current_period.end(),
+                report.previous_period.start(),
+                report.previous_period.end(),
+                "Total",
+                "",
+                c.as_str(),
+                cur,
+                prev,
+                csv_escape(&diff_str),
+            ));
+        }
     }
     let mut output = rows.join("\n");
     output.push('\n');
@@ -571,6 +695,84 @@ mod tests {
     }
 
     #[test]
+    fn comparison_keeps_equal_labels_in_distinct_sections_separate() {
+        let period = Period::new(date(2026, 1, 1), date(2026, 1, 31)).unwrap();
+        let current = Report::from_sections(
+            "Income statement",
+            ReportScope::Over(period),
+            vec![
+                super::super::ReportSection::new(
+                    "Income",
+                    vec![super::super::ReportLine::new("Shop", 0, amounts("100"))],
+                    amounts("100"),
+                ),
+                super::super::ReportSection::new(
+                    "Expenses",
+                    vec![super::super::ReportLine::new("Shop", 0, amounts("20"))],
+                    amounts("20"),
+                ),
+            ],
+            amounts("80"),
+        );
+        let previous = Report::from_sections(
+            "Income statement",
+            ReportScope::Over(period),
+            vec![
+                super::super::ReportSection::new(
+                    "Income",
+                    vec![super::super::ReportLine::new("Shop", 0, amounts("90"))],
+                    amounts("90"),
+                ),
+                super::super::ReportSection::new(
+                    "Expenses",
+                    vec![super::super::ReportLine::new("Shop", 0, amounts("10"))],
+                    amounts("10"),
+                ),
+            ],
+            amounts("80"),
+        );
+
+        let comparison = compare_reports(
+            &current,
+            &previous,
+            DiffDirection::CurrentMinusPrevious,
+            DiffMode::Absolute,
+        );
+
+        assert_eq!(comparison.lines.len(), 2);
+        assert_eq!(comparison.lines[0].section.as_deref(), Some("Income"));
+        assert_eq!(comparison.lines[0].current, amounts("100"));
+        assert_eq!(comparison.lines[0].previous, amounts("90"));
+        assert_eq!(comparison.lines[1].section.as_deref(), Some("Expenses"));
+        assert_eq!(comparison.lines[1].current, amounts("20"));
+        assert_eq!(comparison.lines[1].previous, amounts("10"));
+
+        let json: serde_json::Value =
+            serde_json::from_str(&comparison.render(ReportFormat::Json)).unwrap();
+        assert_eq!(json["lines"][0]["section"], "Income");
+        assert_eq!(json["lines"][1]["section"], "Expenses");
+        assert_eq!(json["lines"][0]["current"], "100");
+        assert_eq!(json["lines"][1]["current"], "20");
+        assert!(
+            comparison
+                .render(ReportFormat::Text)
+                .lines()
+                .any(|line| line.trim() == "Income")
+        );
+        let csv = comparison.render(ReportFormat::Csv);
+        let csv_rows: Vec<_> = csv
+            .lines()
+            .map(|line| line.split(',').collect::<Vec<_>>())
+            .collect();
+        assert!(csv_rows[0].contains(&"section"));
+        assert_eq!(csv_rows[1][7], "Income");
+        assert_eq!(csv_rows[1][8], "Shop");
+        assert_eq!(csv_rows[1][11], "100");
+        assert_eq!(csv_rows[2][7], "Expenses");
+        assert_eq!(csv_rows[2][11], "20");
+    }
+
+    #[test]
     fn reversed_percent_difference_uses_previous_as_base_and_zero_is_null() {
         assert_eq!(
             compute_diff(
@@ -600,12 +802,14 @@ mod tests {
             current_period: period,
             previous_period: period,
             lines: vec![ComparisonLine {
+                section: None,
                 label: "Expenses:Food".to_string(),
                 depth: 1,
                 current: amounts("5"),
                 previous: Amounts::new(),
             }],
             totals: ComparisonLine {
+                section: None,
                 label: "Total".to_string(),
                 depth: 0,
                 current: amounts("5"),

@@ -1120,7 +1120,11 @@ pub fn normalize_lexically(path: &Path) -> PathBuf {
             }
             Component::CurDir => {}
             Component::ParentDir => {
-                ret.pop();
+                if ret.file_name().is_some() {
+                    ret.pop();
+                } else if !ret.has_root() {
+                    ret.push(component.as_os_str());
+                }
             }
             Component::Normal(c) => {
                 ret.push(c);
@@ -1942,6 +1946,18 @@ mod tests {
         assert_eq!(project.include_issues().len(), 1);
         let issue = &project.include_issues()[0];
         assert!(issue.message.contains("cycle"));
+    }
+
+    #[test]
+    fn lexical_normalization_preserves_unmatched_parent_components() {
+        assert_eq!(
+            normalize_lexically(Path::new("../a")),
+            PathBuf::from("../a")
+        );
+        assert_eq!(
+            normalize_lexically(Path::new("a/../../b")),
+            PathBuf::from("../b")
+        );
     }
 
     #[test]
