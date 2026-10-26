@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **LSP formatting:** `pactole-lsp` now supports full-document
+  `textDocument/formatting`, using the canonical formatter and the layered
+  `[format]` configuration. Clients can override `posting_width` through
+  `initializationOptions.format`.
+
 - **Toolchain multi-currency follow-through (roadmap 2.6):** OFX imports now
   honor transaction-level `CURRENCY` values while keeping `TRNAMT` in the
   statement currency for `ORIGCURRENCY`, with `CURDEF` as the fallback. Report

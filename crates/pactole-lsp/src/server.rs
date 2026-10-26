@@ -102,6 +102,7 @@ fn server_capabilities() -> ServerCapabilities {
             prepare_provider: Some(true),
             work_done_progress_options: Default::default(),
         })),
+        document_formatting_provider: Some(OneOf::Left(true)),
         ..Default::default()
     }
 }
@@ -284,6 +285,36 @@ fn handle_request(
                     request.id,
                     lsp_server::ErrorCode::InternalError as i32,
                     err.to_string(),
+                );
+                connection.sender.send(Message::Response(response))?;
+            }
+        }
+        return Ok(());
+    }
+    // -----------------------------
+    // Document formatting request
+    // -----------------------------
+    if request.method == lsp_types::request::Formatting::METHOD {
+        let params = serde_json::from_value(request.params)?;
+        match crate::formatting::format_document(config, documents, params) {
+            Ok(edits) => {
+                let response =
+                    lsp_server::Response::new_ok(request.id, serde_json::to_value(edits)?);
+                connection.sender.send(Message::Response(response))?;
+            }
+            Err(crate::formatting::FormattingError::DocumentNotOpen(uri)) => {
+                let response = lsp_server::Response::new_err(
+                    request.id,
+                    lsp_server::ErrorCode::InvalidParams as i32,
+                    format!("document is not open: {uri}"),
+                );
+                connection.sender.send(Message::Response(response))?;
+            }
+            Err(crate::formatting::FormattingError::Formatter(error)) => {
+                let response = lsp_server::Response::new_err(
+                    request.id,
+                    lsp_server::ErrorCode::RequestFailed as i32,
+                    error.to_string(),
                 );
                 connection.sender.send(Message::Response(response))?;
             }
@@ -525,6 +556,16 @@ mod tests {
 
         assert_eq!(
             capabilities["renameProvider"]["prepareProvider"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn advertises_document_formatting_support() {
+        let capabilities = serde_json::to_value(server_capabilities()).unwrap();
+
+        assert_eq!(
+            capabilities["documentFormattingProvider"],
             serde_json::json!(true)
         );
     }

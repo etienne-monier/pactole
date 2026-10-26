@@ -17,10 +17,10 @@
 //! `initializationOptions` `validation` key (see [`config`]).
 //!
 //! Completion, code actions, hover, navigation (`textDocument/definition`,
-//! `textDocument/references`) and rename (`textDocument/prepareRename`,
-//! `textDocument/rename`) are supported for editor assistance; formatting
-//! is intentionally left to the `pactole fmt` command. Incremental
-//! synchronization is not supported yet.
+//! `textDocument/references`), rename (`textDocument/prepareRename`,
+//! `textDocument/rename`) and full-document formatting
+//! (`textDocument/formatting`) are supported for editor assistance.
+//! Incremental synchronization is not supported yet.
 
 pub mod code_action;
 pub mod completion;
@@ -28,6 +28,7 @@ pub mod config;
 pub mod conversion;
 pub mod diagnostics;
 pub mod documents;
+pub mod formatting;
 pub mod hover;
 pub mod navigation;
 pub mod rename;

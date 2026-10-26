@@ -425,7 +425,7 @@ model.*
 
 These items improve the existing product without waiting for a phase:
 
-- [ ] Expose formatting through the LSP (`textDocument/formatting`), by
+- [x] Expose formatting through the LSP (`textDocument/formatting`), by
   calling the canonical formatter.
 - [ ] Implement `textDocument/documentSymbol`.
 - [ ] Build a positioned symbol index (accounts, payees, commodities, tags,

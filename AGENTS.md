@@ -340,9 +340,11 @@ pactole/
        configured `journal_file` cannot be analyzed (the edit would cover the current file
        only); a no-op rename, a
        non-renamable symbol or a position without a symbol yields an empty result.
-    - Completion, code actions, hover, navigation and rename are supported. Formatting over LSP (use
-      `pactole fmt`), `textDocument/documentSymbol` and incremental sync remain out of scope for
-      this first version. Unhandled requests are
+     - Completion, code actions, hover, navigation, rename and full-document formatting via
+       `textDocument/formatting` are supported. The formatter uses the canonical
+       `pactole-storage-fs` formatter and the resolved `[format]` settings, with
+       `initializationOptions.format` taking precedence. `textDocument/documentSymbol`, range/on-type
+       formatting and incremental sync remain out of scope. Unhandled requests are
       answered with a `MethodNotFound` error rather than silently ignored.
     - Declaration quick fixes (`code_action.rs`): beyond the "insert today's date" fix, the server
       turns the `payee-not-declared`, `account-not-open` and `commodity-not-declared` business

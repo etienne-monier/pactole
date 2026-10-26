@@ -268,13 +268,19 @@ overrides in the `initializationOptions` of the `initialize` request:
 |---|---|
 | `journal_file` | The path to the root `.pactole` journal, resolved against the workspace root. |
 | `validation` | A single level (`"off"`, `"warn"` or `"error"`) applied to every configurable check, or a table (`{ "payee": ..., "unused": ... }`) setting them one by one. |
+| `format` | A table of LSP formatter overrides. It currently supports `posting_width`. |
 
 ```json
 {
   "journal_file": "main.pactole",
-  "validation": { "payee": "warn" }
+  "validation": { "payee": "warn" },
+  "format": { "posting_width": 60 }
 }
 ```
+
+Formatter precedence is, from lowest to highest: the default formatter
+settings, the global `pactole.toml`, the project `pactole.toml`, then
+`initializationOptions.format`.
 
 See [Use the Pactole language server](/how-to/use-the-lsp/).
 

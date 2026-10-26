@@ -72,13 +72,14 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   `journal_file` (path of the root `.pactole` file, resolved against the
   workspace root, or against the server's current working directory if no
   root is known), `validation` (a `"warn"`/`"error"` string applied to every
-  configurable check, or a `{ "payee": ..., "unused": ... }` table) and the
-  `[declaration]` section of
+  configurable check, or a `{ "payee": ..., "unused": ... }` table),
+  `format` (`posting_width`) and the `[declaration]` section of
   `pactole.toml` (see below). Validation settings follow the CLI layering:
   user-level `pactole.toml`, then project `pactole.toml` (next to
   `journal_file`, or at the workspace root when none is configured), then
-  `initializationOptions`. Broken configuration files and invalid levels are
-  logged and ignored rather than failing `initialize`.
+  `initializationOptions`. Broken configuration files, invalid levels and
+  invalid formatter overrides are logged and ignored rather than failing
+  `initialize`.
 - `server.rs`: the stdio `Connection`, the main loop, and the
   notification handlers. The `initialize` result carries the server
   capabilities and the server's name and version (`serverInfo`). When
@@ -128,11 +129,12 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   symbol (a commodity, an `include` path, a date, a narration, a tag) or a
   position without a symbol returns an empty result rather than an error.
 
-## Explicitly out of scope (first version)
+## Explicitly out of scope
 
-Document symbols (`textDocument/documentSymbol`), formatting via LSP (use
-`pactole fmt`) and incremental sync. Any unhandled request receives a
-`MethodNotFound` error rather than being silently ignored.
+Document symbols (`textDocument/documentSymbol`), range/on-type formatting and
+incremental sync. Full-document formatting is available through
+`textDocument/formatting`. Any unhandled request receives a `MethodNotFound`
+error rather than being silently ignored.
 See the roadmap in [`../../ROADMAP.md`](../../ROADMAP.md)
 for the planned status of these items.
 
@@ -143,6 +145,16 @@ Pass `journal_file` in the `initializationOptions` of the LSP
 
 ```json
 { "journal_file": "main.pactole" }
+```
+
+Formatter settings can be overridden by the LSP client. They take precedence
+over both global and project `pactole.toml` files:
+
+```json
+{
+  "journal_file": "main.pactole",
+  "format": { "posting_width": 60 }
+}
 ```
 
 Validation levels can be overridden the same way, globally or per check:
@@ -255,6 +267,6 @@ checking the announced `serverInfo`.
 - [`../../AGENTS.md`](../../AGENTS.md) — full
   description of the current LSP and its limits.
 - [`../../ROADMAP.md`](../../ROADMAP.md) — the planned status of the
-  document symbols, LSP formatting and incremental sync.
+  document symbols and incremental sync.
 - [`../../README.md`](../../README.md#configuration) — the shared
   `pactole.toml` format and layering rules.

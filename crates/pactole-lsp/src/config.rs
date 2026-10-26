@@ -1,7 +1,7 @@
 //! Server configuration, read once from the LSP `initialize` request's
 //! `initializationOptions` and from the layered `pactole.toml` files.
 //!
-//! Two settings are supported:
+//! The server supports these settings:
 //!
 //! - `journal_file`: the path (relative to the workspace root, or absolute)
 //!   to the root `.pactole` file that should be analyzed with full `include`
@@ -13,6 +13,7 @@
 //!   undeclared-payee check and the unused-declaration checks), as either a
 //!   single string applied to every check (`"validation": "warn"`) or a table
 //!   (`"validation": { "payee": "warn", "unused": "off" }`).
+//! - `format`: formatter overrides, currently `posting_width`.
 //!
 //! A relative `journal_file` is resolved against the workspace root when one
 //! is known (from `workspace_folders`/`rootUri`/`rootPath`, see
@@ -31,10 +32,15 @@
 //! `initializationOptions`. A malformed or unreadable configuration file is
 //! logged and ignored rather than failing `initialize`, so the editor stays
 //! usable.
+//! Formatter settings use the same file layers and default to
+//! [`pactole_config::FormatOptions`], with `initializationOptions.format` as
+//! the highest-precedence override.
 
 use std::path::{Path, PathBuf};
 
-use pactole_config::{DeclarationOptions, Overrides, ValidationLevel, ValidationOptions};
+use pactole_config::{
+    DeclarationOptions, FormatOptions, Overrides, ValidationLevel, ValidationOptions,
+};
 use serde::Deserialize;
 
 /// Raw shape of the `initializationOptions` JSON value this server
@@ -48,6 +54,10 @@ struct RawInitializationOptions {
 
     /// Validation override, as a level string or a table of options.
     validation: Option<RawValidation>,
+
+    /// Formatter overrides. This is kept as JSON so an invalid formatter
+    /// value cannot invalidate otherwise valid initialization options.
+    format: Option<serde_json::Value>,
 }
 
 /// Raw shape of the `validation` initialization option.
@@ -99,6 +109,10 @@ pub struct Config {
     /// by `initializationOptions`.
     pub validation: ValidationOptions,
 
+    /// Formatting settings from the layered configuration files, overridden
+    /// by `initializationOptions`.
+    pub format: FormatOptions,
+
     /// Declaration files from the layered configuration files, with their
     /// paths resolved against the journal's directory (see
     /// [`Config::resolve_declaration_paths`]).
@@ -111,6 +125,10 @@ pub struct Config {
     /// The `initializationOptions` unused-declaration override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
     unused_override: Option<ValidationLevel>,
+
+    /// The `initializationOptions` formatter override, kept so
+    /// [`Config::load_layered`] can apply it on top of the file layers.
+    format_posting_width_override: Option<usize>,
 
     /// The raw `[declaration]` paths from the layered configuration files,
     /// kept unresolved so [`Config::load_layered`] can resolve them once the
@@ -190,6 +208,12 @@ impl Config {
             .as_ref()
             .and_then(|validation| parse_level(validation.unused()));
 
+        let format_posting_width_override = raw
+            .format
+            .as_ref()
+            .and_then(|format| format.get("posting_width"))
+            .and_then(parse_posting_width);
+
         // Each check falls back to its own default (an undeclared payee is
         // an error, an unused declaration a warning), not to a single level.
         let defaults = ValidationOptions::default();
@@ -199,14 +223,17 @@ impl Config {
                 payee: payee_override.unwrap_or(defaults.payee),
                 unused: unused_override.unwrap_or(defaults.unused),
             },
+            format: FormatOptions::default(),
             declarations: DeclarationTargets::default(),
             payee_override,
             unused_override,
+            format_posting_width_override,
             declaration_paths: DeclarationOptions::default(),
         }
     }
 
-    /// Resolves validation settings from the layered `pactole.toml` files.
+    /// Resolves formatting, validation and declaration settings from the
+    /// layered `pactole.toml` files.
     ///
     /// The project layer lives next to `journal_file` when one is configured,
     /// and at `workspace_root` otherwise. A configuration error is logged and
@@ -229,6 +256,7 @@ impl Config {
         match pactole_config::Config::load(None, project.as_deref(), &overrides) {
             Ok(config) => {
                 self.validation = config.validation;
+                self.format = config.format;
                 self.declaration_paths = config.declaration;
             }
             Err(error) => {
@@ -236,6 +264,12 @@ impl Config {
                     "cannot load `pactole.toml`, keeping current validation settings: {error}"
                 );
             }
+        }
+
+        // LSP initialization options have the highest precedence, including
+        // when the file configuration could not be loaded.
+        if let Some(posting_width) = self.format_posting_width_override {
+            self.format.posting_width = posting_width;
         }
 
         self.resolve_declaration_paths();
@@ -290,6 +324,25 @@ fn parse_level(value: Option<&str>) -> Option<ValidationLevel> {
     }
 }
 
+/// Parses the LSP formatter override without allowing a malformed value to
+/// invalidate the rest of `initializationOptions`.
+fn parse_posting_width(value: &serde_json::Value) -> Option<usize> {
+    let Some(value) = value.as_u64() else {
+        log::warn!("ignoring invalid `format.posting_width` initialization option `{value}`");
+        return None;
+    };
+
+    let Ok(value) = usize::try_from(value) else {
+        log::warn!("ignoring out-of-range `format.posting_width` initialization option");
+        return None;
+    };
+    if value == 0 {
+        log::warn!("ignoring invalid `format.posting_width` initialization option `0`");
+        return None;
+    }
+    Some(value)
+}
+
 /// Derives the workspace root directory from an [`lsp_types::InitializeParams`],
 /// preferring `workspace_folders`, then the deprecated `root_uri`, then the
 /// even-older `root_path`.
@@ -327,6 +380,7 @@ mod tests {
         let config = Config::from_initialization_options(None, Some(Path::new("/workspace")));
         assert_eq!(config.journal_file, None);
         assert_eq!(config.validation.payee, ValidationLevel::Error);
+        assert_eq!(config.format.posting_width, 50);
     }
 
     #[test]
@@ -378,6 +432,22 @@ mod tests {
         let config =
             Config::from_initialization_options(Some(&options), Some(Path::new("/workspace")));
         assert_eq!(config.journal_file, None);
+    }
+
+    #[test]
+    fn invalid_format_override_does_not_discard_other_initialization_options() {
+        let options = serde_json::json!({
+            "journal_file": "main.pactole",
+            "format": { "posting_width": "60" }
+        });
+        let config =
+            Config::from_initialization_options(Some(&options), Some(Path::new("/workspace")));
+
+        assert_eq!(
+            config.journal_file,
+            Some(PathBuf::from("/workspace/main.pactole"))
+        );
+        assert_eq!(config.format.posting_width, 50);
     }
 
     #[test]
@@ -455,6 +525,91 @@ mod tests {
         assert_eq!(config.validation.unused, ValidationLevel::Off);
         // The payee key stays at its own default.
         assert_eq!(config.validation.payee, ValidationLevel::Error);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_layered_applies_the_project_format_configuration() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-lsp-config-format-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("pactole.toml"), "[format]\nposting_width = 60\n").unwrap();
+
+        let options = serde_json::json!({ "journal_file": "main.pactole" });
+        let mut config = Config::from_initialization_options(Some(&options), Some(&dir));
+        config.load_layered(Some(&dir));
+
+        assert_eq!(config.format.posting_width, 60);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn initialization_format_overrides_the_project_configuration() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-lsp-config-format-override-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("pactole.toml"), "[format]\nposting_width = 60\n").unwrap();
+
+        let options = serde_json::json!({
+            "journal_file": "main.pactole",
+            "format": { "posting_width": 72 }
+        });
+        let mut config = Config::from_initialization_options(Some(&options), Some(&dir));
+        config.load_layered(Some(&dir));
+
+        assert_eq!(config.format.posting_width, 72);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn zero_format_override_falls_back_to_the_project_configuration() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-lsp-config-format-zero-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("pactole.toml"), "[format]\nposting_width = 60\n").unwrap();
+
+        let options = serde_json::json!({
+            "journal_file": "main.pactole",
+            "format": { "posting_width": 0 }
+        });
+        let mut config = Config::from_initialization_options(Some(&options), Some(&dir));
+        config.load_layered(Some(&dir));
+
+        assert_eq!(config.format.posting_width, 60);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn invalid_project_configuration_keeps_an_initialization_format_override() {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-lsp-config-format-invalid-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("pactole.toml"), "[format]\nposting_width = 0\n").unwrap();
+
+        let options = serde_json::json!({
+            "journal_file": "main.pactole",
+            "format": { "posting_width": 72 }
+        });
+        let mut config = Config::from_initialization_options(Some(&options), Some(&dir));
+        config.load_layered(Some(&dir));
+
+        assert_eq!(config.format.posting_width, 72);
 
         std::fs::remove_dir_all(&dir).ok();
     }

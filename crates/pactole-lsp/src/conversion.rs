@@ -96,6 +96,25 @@ pub fn text_at_range<'a>(source: &'a str, range: &lsp_types::Range) -> Option<&'
     source.get(start..end)
 }
 
+/// Returns the LSP position immediately after the final character of a
+/// document. The character offset is measured in UTF-16 code units, as
+/// required by the LSP protocol.
+pub fn end_position(source: &str) -> lsp_types::Position {
+    let mut line = 0u32;
+    let mut character = 0u32;
+
+    for ch in source.chars() {
+        if ch == '\n' {
+            line += 1;
+            character = 0;
+        } else if ch != '\r' {
+            character += ch.len_utf16() as u32;
+        }
+    }
+
+    lsp_types::Position::new(line, character)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +225,17 @@ mod tests {
         );
 
         assert_eq!(text_at_range(source, &range), Some(""));
+    }
+
+    #[test]
+    fn end_position_uses_utf16_and_handles_trailing_newline() {
+        assert_eq!(
+            end_position("payee \"😀\"\n"),
+            lsp_types::Position::new(1, 0)
+        );
+        assert_eq!(
+            end_position("payee \"😀\""),
+            lsp_types::Position::new(0, 10)
+        );
     }
 }
