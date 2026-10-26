@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Toolchain multi-currency follow-through (roadmap 2.6):** OFX imports now
+  honor transaction-level `CURRENCY` values while keeping `TRNAMT` in the
+  statement currency for `ORIGCURRENCY`, with `CURDEF` as the fallback. Report
+  valuation continues to apply the journal's dated prices. Account hovers show
+  validated balances separately for every commodity. `open` commodity
+  restrictions continue to apply to the recorded posting amount, while the
+  commodity of `@`/`@@` remains a transaction-balancing weight rather than an
+  account holding.
+
 - **Valued reports (roadmap 2.5):** `pactole balance`, `income`, `expenses`
   and `register` now accept `--convert-to` and `--at`. Valuation uses the latest
   direct market quote on or before the requested date; inverse and multi-step

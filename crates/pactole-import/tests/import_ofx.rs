@@ -70,6 +70,59 @@ fn imports_an_xml_bank_statement() {
 }
 
 #[test]
+fn keeps_the_statement_currency_for_a_transaction_with_original_currency() {
+    let source = XML.replacen(
+        "<TRNAMT>-45.30</TRNAMT>",
+        "<TRNAMT>-45.30</TRNAMT><ORIGCURRENCY><CURRATE>1.0</CURRATE><CURSYM>USD</CURSYM></ORIGCURRENCY>",
+        1,
+    );
+
+    let outcome = pactole_import::import_ofx(&source, &base_config(), &no_fitids()).unwrap();
+    let transaction = &outcome.transactions[0];
+
+    assert_eq!(
+        transaction.postings[0]
+            .amount
+            .as_ref()
+            .unwrap()
+            .commodity
+            .as_str(),
+        "EUR"
+    );
+    assert_eq!(
+        transaction.postings[1]
+            .amount
+            .as_ref()
+            .unwrap()
+            .commodity
+            .as_str(),
+        "EUR"
+    );
+}
+
+#[test]
+fn uses_the_transaction_currency_when_ofx_provides_currency() {
+    let source = XML.replacen(
+        "<TRNAMT>-45.30</TRNAMT>",
+        "<TRNAMT>-45.30</TRNAMT><CURRENCY><CURRATE>1.0</CURRATE><CURSYM>USD</CURSYM></CURRENCY>",
+        1,
+    );
+
+    let outcome = pactole_import::import_ofx(&source, &base_config(), &no_fitids()).unwrap();
+    let transaction = &outcome.transactions[0];
+
+    assert_eq!(
+        transaction.postings[0]
+            .amount
+            .as_ref()
+            .unwrap()
+            .commodity
+            .as_str(),
+        "USD"
+    );
+}
+
+#[test]
 fn maps_each_statement_account_to_its_configured_pactole_account() {
     let config = ImportConfig {
         accounts: BTreeMap::from([

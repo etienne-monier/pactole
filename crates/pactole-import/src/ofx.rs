@@ -1,4 +1,5 @@
 use chrono::NaiveDate;
+use ofx_rs::aggregates::CurrencyInfo;
 use ofx_rs::aggregates::TransactionList;
 use ofx_rs::parse;
 use ofx_rs::types::OfxDateTime;
@@ -141,11 +142,19 @@ fn collect(
 
     for transaction in list.transactions() {
         let date = to_naive_date(transaction.date_posted())?;
+        // `CURDEF` is the statement-wide fallback.  With CURRENCY, TRNAMT is
+        // expressed in the transaction currency.  ORIGCURRENCY describes the
+        // currency before the institution converted TRNAMT to CURDEF, so the
+        // amount must remain in the statement currency.
+        let transaction_currency = match transaction.currency() {
+            Some(CurrencyInfo::Currency { code, .. }) => code.as_str(),
+            Some(CurrencyInfo::OrigCurrency { .. }) | None | Some(_) => currency,
+        };
 
         out.push(ImportRecord {
             date,
             amount: transaction.amount().as_decimal(),
-            currency: Some(currency.to_string()),
+            currency: Some(transaction_currency.to_string()),
             payee: transaction.name().map(str::to_string),
             memo: transaction.memo().map(str::to_string),
             transaction_type: Some(transaction.transaction_type().to_string()),

@@ -297,10 +297,11 @@ of scope.
 
 ### 2.6 — Follow through in the rest of the toolchain
 
-- [ ] Import OFX statements in their own currency (`CURDEF`, `ORIGCURRENCY`),
-  and convert them with the journal's prices.
-- [ ] Show the balance of a foreign-currency account in hover.
-- [ ] Handle commodity restrictions in `open` directives with a price.
+- [x] Import OFX statement currencies correctly (`CURDEF`, `CURRENCY`,
+  `ORIGCURRENCY`), and convert them with the journal's prices when reports are
+  valued.
+- [x] Show the balance of a foreign-currency account in hover.
+- [x] Handle commodity restrictions in `open` directives with a price.
 
 ---
 

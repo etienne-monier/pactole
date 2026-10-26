@@ -35,6 +35,13 @@ default_counter_account = "Expenses:ToReview"
 - `default_counter_account` receives transactions that match no rule. It is a
   useful holding account for transactions that need to be categorized later.
 
+OFX currency handling follows the source semantics. `CURDEF` is the statement
+default. A transaction-level `CURRENCY` makes the transaction amount use the
+specified commodity, while `ORIGCURRENCY` describes the currency before the
+institution converted the amount to `CURDEF`, so the imported `TRNAMT` remains
+in `CURDEF`. Once imported, reports can value the resulting commodities with
+the journal's dated `price` directives using `--convert-to` and `--at`.
+
 ## 2. Add categorization rules
 
 Rules select the counter account for an imported transaction. They are evaluated

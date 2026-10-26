@@ -329,6 +329,80 @@ fn report_commands_convert_with_dated_prices_and_retain_missing_commodities() {
 }
 
 #[test]
+fn imported_foreign_currency_transactions_are_valued_by_reports() {
+    let directory =
+        std::env::temp_dir().join(format!("pactole-import-valuation-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let ledger = directory.join("ledger.pactole");
+    let ofx = directory.join("statement.ofx");
+    std::fs::write(
+        &ledger,
+        concat!(
+            "2026-01-01 commodity EUR\n",
+            "2026-01-01 commodity USD\n",
+            "2026-01-01 open Assets:Bank\n",
+            "2026-01-01 open Expenses:ToReview\n",
+            "2026-01-01 price USD 0.90 EUR\n",
+            "payee \"CARREFOUR\"\n",
+            "payee \"ACME CORP\"\n",
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("pactole.toml"),
+        "[import]\nbank_account = \"Assets:Bank\"\ncurrency = \"EUR\"\ndefault_counter_account = \"Expenses:ToReview\"\n",
+    )
+    .unwrap();
+    let source = include_str!("../../pactole-import/tests/fixtures/statement_xml.ofx").replacen(
+        "<TRNAMT>-45.30</TRNAMT>",
+        "<TRNAMT>-45.30</TRNAMT><CURRENCY><CURRATE>1.0</CURRATE><CURSYM>USD</CURSYM></CURRENCY>",
+        1,
+    );
+    std::fs::write(&ofx, source).unwrap();
+
+    let import = pactole_cmd()
+        .args([
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--into",
+            ledger.to_str().unwrap(),
+            "--write",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        import.status.success(),
+        "{}",
+        String::from_utf8_lossy(&import.stderr)
+    );
+
+    let balance = pactole_cmd()
+        .args([
+            "balance",
+            ledger.to_str().unwrap(),
+            "--date",
+            "2026-09-30",
+            "--convert-to",
+            "EUR",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        balance.status.success(),
+        "{}",
+        String::from_utf8_lossy(&balance.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&balance.stdout).unwrap();
+    assert_eq!(report["valuation"]["currency"], "EUR");
+    assert_eq!(report["valuation"]["prices"][0]["base"], "USD");
+    assert_eq!(report["valuation"]["prices"][0]["rate"], "0.90");
+
+    std::fs::remove_dir_all(directory).ok();
+}
+
+#[test]
 fn check_reports_success_on_business_valid_file() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("pactole-check-ok-{}.pactole", std::process::id()));

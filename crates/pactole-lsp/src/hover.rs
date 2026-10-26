@@ -4,7 +4,7 @@ use std::error::Error;
 
 use lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind};
 
-use pactole_core::Entry;
+use pactole_core::{AccountBalances, Entry, ReportScope};
 use pactole_storage_fs::{AnalyzedProject, ParsedFile};
 
 use crate::config::Config;
@@ -15,6 +15,30 @@ use crate::documents::{Documents, analyze_scope};
 struct SymbolInfo {
     kind: &'static str,
     detail: String,
+}
+
+fn account_balance_detail(account: &str, project: Option<&AnalyzedProject>) -> Option<String> {
+    let project = project?;
+    let journal = project.validated_journal().ok()?;
+    let reference_date = journal.entries().iter().filter_map(Entry::date).max()?;
+    let account = pactole_core::AccountName::new(account).ok()?;
+    let balances = AccountBalances::from_journal(&journal, ReportScope::as_of(reference_date));
+    let amounts = balances
+        .iter()
+        .find_map(|(name, amounts)| (name == &account).then_some(amounts))?;
+    let values = amounts
+        .iter()
+        .filter(|(_, number)| !number.is_zero())
+        .map(|(commodity, number)| format!("- `{number} {commodity}`"))
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        Some(format!("- balance as of {reference_date}: `0`"))
+    } else {
+        Some(format!(
+            "- balance as of {reference_date}:\n{}",
+            values.join("\n")
+        ))
+    }
 }
 
 fn find_word_at(text: &str, offset: usize) -> String {
@@ -106,9 +130,14 @@ fn build_hover_for_word_combined(
             }
             Entry::Open(o) => {
                 if o.account.to_string() == word {
+                    let mut detail = format!("Account `{}`\n- opened on {}", word, o.date);
+                    if let Some(balance) = account_balance_detail(word, project) {
+                        detail.push('\n');
+                        detail.push_str(&balance);
+                    }
                     return Some(SymbolInfo {
                         kind: "Account",
-                        detail: format!("Account `{}`\n- opened on {}", word, o.date),
+                        detail,
                     });
                 }
             }
@@ -144,9 +173,14 @@ fn build_hover_for_word_combined(
                     }
                     Entry::Open(o) => {
                         if o.account.to_string() == word {
+                            let mut detail = format!("Account `{}`\n- opened on {}", word, o.date);
+                            if let Some(balance) = account_balance_detail(word, Some(project)) {
+                                detail.push('\n');
+                                detail.push_str(&balance);
+                            }
                             return Some(SymbolInfo {
                                 kind: "Account",
-                                detail: format!("Account `{}`\n- opened on {}", word, o.date),
+                                detail,
                             });
                         }
                     }
@@ -287,6 +321,34 @@ mod tests {
 
         assert_eq!(info.kind, "Account");
         assert!(info.detail.contains("opened on 2026-01-01"));
+    }
+
+    #[test]
+    fn account_hover_includes_each_foreign_currency_balance() {
+        let path = std::path::Path::new("/journal/main.pactole");
+        let source = concat!(
+            "2026-01-01 commodity EUR\n",
+            "2026-01-01 commodity USD\n",
+            "2026-01-01 open Assets:Checking\n",
+            "2026-01-01 open Equity:Opening\n",
+            "payee \"Opening\"\n",
+            "2026-01-02 * \"Opening\"\n",
+            "  Assets:Checking 100 USD\n",
+            "  Equity:Opening -100 USD\n",
+            "2026-01-03 * \"Opening\"\n",
+            "  Assets:Checking 25 EUR\n",
+            "  Equity:Opening -25 EUR\n",
+        );
+        let mut loader = pactole_storage_fs::InMemorySourceLoader::new();
+        loader.insert(path.to_path_buf(), source);
+        let project = pactole_storage_fs::analyze_file_with_loader(path, &loader).unwrap();
+        let file = pactole_storage_fs::analyze_file(source);
+
+        let info = build_hover_for_word_combined("Assets:Checking", Some(&project), &file)
+            .expect("account hover");
+
+        assert!(info.detail.contains("100 USD"));
+        assert!(info.detail.contains("25 EUR"));
     }
 
     #[test]

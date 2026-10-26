@@ -2280,6 +2280,36 @@ mod tests {
     }
 
     #[test]
+    fn allows_a_price_commodity_outside_the_posting_account_restriction() {
+        let mut foreign_posting = posting("Actifs:Compte", Some(("-100.00", "USD")));
+        foreign_posting.transaction_cost = Some(TransactionCost {
+            amount: Amount {
+                number: "0.90".parse().unwrap(),
+                commodity: CommodityName::new("EUR").unwrap(),
+            },
+            annotation: TransactionCostAnnotation::Unit,
+        });
+
+        let journal = Journal {
+            entries: vec![
+                open_restricted(date(2024, 1, 1), "Actifs:Compte", &["USD"]),
+                open(date(2024, 1, 1), "Depenses:Divers"),
+                commodity(date(2024, 1, 1), "EUR"),
+                commodity(date(2024, 1, 1), "USD"),
+                Entry::Transaction(transaction(
+                    date(2024, 1, 5),
+                    vec![
+                        foreign_posting,
+                        posting("Depenses:Divers", Some(("90.00", "EUR"))),
+                    ],
+                )),
+            ],
+        };
+
+        assert!(validate_journal(journal).is_ok());
+    }
+
+    #[test]
     fn rejects_auto_balanced_posting_using_a_commodity_not_allowed_by_open() {
         // `Actifs:Compte`'s missing amount is auto-filled with EUR
         // (inferred from `Depenses:Divers`), but `Actifs:Compte` is

@@ -78,10 +78,12 @@ include "ledger/2026.pactole"
 
 `open` accepts an optional Beancount-style, comma-separated list of
 commodities (no spaces around the commas), e.g. `EUR,USD` above. When
-this list is non-empty, it restricts the account: any posting on it
-(including one whose amount is auto-balanced) using a commodity outside
-this list is rejected during business validation. An empty list (the
-default) leaves the account unrestricted.
+this list is non-empty, it restricts the account: any recorded posting amount
+on it (including one whose amount is auto-balanced) using a commodity outside
+this list is rejected during business validation. The commodity of a posting's
+`@`/`@@` transaction-cost annotation is not an account holding and is therefore
+not checked against this list. An empty list (the default) leaves the account
+unrestricted.
 
 
 ### Transactions

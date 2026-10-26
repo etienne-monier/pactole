@@ -128,7 +128,9 @@ and generic editor configuration examples, including the external formatter.
   (`textDocument/definition`), and from an `include` path to the included
   file;
 - describes the symbol under the cursor (`textDocument/hover`): accounts,
-  payees, commodities, tags and links;
+  payees, commodities, tags and links. For an account in a valid project,
+  the hover also shows its balance at the latest journal date, with each
+  commodity kept separate;
 - lists every occurrence of an account, payee or commodity across the
   include graph (`textDocument/references`);
 - renames an account or a payee across the whole include graph
