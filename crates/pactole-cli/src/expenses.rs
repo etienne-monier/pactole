@@ -29,6 +29,8 @@ pub(crate) fn run(
     compare_to: Option<NaiveDate>,
     diff: DiffArg,
     reverse_diff: bool,
+    convert_to: Option<String>,
+    at: Option<NaiveDate>,
     validation: &ValidationOptions,
     reports: &ReportOptions,
     import_config: Option<&pactole_config::ImportConfig>,
@@ -61,6 +63,7 @@ pub(crate) fn run(
             eprintln!("error: invalid period: --from must be on or before --to");
             return ExitCode::FAILURE;
         }
+        Err(error) => return failure(error),
     };
 
     let project = match pactole_storage_fs::analyze_file_with_loader_with_options(
@@ -125,13 +128,22 @@ pub(crate) fn run(
         include_uncategorized: uncategorized,
         include_inactive: inactive,
     };
-    let report = expense_breakdown_with_options(
+    let mut report = expense_breakdown_with_options(
         &journal,
         period,
         &classification(reports),
         grouping,
         &options,
     );
+    let valuation_date = at.unwrap_or(period.end());
+    let mut current_valuator =
+        match crate::valuation::valuator(&journal, convert_to.as_deref(), at, period.end()) {
+            Ok(valuator) => valuator,
+            Err(error) => return failure(error),
+        };
+    if let Err(error) = crate::valuation::value_report(&mut report, &mut current_valuator) {
+        return failure(error);
+    }
 
     if comparison_requested {
         if matches!(by, ExpensesByArg::Month) {
@@ -166,13 +178,31 @@ pub(crate) fn run(
             eprintln!("error: comparison periods must have the same length");
             return ExitCode::FAILURE;
         }
-        let previous_report = expense_breakdown_with_options(
+        let mut previous_report = expense_breakdown_with_options(
             &journal,
             previous,
             &classification(reports),
             grouping,
             &options,
         );
+        let mut previous_valuator = match crate::valuation::valuator(
+            &journal,
+            convert_to.as_deref(),
+            if convert_to.is_some() {
+                Some(valuation_date)
+            } else {
+                at
+            },
+            previous.end(),
+        ) {
+            Ok(valuator) => valuator,
+            Err(error) => return failure(error),
+        };
+        if let Err(error) =
+            crate::valuation::value_report(&mut previous_report, &mut previous_valuator)
+        {
+            return failure(error);
+        }
         let direction = if reverse_diff {
             DiffDirection::PreviousMinusCurrent
         } else {

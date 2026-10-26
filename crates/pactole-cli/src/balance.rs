@@ -10,11 +10,14 @@ use pactole_storage_fs::FsSourceLoader;
 use crate::classification::classification;
 use crate::commands::FormatArg;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run(
     file: PathBuf,
     date: Option<NaiveDate>,
     format: FormatArg,
     depth: Option<NonZeroUsize>,
+    convert_to: Option<String>,
+    at: Option<NaiveDate>,
     validation: &ValidationOptions,
     reports: &ReportOptions,
 ) -> ExitCode {
@@ -40,7 +43,15 @@ pub(crate) fn run(
         None => AccountGrouping::Full,
     };
 
-    let report = balance_sheet(&journal, as_of, &classification(reports), grouping);
+    let mut report = balance_sheet(&journal, as_of, &classification(reports), grouping);
+    let mut valuator =
+        match crate::valuation::valuator(&journal, convert_to.as_deref(), at, as_of.date()) {
+            Ok(valuator) => valuator,
+            Err(error) => return failure(error),
+        };
+    if let Err(error) = crate::valuation::value_report(&mut report, &mut valuator) {
+        return failure(error);
+    }
     print!("{}", report.render(format.into()));
 
     ExitCode::SUCCESS

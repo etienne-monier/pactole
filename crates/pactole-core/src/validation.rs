@@ -781,7 +781,7 @@ fn posting_weight(posting: &crate::Posting) -> Option<(Decimal, CommodityName)> 
 }
 
 /// Multiplies two decimals only when the exact result is representable by `Decimal`.
-fn checked_exact_decimal_product(left: Decimal, right: Decimal) -> Option<Decimal> {
+pub(crate) fn checked_exact_decimal_product(left: Decimal, right: Decimal) -> Option<Decimal> {
     let product = left.checked_mul(right)?;
     if left.is_zero() || right.is_zero() {
         return Some(product);
@@ -825,6 +825,13 @@ struct ExactDecimalSum {
     magnitude: Vec<u32>,
     negative: bool,
     scale: u32,
+}
+
+pub(crate) fn checked_exact_decimal_sum(left: Decimal, right: Decimal) -> Option<Decimal> {
+    let mut sum = ExactDecimalSum::default();
+    sum.add(left);
+    sum.add(right);
+    sum.into_decimal()
 }
 
 impl ExactDecimalSum {

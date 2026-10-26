@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 
 use crate::models::CommodityName;
 
-use super::{Amounts, Period, Report, ReportFormat, ReportScope};
+use super::{Amounts, Period, Report, ReportFormat, ReportScope, Valuation};
 
 /// Direction of difference calculation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -42,6 +42,18 @@ pub struct ComparisonLine {
     pub previous: Amounts,
 }
 
+/// Valuation provenance for each side of a comparison.
+///
+/// The two reports may come from different journals or use different price
+/// contexts, so their provenance is retained independently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComparisonValuation {
+    /// Valuation applied to the current-period report, if any.
+    pub current: Option<Valuation>,
+    /// Valuation applied to the previous-period report, if any.
+    pub previous: Option<Valuation>,
+}
+
 /// A comparison between two periods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComparisonReport {
@@ -59,6 +71,8 @@ pub struct ComparisonReport {
     pub direction: DiffDirection,
     /// Display mode.
     pub mode: DiffMode,
+    /// Market-price valuation provenance for both periods, when either was valued.
+    pub valuation: Option<ComparisonValuation>,
 }
 
 type ComparisonKey = (Option<String>, String);
@@ -193,7 +207,18 @@ pub fn compare_reports(
         },
         direction,
         mode,
+        valuation: comparison_valuation(current.valuation.as_ref(), previous.valuation.as_ref()),
     }
+}
+
+fn comparison_valuation(
+    current: Option<&Valuation>,
+    previous: Option<&Valuation>,
+) -> Option<ComparisonValuation> {
+    (current.is_some() || previous.is_some()).then(|| ComparisonValuation {
+        current: current.cloned(),
+        previous: previous.cloned(),
+    })
 }
 
 fn compute_diff(
@@ -290,7 +315,12 @@ fn render_text(report: &ComparisonReport) -> String {
         ));
     }
     if rows.iter().all(|row| row.1.is_empty() && row.2.is_empty()) {
-        return format!("{} (comparison)\nNo entries\n", report.title);
+        let mut output = format!("{} (comparison)\n", report.title);
+        if let Some(valuation) = &report.valuation {
+            output.push_str(&comparison_valuation_text(valuation));
+        }
+        output.push_str("No entries\n");
+        return output;
     }
 
     let mut output = format!(
@@ -301,6 +331,9 @@ fn render_text(report: &ComparisonReport) -> String {
         report.previous_period.start(),
         report.previous_period.end()
     );
+    if let Some(valuation) = &report.valuation {
+        output.push_str(&comparison_valuation_text(valuation));
+    }
     let label_width = rows
         .iter()
         .map(|row| row.0.chars().count())
@@ -433,7 +466,7 @@ fn render_json(report: &ComparisonReport) -> String {
             "difference": diff_json,
         }));
     }
-    let value = json!({
+    let mut value = json!({
         "title": report.title,
         "direction": dir_str,
         "mode": mode_str,
@@ -442,6 +475,9 @@ fn render_json(report: &ComparisonReport) -> String {
         "lines": lines_json,
         "totals": totals_json,
     });
+    if let Some(valuation) = &report.valuation {
+        value["valuation"] = comparison_valuation_json(valuation);
+    }
     let mut output = serde_json::to_string_pretty(&value).unwrap_or_else(|_| String::from("{}"));
     output.push('\n');
     output
@@ -596,8 +632,192 @@ fn render_csv(report: &ComparisonReport) -> String {
             ));
         }
     }
+    if let Some(valuations) = &report.valuation {
+        for (side, valuation) in [
+            ("Current", valuations.current.as_ref()),
+            ("Previous", valuations.previous.as_ref()),
+        ] {
+            let Some(valuation) = valuation else {
+                continue;
+            };
+            let label = format!(
+                "{side} valuation: {} at {}",
+                valuation.currency, valuation.date
+            );
+            if has_sections {
+                rows.push(format!(
+                    "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                    csv_escape(&report.title),
+                    dir_str,
+                    mode_str,
+                    report.current_period.start(),
+                    report.current_period.end(),
+                    report.previous_period.start(),
+                    report.previous_period.end(),
+                    "",
+                    csv_escape(&label),
+                    "",
+                    valuation.currency,
+                    "",
+                    "",
+                    ""
+                ));
+            } else {
+                rows.push(format!(
+                    "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                    csv_escape(&report.title),
+                    dir_str,
+                    mode_str,
+                    report.current_period.start(),
+                    report.current_period.end(),
+                    report.previous_period.start(),
+                    report.previous_period.end(),
+                    csv_escape(&label),
+                    "",
+                    valuation.currency,
+                    "",
+                    "",
+                    ""
+                ));
+            }
+            for price in &valuation.prices {
+                let label = format!(
+                    "{side} price {} → {} at {}",
+                    price.base, price.quote, price.date
+                );
+                if has_sections {
+                    rows.push(format!(
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                        csv_escape(&report.title),
+                        dir_str,
+                        mode_str,
+                        report.current_period.start(),
+                        report.current_period.end(),
+                        report.previous_period.start(),
+                        report.previous_period.end(),
+                        "",
+                        csv_escape(&label),
+                        "",
+                        price.quote,
+                        price.rate,
+                        "",
+                        ""
+                    ));
+                } else {
+                    rows.push(format!(
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                        csv_escape(&report.title),
+                        dir_str,
+                        mode_str,
+                        report.current_period.start(),
+                        report.current_period.end(),
+                        report.previous_period.start(),
+                        report.previous_period.end(),
+                        csv_escape(&label),
+                        "",
+                        price.quote,
+                        price.rate,
+                        "",
+                        ""
+                    ));
+                }
+            }
+            for commodity in &valuation.missing {
+                let label = format!(
+                    "{side} missing price {} → {}",
+                    commodity, valuation.currency
+                );
+                if has_sections {
+                    rows.push(format!(
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                        csv_escape(&report.title),
+                        dir_str,
+                        mode_str,
+                        report.current_period.start(),
+                        report.current_period.end(),
+                        report.previous_period.start(),
+                        report.previous_period.end(),
+                        "",
+                        csv_escape(&label),
+                        "",
+                        commodity,
+                        "",
+                        "",
+                        ""
+                    ));
+                } else {
+                    rows.push(format!(
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+                        csv_escape(&report.title),
+                        dir_str,
+                        mode_str,
+                        report.current_period.start(),
+                        report.current_period.end(),
+                        report.previous_period.start(),
+                        report.previous_period.end(),
+                        csv_escape(&label),
+                        "",
+                        commodity,
+                        "",
+                        "",
+                        ""
+                    ));
+                }
+            }
+        }
+    }
     let mut output = rows.join("\n");
     output.push('\n');
+    output
+}
+
+fn comparison_valuation_json(valuation: &ComparisonValuation) -> serde_json::Value {
+    serde_json::json!({
+        "current": valuation.current.as_ref().map(valuation_json),
+        "previous": valuation.previous.as_ref().map(valuation_json),
+    })
+}
+
+fn valuation_json(valuation: &Valuation) -> serde_json::Value {
+    serde_json::json!({
+        "currency": valuation.currency.as_str(),
+        "date": valuation.date.to_string(),
+        "prices": valuation.prices.iter().map(|price| serde_json::json!({
+            "base": price.base.as_str(),
+            "quote": price.quote.as_str(),
+            "rate": price.rate.to_string(),
+            "date": price.date.to_string(),
+        })).collect::<Vec<_>>(),
+        "missing": valuation.missing.iter().map(|commodity| commodity.as_str()).collect::<Vec<_>>(),
+    })
+}
+
+fn comparison_valuation_text(valuation: &ComparisonValuation) -> String {
+    let mut output = String::new();
+    for (label, valuation) in [
+        ("Current", valuation.current.as_ref()),
+        ("Previous", valuation.previous.as_ref()),
+    ] {
+        let Some(valuation) = valuation else {
+            continue;
+        };
+        output.push_str(&format!(
+            "{label} valuation: {} at {}\n",
+            valuation.currency, valuation.date
+        ));
+        for price in &valuation.prices {
+            output.push_str(&format!(
+                "  Price: {} → {} = {} ({})\n",
+                price.base, price.quote, price.rate, price.date
+            ));
+        }
+        for commodity in &valuation.missing {
+            output.push_str(&format!(
+                "  Missing price: {} → {}; amount remains in {}\n",
+                commodity, valuation.currency, commodity
+            ));
+        }
+    }
     output
 }
 
@@ -773,6 +993,53 @@ mod tests {
     }
 
     #[test]
+    fn comparison_retains_valuation_provenance_for_each_period() {
+        let period = Period::new(date(2026, 1, 1), date(2026, 1, 31)).unwrap();
+        let mut current = Report::new("Expenses", ReportScope::Over(period), vec![], amounts("20"));
+        current.valuation = Some(Valuation {
+            currency: CommodityName::new("EUR").unwrap(),
+            date: date(2026, 1, 31),
+            prices: vec![],
+            missing: vec![CommodityName::new("GBP").unwrap()],
+        });
+        let mut previous =
+            Report::new("Expenses", ReportScope::Over(period), vec![], amounts("10"));
+        previous.valuation = Some(Valuation {
+            currency: CommodityName::new("USD").unwrap(),
+            date: date(2026, 1, 15),
+            prices: vec![],
+            missing: vec![CommodityName::new("CAD").unwrap()],
+        });
+
+        let comparison = compare_reports(
+            &current,
+            &previous,
+            DiffDirection::CurrentMinusPrevious,
+            DiffMode::Absolute,
+        );
+
+        let provenance = comparison.valuation.as_ref().unwrap();
+        assert_eq!(
+            provenance.current.as_ref().unwrap().currency.as_str(),
+            "EUR"
+        );
+        assert_eq!(
+            provenance.previous.as_ref().unwrap().currency.as_str(),
+            "USD"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&comparison.render(ReportFormat::Json)).unwrap();
+        assert_eq!(json["valuation"]["current"]["missing"][0], "GBP");
+        assert_eq!(json["valuation"]["previous"]["missing"][0], "CAD");
+        let text = comparison.render(ReportFormat::Text);
+        assert!(text.contains("Current valuation: EUR at 2026-01-31"));
+        assert!(text.contains("Previous valuation: USD at 2026-01-15"));
+        let csv = comparison.render(ReportFormat::Csv);
+        assert!(csv.contains("Current valuation: EUR at 2026-01-31"));
+        assert!(csv.contains("Previous valuation: USD at 2026-01-15"));
+    }
+
+    #[test]
     fn reversed_percent_difference_uses_previous_as_base_and_zero_is_null() {
         assert_eq!(
             compute_diff(
@@ -817,6 +1084,7 @@ mod tests {
             },
             direction: DiffDirection::CurrentMinusPrevious,
             mode: DiffMode::Percent,
+            valuation: None,
         };
 
         let value: serde_json::Value =

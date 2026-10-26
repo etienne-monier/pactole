@@ -18,6 +18,8 @@ pub(crate) fn run(
     by: ByArg,
     format: FormatArg,
     depth: Option<NonZeroUsize>,
+    convert_to: Option<String>,
+    at: Option<NaiveDate>,
     validation: &ValidationOptions,
     reports: &ReportOptions,
 ) -> ExitCode {
@@ -35,6 +37,7 @@ pub(crate) fn run(
             eprintln!("error: invalid period: --from must be on or before --to");
             return ExitCode::FAILURE;
         }
+        Err(error) => return failure(error),
     };
 
     let project = match pactole_storage_fs::analyze_file_with_loader_with_options(
@@ -62,7 +65,15 @@ pub(crate) fn run(
         ByArg::Tag => IncomeGrouping::Tag,
     };
 
-    let report = income_statement(&journal, period, &classification(reports), grouping);
+    let mut report = income_statement(&journal, period, &classification(reports), grouping);
+    let mut valuator =
+        match crate::valuation::valuator(&journal, convert_to.as_deref(), at, period.end()) {
+            Ok(valuator) => valuator,
+            Err(error) => return failure(error),
+        };
+    if let Err(error) = crate::valuation::value_report(&mut report, &mut valuator) {
+        return failure(error);
+    }
     print!("{}", report.render(format.into()));
 
     ExitCode::SUCCESS

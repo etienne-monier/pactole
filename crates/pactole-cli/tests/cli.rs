@@ -144,6 +144,191 @@ fn expenses_supports_optional_sections_and_calendar_month_comparisons() {
 }
 
 #[test]
+fn report_commands_convert_with_dated_prices_and_retain_missing_commodities() {
+    let directory = std::env::temp_dir().join(format!("pactole-valuation-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let ledger = directory.join("ledger.pactole");
+    std::fs::write(
+        &ledger,
+        concat!(
+            "2026-01-01 commodity EUR\n",
+            "2026-01-01 commodity USD\n",
+            "2026-01-01 commodity GBP\n",
+            "2026-01-01 open Assets:Bank\n",
+            "2026-01-01 open Expenses:Food\n",
+            "payee \"Store\"\n",
+            "2026-01-01 price USD 0.9 EUR\n",
+            "2026-01-05 * \"Store\"\n",
+            "  Assets:Bank -10 USD\n",
+            "  Expenses:Food 10 USD\n",
+            "2026-01-06 * \"Store\"\n",
+            "  Assets:Bank -2 GBP\n",
+            "  Expenses:Food 2 GBP\n",
+        ),
+    )
+    .unwrap();
+
+    let expenses = pactole_cmd()
+        .args([
+            "expenses",
+            ledger.to_str().unwrap(),
+            "--from",
+            "2026-01-01",
+            "--to",
+            "2026-01-31",
+            "--convert-to",
+            "EUR",
+            "--at",
+            "2026-01-06",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        expenses.status.success(),
+        "{}",
+        String::from_utf8_lossy(&expenses.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&expenses.stdout).unwrap();
+    assert_eq!(report["valuation"]["currency"], "EUR");
+    assert_eq!(report["valuation"]["date"], "2026-01-06");
+    assert_eq!(report["valuation"]["prices"][0]["base"], "USD");
+    assert_eq!(report["valuation"]["prices"][0]["date"], "2026-01-01");
+    assert_eq!(report["valuation"]["missing"][0], "GBP");
+    let amounts = report["sections"][0]["lines"][0]["amounts"]
+        .as_array()
+        .unwrap();
+    assert!(
+        amounts
+            .iter()
+            .any(|amount| { amount["commodity"] == "EUR" && amount["number"] == "9.0" })
+    );
+    assert!(
+        amounts
+            .iter()
+            .any(|amount| { amount["commodity"] == "GBP" && amount["number"] == "2" })
+    );
+
+    let balance = pactole_cmd()
+        .args([
+            "balance",
+            ledger.to_str().unwrap(),
+            "--date",
+            "2026-01-06",
+            "--convert-to",
+            "EUR",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        balance.status.success(),
+        "{}",
+        String::from_utf8_lossy(&balance.stderr)
+    );
+    let balance: serde_json::Value = serde_json::from_slice(&balance.stdout).unwrap();
+    assert_eq!(balance["valuation"]["date"], "2026-01-06");
+
+    let income = pactole_cmd()
+        .args([
+            "income",
+            ledger.to_str().unwrap(),
+            "--from",
+            "2026-01-01",
+            "--to",
+            "2026-01-31",
+            "--convert-to",
+            "EUR",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        income.status.success(),
+        "{}",
+        String::from_utf8_lossy(&income.stderr)
+    );
+    let income: serde_json::Value = serde_json::from_slice(&income.stdout).unwrap();
+    assert_eq!(income["valuation"]["currency"], "EUR");
+    assert_eq!(income["valuation"]["date"], "2026-01-31");
+
+    let comparison = pactole_cmd()
+        .args([
+            "expenses",
+            ledger.to_str().unwrap(),
+            "--from",
+            "2026-01-01",
+            "--to",
+            "2026-01-31",
+            "--compare",
+            "previous",
+            "--convert-to",
+            "EUR",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        comparison.status.success(),
+        "{}",
+        String::from_utf8_lossy(&comparison.stderr)
+    );
+    let comparison: serde_json::Value = serde_json::from_slice(&comparison.stdout).unwrap();
+    assert_eq!(comparison["valuation"]["current"]["date"], "2026-01-31");
+    assert_eq!(comparison["valuation"]["current"]["missing"][0], "GBP");
+
+    let register = pactole_cmd()
+        .args([
+            "register",
+            ledger.to_str().unwrap(),
+            "--account",
+            "Expenses:Food",
+            "--convert-to",
+            "EUR",
+            "--at",
+            "2026-01-06",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        register.status.success(),
+        "{}",
+        String::from_utf8_lossy(&register.stderr)
+    );
+    let register: serde_json::Value = serde_json::from_slice(&register.stdout).unwrap();
+    assert!(register["entries"].is_array());
+    assert_eq!(register["valuation"]["missing"][0], "GBP");
+    assert_eq!(register["entries"][0]["amount"]["commodity"], "EUR");
+    assert_eq!(register["entries"][0]["amount"]["number"], "9.0");
+    assert_eq!(register["entries"][0]["balance"][0]["number"], "9.0");
+
+    let invalid = pactole_cmd()
+        .args(["balance", ledger.to_str().unwrap(), "--at", "2026-01-06"])
+        .output()
+        .unwrap();
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("--convert-to <COMMODITY>"));
+
+    let undeclared_target = pactole_cmd()
+        .args(["balance", ledger.to_str().unwrap(), "--convert-to", "JPY"])
+        .output()
+        .unwrap();
+    assert!(!undeclared_target.status.success());
+    assert!(
+        String::from_utf8_lossy(&undeclared_target.stderr)
+            .contains("commodity JPY is not declared in the journal")
+    );
+
+    std::fs::remove_dir_all(directory).ok();
+}
+
+#[test]
 fn check_reports_success_on_business_valid_file() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("pactole-check-ok-{}.pactole", std::process::id()));

@@ -212,6 +212,7 @@ settings and categorization rules.
 
 ```text
 pactole register <FILE> [FILTERS] [--format text|json]
+                        [--convert-to <COMMODITY>] [--at <DATE>]
 ```
 
 Lists the transactions of a file, one line per matching posting, with a running
@@ -229,6 +230,8 @@ can be combined; a posting is shown only when all of them match.
 | `--tag <TAG>`           | Only transactions carrying this tag                                         |
 | `--status <STATUS>`     | Only transactions with this status: `cleared`, `pending` or `uncleared`     |
 | `--format <FORMAT>`     | Output format: `text` (default) or `json`                                  |
+| `--convert-to <COMMODITY>` | Convert amounts and running balances using market prices                  |
+| `--at <DATE>`           | Price valuation date; requires `--convert-to`; defaults to `--to` or today |
 
 ```sh
 pactole register ledger.pactole
@@ -237,10 +240,14 @@ pactole register ledger.pactole --from 2026-01-01 --to 2026-12-31
 pactole register ledger.pactole --payee Whole --status cleared
 pactole register ledger.pactole --tag food
 pactole register ledger.pactole --format json
+pactole register ledger.pactole --convert-to EUR --at 2026-03-31
 ```
 
 The JSON form is an array with one object per matched posting. Decimal amounts
 and running balances are strings to preserve exact precision.
+With `--convert-to`, JSON instead contains `entries` and a `valuation` object
+listing the selected prices and missing conversions. The target commodity must
+be declared in the journal. `--at` requires `--convert-to`.
 
 `--account` also matches sub-accounts: `--account Expenses` matches
 `Expenses:Groceries`.
@@ -249,6 +256,7 @@ and running balances are strings to preserve exact precision.
 
 ```text
 pactole balance <FILE> [--date <DATE>] [--format <FORMAT>] [--depth <N>]
+                       [--convert-to <COMMODITY>] [--at <DATE>]
 ```
 
 Builds the balance sheet of a file as of a reference date. It has an *Assets*
@@ -266,11 +274,15 @@ totals can therefore be non-zero for such a journal.
 | `--date <DATE>` | Reference date (`YYYY-MM-DD`); defaults to today |
 | `--format <FORMAT>` | Output format: `text` (default), `json` or `csv` |
 | `--depth <N>` | Fold the accounts deeper than `N` levels |
+| `--convert-to <COMMODITY>` | Value amounts in this commodity using market prices |
+| `--at <DATE>` | Price valuation date; requires `--convert-to`; defaults to `--date` or today. Changes valuation only, not the balance-sheet cutoff |
 
 ```sh
 pactole balance ledger.pactole
 pactole balance ledger.pactole --date 2026-03-31
 pactole balance ledger.pactole --date 2026-03-31 --format json
+pactole balance ledger.pactole --date 2026-03-31 --convert-to EUR
+pactole balance ledger.pactole --date 2026-03-31 --convert-to EUR --at 2026-04-30
 pactole balance ledger.pactole --depth 1
 ```
 
@@ -304,6 +316,7 @@ column and a `subtotal` row kind.
 ```text
 pactole income <FILE> [--from <DATE>] [--to <DATE>] [--by account|payee|tag]
                       [--format <FORMAT>] [--depth <N>]
+                      [--convert-to <COMMODITY>] [--at <DATE>]
 ```
 
 Builds the income statement of a file over a period. Income accounts are
@@ -318,6 +331,8 @@ and the total is the net result (`income − expenses`) per commodity.
 | `--by <GROUP>` | Grouping: `account` (default), `payee` or `tag` |
 | `--format <FORMAT>` | Output format: `text` (default), `json` or `csv` |
 | `--depth <N>` | Fold the accounts deeper than `N` levels (only when `--by account`) |
+| `--convert-to <COMMODITY>` | Value amounts in this commodity using market prices |
+| `--at <DATE>` | Price valuation date; requires `--convert-to`; defaults to `--to` or today |
 
 ```sh
 pactole income ledger.pactole
@@ -325,6 +340,7 @@ pactole income ledger.pactole --from 2026-01-01 --to 2026-03-31
 pactole income ledger.pactole --by payee
 pactole income ledger.pactole --by tag --format json
 pactole income ledger.pactole --by account --depth 1
+pactole income ledger.pactole --convert-to EUR --at 2026-03-31
 ```
 
 Income and expenses are classified by account root through the `[reports]`
@@ -341,7 +357,12 @@ amounts.
 Each commodity keeps its own totals, so income and expenses in different
 currencies appear side by side and the net result is reported per commodity.
 Posting `@`/`@@` annotations affect transaction balancing only; report
-valuation remains a separate feature.
+valuation uses dated market `price` directives. `--convert-to` requests that
+valuation; `--at` selects the price cutoff and defaults to the report's end
+date. The latest direct quote on or before that date is used. Inverse and
+multi-step conversions are not inferred. Missing quotes are reported and the
+affected amounts remain in their original commodities. Text, JSON and CSV
+include the valuation date and the prices used.
 
 The report is built from the validated journal, so an invalid ledger fails the
 command like `pactole check` does. The JSON rendering exposes the same
@@ -355,6 +376,7 @@ pactole expenses <FILE> [--from <DATE>] [--to <DATE>] [--by account|payee|tag|mo
                         [--format <FORMAT>] [--depth <N>] [--uncategorized] [--inactive]
                         [--compare previous | --compare-from <DATE> --compare-to <DATE>]
                         [--diff absolute|percent] [--reverse-diff]
+                        [--convert-to <COMMODITY>] [--at <DATE>]
 ```
 
 Builds the expenses breakdown of a file over a period. Only expense
@@ -376,6 +398,8 @@ as a negative amount), and the total is the period's spending per commodity.
 | `--compare-to <DATE>` | End of the comparison period |
 | `--diff <MODE>` | Difference mode: `absolute` (default) or `percent` |
 | `--reverse-diff` | Use `previous − current` for the difference (positive means you saved money) |
+| `--convert-to <COMMODITY>` | Value amounts in this commodity using market prices |
+| `--at <DATE>` | Price valuation date; requires `--convert-to`; defaults to `--to` or today; comparisons use one shared valuation date |
 
 ```sh
 pactole expenses ledger.pactole
@@ -383,6 +407,7 @@ pactole expenses ledger.pactole --from 2026-01-01 --to 2026-03-31
 pactole expenses ledger.pactole --by payee
 pactole expenses ledger.pactole --by tag --format json
 pactole expenses ledger.pactole --by month
+pactole expenses ledger.pactole --convert-to EUR --at 2026-03-31
 pactole expenses ledger.pactole --by account --depth 1
 pactole expenses ledger.pactole --from 2026-02-01 --to 2026-02-28 --compare previous --diff percent
 pactole expenses ledger.pactole --from 2026-02-01 --to 2026-02-28 --compare previous --reverse-diff
@@ -398,6 +423,14 @@ available with every grouping. Configure one or more accounts for the former
 with `[reports] uncategorized`; when omitted, the configured import counter
 account is used. The inactive section lists expense accounts open during the
 period that had no posting in it.
+
+`--convert-to` values the report using direct market quotes. `--at` defaults
+to the end of the requested period; comparisons value both periods on that
+same date. Missing quotes are shown and the amounts remain in their original
+commodities. The target commodity must be declared in the journal, and
+`--at` requires `--convert-to`. Comparison JSON retains current- and
+previous-period valuation details separately. Products and sums that cannot be
+represented exactly fail instead of being silently rounded.
 
 `--compare previous` compares with the preceding period. Complete calendar
 month ranges shift by the same number of months (so February compares with

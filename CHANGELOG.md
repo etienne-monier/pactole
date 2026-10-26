@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Valued reports (roadmap 2.5):** `pactole balance`, `income`, `expenses`
+  and `register` now accept `--convert-to` and `--at`. Valuation uses the latest
+  direct market quote on or before the requested date; inverse and multi-step
+  conversions are not inferred. Reports expose their valuation currency/date,
+  used prices and missing conversions in text, JSON and CSV. Missing prices
+  retain the original commodity, and omitting `--convert-to` preserves the
+  existing per-commodity view. `register --format json` keeps its array shape
+  without conversion and returns `entries` plus `valuation` when converted.
+  Expense comparisons use a shared valuation date and retain provenance for
+  each period. Inexact conversions fail rather than silently rounding. The
+  public report structs and `ReportError` also gain fields/variants, so this is
+  source-breaking for downstream struct literals and exhaustive error matches.
+
 - **Converted transaction balancing (roadmap 2.4):** posting `@`/`@@`
   annotations now determine transaction-balancing weights while recorded
   amounts and account balances remain in their original commodities. Weights

@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use super::{Amounts, Report, ReportFormat, ReportLine, ReportScope};
+use super::{Amounts, Report, ReportFormat, ReportLine, ReportScope, Valuation};
 
 /// Renders `report` in `format`.
 pub(super) fn render(report: &Report, format: ReportFormat) -> String {
@@ -19,6 +19,9 @@ pub(super) fn render(report: &Report, format: ReportFormat) -> String {
 /// amount (a balanced balance sheet therefore ends with its section totals).
 fn text(report: &Report) -> String {
     let mut output = format!("{} ({})\n", report.title, scope_text(report.scope));
+    if let Some(valuation) = &report.valuation {
+        output.push_str(&valuation_text(valuation));
+    }
 
     let sectioned = report
         .sections
@@ -146,12 +149,15 @@ fn json(report: &Report) -> String {
         })
         .collect::<Vec<_>>();
 
-    let value = json!({
+    let mut value = json!({
         "title": &report.title,
         "scope": scope_json(report.scope),
         "sections": sections,
         "totals": amounts_json(&report.totals),
     });
+    if let Some(valuation) = &report.valuation {
+        value["valuation"] = valuation_json(valuation);
+    }
 
     let mut output = serde_json::to_string_pretty(&value).unwrap_or_else(|_| String::from("{}"));
     output.push('\n');
@@ -177,6 +183,37 @@ fn amounts_json(amounts: &Amounts) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+fn valuation_json(valuation: &Valuation) -> Value {
+    json!({
+        "currency": valuation.currency.as_str(),
+        "date": valuation.date.to_string(),
+        "prices": valuation.prices.iter().map(|price| json!({
+            "base": price.base.as_str(),
+            "quote": price.quote.as_str(),
+            "rate": price.rate.to_string(),
+            "date": price.date.to_string(),
+        })).collect::<Vec<_>>(),
+        "missing": valuation.missing.iter().map(|commodity| commodity.as_str()).collect::<Vec<_>>(),
+    })
+}
+
+fn valuation_text(valuation: &Valuation) -> String {
+    let mut output = format!("Valuation: {} at {}\n", valuation.currency, valuation.date);
+    for price in &valuation.prices {
+        output.push_str(&format!(
+            "  Price: {} → {} = {} ({})\n",
+            price.base, price.quote, price.rate, price.date
+        ));
+    }
+    for commodity in &valuation.missing {
+        output.push_str(&format!(
+            "  Missing price: {} → {}; amount remains in {}\n",
+            commodity, valuation.currency, commodity
+        ));
+    }
+    output
 }
 
 fn scope_json(scope: ReportScope) -> Value {
@@ -286,6 +323,52 @@ fn csv(report: &Report) -> String {
             commodity.to_string(),
             number.to_string(),
         ]));
+    }
+
+    if let Some(valuation) = &report.valuation {
+        rows.push(csv_row([
+            report.title.clone(),
+            scope_kind.to_string(),
+            scope_start.clone(),
+            scope_end.clone(),
+            String::new(),
+            "valuation".to_string(),
+            format!("Valued in {} at {}", valuation.currency, valuation.date),
+            String::new(),
+            valuation.currency.to_string(),
+            String::new(),
+        ]));
+        for price in &valuation.prices {
+            rows.push(csv_row([
+                report.title.clone(),
+                scope_kind.to_string(),
+                scope_start.clone(),
+                scope_end.clone(),
+                String::new(),
+                "price".to_string(),
+                format!("{} → {} at {}", price.base, price.quote, price.date),
+                String::new(),
+                price.quote.to_string(),
+                price.rate.to_string(),
+            ]));
+        }
+        for commodity in &valuation.missing {
+            rows.push(csv_row([
+                report.title.clone(),
+                scope_kind.to_string(),
+                scope_start.clone(),
+                scope_end.clone(),
+                String::new(),
+                "missing_price".to_string(),
+                format!(
+                    "{} → {}; retained as {}",
+                    commodity, valuation.currency, commodity
+                ),
+                String::new(),
+                commodity.to_string(),
+                String::new(),
+            ]));
+        }
     }
 
     let mut output = rows.join("\n");

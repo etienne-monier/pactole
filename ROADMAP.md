@@ -290,10 +290,10 @@ of scope.
 
 ### 2.5 — Value the reports
 
-- [ ] Add a report currency and a valuation date to the reporting API.
-- [ ] Report the price used for each conversion, and flag missing prices.
-- [ ] Add `--convert-to` and `--at` to the report commands.
-- [ ] Keep the unconverted (per-commodity) view available.
+- [x] Add a report currency and a valuation date to the reporting API.
+- [x] Report the price used for each conversion, and flag missing prices.
+- [x] Add `--convert-to` and `--at` to the report commands.
+- [x] Keep the unconverted (per-commodity) view available.
 
 ### 2.6 — Follow through in the rest of the toolchain
 

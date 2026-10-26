@@ -28,6 +28,15 @@ impl Amounts {
         *self.values.entry(amount.commodity.clone()).or_default() += amount.number;
     }
 
+    pub(super) fn add_checked(&mut self, amount: &Amount) -> bool {
+        let value = self.values.entry(amount.commodity.clone()).or_default();
+        let Some(sum) = crate::validation::checked_exact_decimal_sum(*value, amount.number) else {
+            return false;
+        };
+        *value = sum;
+        true
+    }
+
     /// Merges every amount of `other` into this set.
     pub fn merge(&mut self, other: &Self) {
         for (commodity, number) in &other.values {

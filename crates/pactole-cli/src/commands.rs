@@ -112,6 +112,14 @@ pub(crate) enum Command {
         /// Output format.
         #[arg(long, value_enum, default_value = "text")]
         format: RegisterFormatArg,
+
+        /// Convert amounts to this commodity using market prices.
+        #[arg(long, value_name = "COMMODITY")]
+        convert_to: Option<String>,
+
+        /// Market-price valuation date; defaults to --to or today.
+        #[arg(long, value_name = "DATE", requires = "convert_to")]
+        at: Option<NaiveDate>,
     },
 
     /// Show the balance sheet of a `.pactole` file at a given date.
@@ -130,6 +138,14 @@ pub(crate) enum Command {
         /// Fold the accounts deeper than this many levels.
         #[arg(long)]
         depth: Option<NonZeroUsize>,
+
+        /// Convert amounts to this commodity using market prices.
+        #[arg(long, value_name = "COMMODITY")]
+        convert_to: Option<String>,
+
+        /// Market-price valuation date; defaults to --date or today.
+        #[arg(long, value_name = "DATE", requires = "convert_to")]
+        at: Option<NaiveDate>,
     },
 
     /// Show the income statement of a `.pactole` file over a period.
@@ -158,6 +174,14 @@ pub(crate) enum Command {
         /// `--by account`).
         #[arg(long)]
         depth: Option<NonZeroUsize>,
+
+        /// Convert amounts to this commodity using market prices.
+        #[arg(long, value_name = "COMMODITY")]
+        convert_to: Option<String>,
+
+        /// Market-price valuation date; defaults to --to or today.
+        #[arg(long, value_name = "DATE", requires = "convert_to")]
+        at: Option<NaiveDate>,
     },
 
     /// Show the expenses breakdown of a `.pactole` file over a period.
@@ -214,6 +238,14 @@ pub(crate) enum Command {
         /// Reverse difference direction (use previous − current).
         #[arg(long)]
         reverse_diff: bool,
+
+        /// Convert amounts to this commodity using market prices.
+        #[arg(long, value_name = "COMMODITY")]
+        convert_to: Option<String>,
+
+        /// Market-price valuation date; defaults to --to or today.
+        #[arg(long, value_name = "DATE", requires = "convert_to")]
+        at: Option<NaiveDate>,
     },
 
     /// Import transactions from an OFX statement into canonical `.pactole`

@@ -157,6 +157,7 @@ pactole register path/to/file.pactole --from 2026-01-01 --to 2026-12-31
 pactole register path/to/file.pactole --payee Carrefour --status cleared
 pactole register path/to/file.pactole --tag vacances
 pactole register path/to/file.pactole --format json
+pactole register path/to/file.pactole --convert-to EUR --at 2026-03-31
 ```
 
 Build the balance sheet of a file as of a date. Liabilities and equity are
@@ -171,6 +172,7 @@ commodities, so their unconverted balance sheet can show a non-zero total:
 pactole balance path/to/file.pactole
 pactole balance path/to/file.pactole --date 2026-03-31 --format json
 pactole balance path/to/file.pactole --depth 1
+pactole balance path/to/file.pactole --convert-to EUR --at 2026-03-31
 ```
 
 Build the income statement of a file over a period. Income and expenses are
@@ -182,6 +184,7 @@ pactole income path/to/file.pactole
 pactole income path/to/file.pactole --from 2026-01-01 --to 2026-03-31
 pactole income path/to/file.pactole --by payee
 pactole income path/to/file.pactole --by tag --format json
+pactole income path/to/file.pactole --convert-to EUR
 ```
 
 Build the expenses breakdown of a file over a period. Only expense accounts
@@ -194,6 +197,7 @@ pactole expenses path/to/file.pactole --from 2026-01-01 --to 2026-03-31
 pactole expenses path/to/file.pactole --by payee
 pactole expenses path/to/file.pactole --by tag --format json
 pactole expenses path/to/file.pactole --by month
+pactole expenses path/to/file.pactole --convert-to EUR --at 2026-03-31
 pactole expenses path/to/file.pactole --by account --depth 1
 pactole expenses path/to/file.pactole --uncategorized --inactive
 pactole expenses path/to/file.pactole --from 2026-02-01 --to 2026-02-28 --compare previous --diff percent
@@ -205,6 +209,18 @@ otherwise `--uncategorized` uses `[import].default_counter_account` when set.
 `--compare previous` compares the immediately preceding period. Differences
 default to `current − previous` (positive means spending increased);
 `--reverse-diff` switches the direction.
+
+Reports remain per-commodity unless `--convert-to` is supplied. The target
+commodity must be declared in the journal. Valuation uses
+the latest direct `price` quote on or before `--at` (defaulting to the report's
+end date); inverse or multi-step quotes are not inferred. Missing prices are
+shown and their amounts remain in their original commodity. Text, JSON and CSV
+outputs include the valuation date and prices used. For expense comparisons,
+both periods use one shared valuation date. `--at` is only valid with
+`--convert-to`. Converted balance-sheet reports with missing prices can retain
+amounts in multiple commodities, so their converted totals need not satisfy a
+single-currency accounting equation. Converted products and sums that cannot
+be represented exactly fail rather than being silently rounded.
 
 Accounts are classified by their root (the first `:`-separated segment)
 through the `[reports]` section of `pactole.toml` (see

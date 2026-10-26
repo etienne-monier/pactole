@@ -22,13 +22,14 @@ mod grouping;
 mod income_statement;
 mod period;
 mod render;
+mod valuation;
 
 pub use accounts::{AccountBalances, AccountGrouping};
 pub use amounts::Amounts;
 pub use balance_sheet::{AccountClassification, balance_sheet};
 pub use comparison::{
-    ComparisonLine, ComparisonReport, DiffDirection, DiffMode, compare_reports,
-    periods_have_same_length, previous_period,
+    ComparisonLine, ComparisonReport, ComparisonValuation, DiffDirection, DiffMode,
+    compare_reports, periods_have_same_length, previous_period,
 };
 pub use error::ReportError;
 pub use expenses::{
@@ -36,6 +37,7 @@ pub use expenses::{
 };
 pub use income_statement::{IncomeGrouping, income_statement};
 pub use period::{Period, ReferenceDate, ReportScope};
+pub use valuation::{Valuation, ValuationPrice, Valuator};
 
 /// One line of a report.
 ///
@@ -127,6 +129,8 @@ pub struct Report {
     /// Label used for the report total in text rendering. Defaults to
     /// `"Total"`.
     pub total_label: String,
+    /// Market-price valuation details, when the report has been converted.
+    pub valuation: Option<Valuation>,
 }
 
 impl Report {
@@ -164,6 +168,7 @@ impl Report {
             sections,
             totals,
             total_label: "Total".to_string(),
+            valuation: None,
         }
     }
 
@@ -171,6 +176,30 @@ impl Report {
     pub fn with_total_label(mut self, label: impl Into<String>) -> Self {
         self.total_label = label.into();
         self
+    }
+
+    /// Converts every report amount into `currency` when a direct market price
+    /// is available on or before `at`.
+    ///
+    /// Amounts without a matching price remain in their original commodity;
+    /// the report's valuation metadata records those missing conversions.
+    pub fn value_in(&mut self, valuator: &mut Valuator) -> Result<(), ReportError> {
+        if self.valuation.is_some() {
+            return Err(ReportError::AlreadyValued);
+        }
+        let mut scope = valuator.fresh_scope();
+        let mut valued = self.clone();
+        for section in &mut valued.sections {
+            for line in &mut section.lines {
+                line.amounts = scope.convert_amounts(&line.amounts)?;
+            }
+            section.subtotal = scope.convert_amounts(&section.subtotal)?;
+        }
+        valued.totals = scope.convert_amounts(&valued.totals)?;
+        valued.valuation = Some(scope.valuation());
+        valuator.record_scope(&scope);
+        *self = valued;
+        Ok(())
     }
 
     /// Builds a report from account balances and a grouping.

@@ -13,6 +13,7 @@ mod income;
 mod init;
 mod parse;
 mod register;
+mod valuation;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -67,6 +68,8 @@ fn main() -> ExitCode {
             tag,
             status,
             format,
+            convert_to,
+            at,
         } => {
             let project_dir = parent_dir(&file);
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
@@ -80,6 +83,8 @@ fn main() -> ExitCode {
                     tag,
                     status,
                     format,
+                    convert_to,
+                    at,
                     &config.validation,
                 ),
                 Err(error) => config::failure(error),
@@ -90,6 +95,8 @@ fn main() -> ExitCode {
             date,
             format,
             depth,
+            convert_to,
+            at,
         } => {
             let project_dir = parent_dir(&file);
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
@@ -98,6 +105,8 @@ fn main() -> ExitCode {
                     date,
                     format,
                     depth,
+                    convert_to,
+                    at,
                     &config.validation,
                     &config.reports,
                 ),
@@ -111,6 +120,8 @@ fn main() -> ExitCode {
             by,
             format,
             depth,
+            convert_to,
+            at,
         } => {
             let project_dir = parent_dir(&file);
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
@@ -121,6 +132,8 @@ fn main() -> ExitCode {
                     by,
                     format,
                     depth,
+                    convert_to,
+                    at,
                     &config.validation,
                     &config.reports,
                 ),
@@ -141,6 +154,8 @@ fn main() -> ExitCode {
             compare_to,
             diff,
             reverse_diff,
+            convert_to,
+            at,
         } => {
             let project_dir = parent_dir(&file);
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
@@ -158,6 +173,8 @@ fn main() -> ExitCode {
                     compare_to,
                     diff,
                     reverse_diff,
+                    convert_to,
+                    at,
                     &config.validation,
                     &config.reports,
                     config.import.as_ref(),
