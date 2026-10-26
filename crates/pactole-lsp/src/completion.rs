@@ -137,16 +137,12 @@ fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
 }
 
 fn context_at(text: &str, offset: usize, position: &Position) -> CompletionContext {
-    // Find line and char
-    let mut line_start: usize = 0;
-    let mut _line: usize = 0;
-    for (i, ch) in text.char_indices().take(offset) {
-        if ch == '\n' {
-            line_start = i + 1;
-            _line += 1;
-        }
-    }
-    let line_text = &text[line_start..offset.min(text.len())];
+    // `offset` is a byte offset. Find the line start using byte slices rather
+    // than taking `offset` characters, which would overshoot when the source
+    // contains multi-byte UTF-8 characters.
+    let offset = offset.min(text.len());
+    let line_start = text[..offset].rfind('\n').map_or(0, |index| index + 1);
+    let line_text = &text[line_start..offset];
     let rest = &text[offset..];
 
     // Check if inside quotes
@@ -224,6 +220,7 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
         }
         if !trailing_whitespace
             && number_looks_valid(last)
+            && words.len() >= 2
             && (words.len() == 2 || matches!(words.get(words.len() - 2), Some(&"@" | &"@@")))
         {
             return CompletionContext::Commodity {
@@ -232,6 +229,7 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
         }
         if trailing_whitespace
             && number_looks_valid(last)
+            && words.len() >= 2
             && (words.len() == 2 || matches!(words.get(words.len() - 2), Some(&"@" | &"@@")))
         {
             return CompletionContext::Commodity {
@@ -687,5 +685,34 @@ mod tests {
         );
 
         assert!(items.iter().any(|item| item.label == "Carrefour"));
+    }
+
+    #[test]
+    fn handles_utf8_characters_before_the_cursor() {
+        let source = "payee \"é\"\nop";
+        let offset = position_to_offset(source, &Position::new(0, 9));
+
+        assert_eq!(offset, 10);
+        assert_eq!(
+            context_at(source, offset, &Position::new(0, 9)),
+            CompletionContext::Payee {
+                prefix: String::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn handles_a_single_numeric_token_without_panicking() {
+        for source in [" 10", " 10 "] {
+            let position = Position::new(0, source.chars().count() as u32);
+            let offset = position_to_offset(source, &position);
+
+            assert_eq!(
+                context_at(source, offset, &position),
+                CompletionContext::PostingAccount {
+                    prefix: "10".to_string(),
+                }
+            );
+        }
     }
 }
