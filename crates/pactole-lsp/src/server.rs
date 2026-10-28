@@ -455,14 +455,19 @@ fn collect_diagnostics(
     documents: &Documents,
     uri: &Url,
 ) -> HashMap<Url, Vec<Diagnostic>> {
-    if let Some(project) = analyze_project(config, documents) {
-        let mut publications = HashMap::new();
-        for (path, diagnostics) in project_diagnostics(&project) {
-            if let Some(file_uri) = path_to_url(&path) {
-                publications.insert(file_uri, diagnostics);
+    let project_publications = documents.with_analyzed_scope(config, uri, |project| {
+        project.map(|project| {
+            let mut publications = HashMap::new();
+            for (path, diagnostics) in project_diagnostics(project) {
+                if let Some(file_uri) = path_to_url(&path) {
+                    publications.insert(file_uri, diagnostics);
+                }
             }
-        }
+            publications
+        })
+    });
 
+    if let Some(mut publications) = project_publications {
         if !publications.contains_key(uri)
             && let Some(source) = documents.get(uri)
         {

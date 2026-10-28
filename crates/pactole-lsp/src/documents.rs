@@ -8,6 +8,7 @@
 //! cost of larger `didChange` payloads, which is an acceptable trade-off for
 //! `.pactole` files (typically small, hand-edited ledgers).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -20,9 +21,16 @@ use pactole_storage_fs::{
 use crate::config::Config;
 
 /// The in-memory state of every currently-open document, keyed by URI.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Documents {
     open: HashMap<Url, String>,
+    cached_scope: RefCell<Option<CachedScope>>,
+}
+
+struct CachedScope {
+    entry: PathBuf,
+    validation: pactole_config::ValidationOptions,
+    project: AnalyzedProject,
 }
 
 impl Documents {
@@ -34,6 +42,7 @@ impl Documents {
     /// Records a newly opened document with its initial full text.
     pub fn open(&mut self, uri: Url, text: String) {
         self.open.insert(uri, text);
+        self.invalidate_scope();
     }
 
     /// Replaces the full text of an already-open document with `text`, the
@@ -45,11 +54,13 @@ impl Documents {
     /// with.
     pub fn change(&mut self, uri: Url, text: String) {
         self.open.insert(uri, text);
+        self.invalidate_scope();
     }
 
     /// Forgets a document, e.g. on `didClose`.
     pub fn close(&mut self, uri: &Url) {
         self.open.remove(uri);
+        self.invalidate_scope();
     }
 
     /// The current full text of an open document, if any.
@@ -68,6 +79,43 @@ impl Documents {
     pub fn get_by_path(&self, path: &Path) -> Option<&str> {
         let uri = Url::from_file_path(path).ok()?;
         self.get(&uri)
+    }
+
+    fn invalidate_scope(&mut self) {
+        self.cached_scope.get_mut().take();
+    }
+
+    /// Runs `callback` with the analyzed project for the configured journal or
+    /// current document. The result is cached until an open document changes.
+    /// This lets diagnostics and interactive requests such as completion share
+    /// the same analysis instead of reparsing the project back-to-back.
+    pub fn with_analyzed_scope<R>(
+        &self,
+        config: &Config,
+        uri: &Url,
+        callback: impl FnOnce(Option<&AnalyzedProject>) -> R,
+    ) -> R {
+        let Some(entry) = config.journal_file.clone().or_else(|| uri_to_path(uri)) else {
+            return callback(None);
+        };
+
+        let is_cached =
+            self.cached_scope.borrow().as_ref().is_some_and(|cached| {
+                cached.entry == entry && cached.validation == config.validation
+            });
+        if !is_cached {
+            let loader = DocumentsSourceLoader::new(self);
+            let project =
+                analyze_file_with_loader_with_options(&entry, &loader, &config.validation).ok();
+            *self.cached_scope.borrow_mut() = project.map(|project| CachedScope {
+                entry: entry.clone(),
+                validation: config.validation,
+                project,
+            });
+        }
+
+        let cached = self.cached_scope.borrow();
+        callback(cached.as_ref().map(|scope| &scope.project))
     }
 }
 

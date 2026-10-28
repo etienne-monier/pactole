@@ -14,7 +14,7 @@ use pactole_storage_fs::{AnalyzedProject, ParsedFile};
 
 use crate::config::Config;
 use crate::conversion::position_to_offset;
-use crate::documents::{Documents, analyze_scope, uri_to_path};
+use crate::documents::{Documents, uri_to_path};
 use std::error::Error;
 
 #[derive(Clone, Debug, Default)]
@@ -368,10 +368,20 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn completions_for_context(
     ctx: &CompletionContext,
     index: &SymbolIndex,
     current_doc_path: Option<&Path>,
+) -> Vec<CompletionItem> {
+    completions_for_context_with_range(ctx, index, current_doc_path, None)
+}
+
+fn completions_for_context_with_range(
+    ctx: &CompletionContext,
+    index: &SymbolIndex,
+    current_doc_path: Option<&Path>,
+    replacement_range: Option<Range>,
 ) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = Vec::new();
     match ctx {
@@ -459,6 +469,12 @@ fn completions_for_context(
                     items.push(CompletionItem {
                         label: acc.clone(),
                         kind: Some(CompletionItemKind::CONSTANT),
+                        text_edit: replacement_range.map(|range| {
+                            CompletionTextEdit::Edit(TextEdit {
+                                range,
+                                new_text: acc.clone(),
+                            })
+                        }),
                         ..Default::default()
                     });
                 }
@@ -469,6 +485,12 @@ fn completions_for_context(
                         items.push(CompletionItem {
                             label: acc.clone(),
                             kind: Some(CompletionItemKind::CONSTANT),
+                            text_edit: replacement_range.map(|range| {
+                                CompletionTextEdit::Edit(TextEdit {
+                                    range,
+                                    new_text: acc.clone(),
+                                })
+                            }),
                             ..Default::default()
                         });
                     }
@@ -481,6 +503,12 @@ fn completions_for_context(
                     items.push(CompletionItem {
                         label: c.clone(),
                         kind: Some(CompletionItemKind::ENUM_MEMBER),
+                        text_edit: replacement_range.map(|range| {
+                            CompletionTextEdit::Edit(TextEdit {
+                                range,
+                                new_text: c.clone(),
+                            })
+                        }),
                         ..Default::default()
                     });
                 }
@@ -492,6 +520,12 @@ fn completions_for_context(
                     items.push(CompletionItem {
                         label: commodity.clone(),
                         kind: Some(CompletionItemKind::ENUM_MEMBER),
+                        text_edit: replacement_range.map(|range| {
+                            CompletionTextEdit::Edit(TextEdit {
+                                range,
+                                new_text: commodity.clone(),
+                            })
+                        }),
                         ..Default::default()
                     });
                 }
@@ -503,6 +537,12 @@ fn completions_for_context(
                     items.push(CompletionItem {
                         label: t.clone(),
                         kind: Some(CompletionItemKind::ENUM_MEMBER),
+                        text_edit: replacement_range.map(|range| {
+                            CompletionTextEdit::Edit(TextEdit {
+                                range,
+                                new_text: t.clone(),
+                            })
+                        }),
                         ..Default::default()
                     });
                 }
@@ -514,6 +554,12 @@ fn completions_for_context(
                     items.push(CompletionItem {
                         label: l.clone(),
                         kind: Some(CompletionItemKind::ENUM_MEMBER),
+                        text_edit: replacement_range.map(|range| {
+                            CompletionTextEdit::Edit(TextEdit {
+                                range,
+                                new_text: l.clone(),
+                            })
+                        }),
                         ..Default::default()
                     });
                 }
@@ -522,6 +568,28 @@ fn completions_for_context(
         CompletionContext::Unknown => {}
     }
     items
+}
+
+fn replacement_range(ctx: &CompletionContext, position: &Position) -> Option<Range> {
+    let prefix = match ctx {
+        CompletionContext::Account { prefix }
+        | CompletionContext::PostingAccount { prefix }
+        | CompletionContext::Commodity { prefix }
+        | CompletionContext::PriceBase { prefix }
+        | CompletionContext::PriceQuote { prefix }
+        | CompletionContext::Tag { prefix }
+        | CompletionContext::Link { prefix } => prefix,
+        _ => return None,
+    };
+
+    let prefix_width = u32::try_from(prefix.chars().count()).ok()?;
+    Some(Range::new(
+        Position::new(
+            position.line,
+            position.character.saturating_sub(prefix_width),
+        ),
+        *position,
+    ))
 }
 
 fn number_looks_valid(value: &str) -> bool {
@@ -550,14 +618,18 @@ pub fn handle_completion(
     let ctx = context_at(&source, offset, &pos);
     let current_doc_path = uri_to_path(&uri);
 
-    let index = if let Some(project) = analyze_scope(config, documents, &uri) {
-        build_index_from_project(&project)
-    } else {
-        let file = pactole_storage_fs::analyze_file(&source);
-        build_index_from_file(&file)
-    };
-
-    let items = completions_for_context(&ctx, &index, current_doc_path.as_deref());
+    let items = documents.with_analyzed_scope(config, &uri, |project| {
+        let index = project.map(build_index_from_project).unwrap_or_else(|| {
+            let file = pactole_storage_fs::analyze_file(&source);
+            build_index_from_file(&file)
+        });
+        completions_for_context_with_range(
+            &ctx,
+            &index,
+            current_doc_path.as_deref(),
+            replacement_range(&ctx, &pos),
+        )
+    });
     Ok(CompletionList {
         is_incomplete: false,
         items,
@@ -652,6 +724,33 @@ mod tests {
         );
 
         assert!(items.iter().any(|item| item.label == "Assets:Checking"));
+    }
+
+    #[test]
+    fn account_completion_replaces_the_typed_prefix() {
+        let context = CompletionContext::Account {
+            prefix: "Banque".to_string(),
+        };
+        let range = Range::new(Position::new(0, 0), Position::new(0, 6));
+        let items = completions_for_context_with_range(
+            &context,
+            &SymbolIndex {
+                accounts_open: ["Banque xxxx".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+            Some(range),
+        );
+
+        let item = items
+            .iter()
+            .find(|item| item.label == "Banque xxxx")
+            .expect("account completion");
+        assert!(matches!(
+            &item.text_edit,
+            Some(CompletionTextEdit::Edit(TextEdit { range: edit_range, new_text }))
+                if *edit_range == range && new_text == "Banque xxxx"
+        ));
     }
 
     #[test]
