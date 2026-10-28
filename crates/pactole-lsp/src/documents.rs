@@ -25,12 +25,19 @@ use crate::config::Config;
 pub struct Documents {
     open: HashMap<Url, String>,
     cached_scope: RefCell<Option<CachedScope>>,
+    generation: u64,
 }
 
 struct CachedScope {
     entry: PathBuf,
     validation: pactole_config::ValidationOptions,
     project: AnalyzedProject,
+}
+
+/// A loader snapshot used by the background project-analysis worker.
+pub(crate) struct SnapshotSourceLoader {
+    open: HashMap<PathBuf, String>,
+    fs: FsSourceLoader,
 }
 
 impl Documents {
@@ -42,7 +49,7 @@ impl Documents {
     /// Records a newly opened document with its initial full text.
     pub fn open(&mut self, uri: Url, text: String) {
         self.open.insert(uri, text);
-        self.invalidate_scope();
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Replaces the full text of an already-open document with `text`, the
@@ -54,13 +61,13 @@ impl Documents {
     /// with.
     pub fn change(&mut self, uri: Url, text: String) {
         self.open.insert(uri, text);
-        self.invalidate_scope();
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Forgets a document, e.g. on `didClose`.
     pub fn close(&mut self, uri: &Url) {
         self.open.remove(uri);
-        self.invalidate_scope();
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// The current full text of an open document, if any.
@@ -81,14 +88,38 @@ impl Documents {
         self.get(&uri)
     }
 
-    fn invalidate_scope(&mut self) {
-        self.cached_scope.get_mut().take();
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
     }
 
-    /// Runs `callback` with the analyzed project for the configured journal or
-    /// current document. The result is cached until an open document changes.
-    /// This lets diagnostics and interactive requests such as completion share
-    /// the same analysis instead of reparsing the project back-to-back.
+    pub(crate) fn snapshot_loader(&self) -> SnapshotSourceLoader {
+        let open = self
+            .open
+            .iter()
+            .filter_map(|(uri, text)| uri.to_file_path().ok().map(|path| (path, text.clone())))
+            .collect();
+        SnapshotSourceLoader {
+            open,
+            fs: FsSourceLoader,
+        }
+    }
+
+    pub(crate) fn store_analyzed_scope(
+        &mut self,
+        entry: PathBuf,
+        validation: pactole_config::ValidationOptions,
+        project: AnalyzedProject,
+    ) {
+        *self.cached_scope.get_mut() = Some(CachedScope {
+            entry,
+            validation,
+            project,
+        });
+    }
+
+    /// Runs `callback` with the last successfully analyzed project for the
+    /// configured journal or current document. A background worker updates this
+    /// cache after a document change; this method never performs analysis.
     pub fn with_analyzed_scope<R>(
         &self,
         config: &Config,
@@ -99,23 +130,21 @@ impl Documents {
             return callback(None);
         };
 
-        let is_cached =
-            self.cached_scope.borrow().as_ref().is_some_and(|cached| {
-                cached.entry == entry && cached.validation == config.validation
-            });
-        if !is_cached {
-            let loader = DocumentsSourceLoader::new(self);
-            let project =
-                analyze_file_with_loader_with_options(&entry, &loader, &config.validation).ok();
-            *self.cached_scope.borrow_mut() = project.map(|project| CachedScope {
-                entry: entry.clone(),
-                validation: config.validation,
-                project,
-            });
-        }
-
         let cached = self.cached_scope.borrow();
-        callback(cached.as_ref().map(|scope| &scope.project))
+        let project = cached.as_ref().and_then(|scope| {
+            (scope.entry == entry && scope.validation == config.validation)
+                .then_some(&scope.project)
+        });
+        callback(project)
+    }
+}
+
+impl SourceLoader for SnapshotSourceLoader {
+    fn load(&self, path: &Path) -> Result<String, SourceLoadError> {
+        if let Some(text) = self.open.get(path) {
+            return Ok(text.clone());
+        }
+        self.fs.load(path)
     }
 }
 

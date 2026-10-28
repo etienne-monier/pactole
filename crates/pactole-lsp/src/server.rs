@@ -4,7 +4,10 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::PathBuf;
+use std::thread;
+use std::time::{Duration, Instant};
 
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, select, unbounded};
 use lsp_server::{Connection, Message, Request as LspRequest};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification,
@@ -21,7 +24,26 @@ use pactole_storage_fs::analyze_file_with_loader_with_options;
 
 use crate::config::{Config, workspace_root_from_initialize_params};
 use crate::diagnostics::{project_diagnostics, standalone_diagnostics};
-use crate::documents::{Documents, DocumentsSourceLoader};
+use crate::documents::{Documents, DocumentsSourceLoader, SnapshotSourceLoader};
+
+const ANALYSIS_DEBOUNCE: Duration = Duration::from_millis(150);
+
+struct AnalysisJob {
+    generation: u64,
+    uri: Url,
+    entry: PathBuf,
+    validation: pactole_config::ValidationOptions,
+    loader: SnapshotSourceLoader,
+}
+
+struct AnalysisResult {
+    generation: u64,
+    uri: Url,
+    entry: PathBuf,
+    validation: pactole_config::ValidationOptions,
+    project: Option<pactole_storage_fs::AnalyzedProject>,
+    elapsed_ms: f64,
+}
 
 /// Runs the server over stdio until the client sends `exit`.
 pub fn run() -> Result<(), Box<dyn Error + Sync + Send>> {
@@ -107,6 +129,78 @@ fn server_capabilities() -> ServerCapabilities {
     }
 }
 
+fn start_analysis_worker() -> (Sender<AnalysisJob>, Receiver<AnalysisResult>) {
+    let (job_sender, job_receiver) = unbounded::<AnalysisJob>();
+    let (result_sender, result_receiver) = unbounded::<AnalysisResult>();
+
+    thread::spawn(move || {
+        while let Ok(mut job) = job_receiver.recv() {
+            // Debounce bursts of edits. Only the newest snapshot is useful.
+            loop {
+                match job_receiver.recv_timeout(ANALYSIS_DEBOUNCE) {
+                    Ok(newer) => job = newer,
+                    Err(RecvTimeoutError::Timeout) => break,
+                    Err(RecvTimeoutError::Disconnected) => return,
+                }
+            }
+
+            let started = Instant::now();
+            let project =
+                analyze_file_with_loader_with_options(&job.entry, &job.loader, &job.validation)
+                    .ok();
+            let elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0;
+            log::debug!(
+                "scope analysis: background elapsed_ms={} generation={} success={}",
+                elapsed_ms,
+                job.generation,
+                project.is_some()
+            );
+
+            if result_sender
+                .send(AnalysisResult {
+                    generation: job.generation,
+                    uri: job.uri,
+                    entry: job.entry,
+                    validation: job.validation,
+                    project,
+                    elapsed_ms,
+                })
+                .is_err()
+            {
+                return;
+            }
+        }
+    });
+
+    (job_sender, result_receiver)
+}
+
+fn schedule_analysis(
+    config: &Config,
+    documents: &Documents,
+    uri: &Url,
+    jobs: &Sender<AnalysisJob>,
+) -> bool {
+    let Some(entry) = config
+        .journal_file
+        .clone()
+        .or_else(|| uri.to_file_path().ok())
+    else {
+        return false;
+    };
+    let job = AnalysisJob {
+        generation: documents.generation(),
+        uri: uri.clone(),
+        entry,
+        validation: config.validation,
+        loader: documents.snapshot_loader(),
+    };
+    if jobs.send(job).is_err() {
+        log::warn!("project analysis worker is unavailable");
+    }
+    true
+}
+
 fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error + Sync + Send>> {
     let mut documents = Documents::new();
     // URIs published with non-empty diagnostics by the last `publish_for`
@@ -114,9 +208,58 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
     // (e.g. an `include` was removed) can clear its now-stale diagnostics
     // instead of leaving them stuck forever.
     let mut published: HashSet<Url> = HashSet::new();
+    let (analysis_jobs, analysis_results) = start_analysis_worker();
 
-    for msg in &connection.receiver {
-        match msg {
+    loop {
+        select! {
+            recv(analysis_results) -> result => {
+                let Ok(result) = result else { break };
+                if result.generation != documents.generation() {
+                    log::debug!(
+                        "discarding stale analysis: generation={} current_generation={}",
+                        result.generation,
+                        documents.generation()
+                    );
+                    continue;
+                }
+                log::debug!(
+                    "accepting analysis: generation={} elapsed_ms={}",
+                    result.generation,
+                    result.elapsed_ms
+                );
+                if let Some(project) = result.project {
+                    documents.store_analyzed_scope(result.entry, result.validation, project);
+                    publish_for(
+                        &connection,
+                        &config,
+                        &documents,
+                        &mut published,
+                        &result.uri,
+                    )?;
+                } else {
+                    // Keep the last successful project for completion, but do
+                    // not publish its stale diagnostics after a failed
+                    // analysis. Fall back to standalone diagnostics for the
+                    // document that triggered the analysis and clear all
+                    // project-wide publications.
+                    let mut current = HashSet::new();
+                    if let Some(source) = documents.get(&result.uri) {
+                        let file = pactole_storage_fs::analyze_file(source);
+                        let path = result.uri.to_file_path().unwrap_or_default();
+                        publish_diagnostics(
+                            &connection,
+                            &result.uri,
+                            standalone_diagnostics(&file, &path),
+                        )?;
+                        current.insert(result.uri.clone());
+                    }
+                    clear_stale(&connection, &published, &current)?;
+                    published = current;
+                }
+            }
+            recv(connection.receiver) -> message => {
+                let Ok(msg) = message else { break };
+                match msg {
             Message::Request(req) => {
                 // Break if message is shutdown
                 if connection.handle_shutdown(&req)? {
@@ -125,11 +268,20 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
                 handle_request(req, &connection, &config, &mut documents)?;
             }
             Message::Notification(note) => {
-                handle_notification(&connection, &config, &mut documents, &mut published, note)?;
+                handle_notification(
+                    &connection,
+                    &config,
+                    &mut documents,
+                    &mut published,
+                    &analysis_jobs,
+                    note,
+                )?;
             }
             Message::Response(_) => {
                 // The server never sends requests to the client yet, so no
                 // response is ever expected here.
+            }
+                }
             }
         }
     }
@@ -340,6 +492,7 @@ fn handle_notification(
     config: &Config,
     documents: &mut Documents,
     published: &mut HashSet<Url>,
+    analysis_jobs: &Sender<AnalysisJob>,
     note: lsp_server::Notification,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     match note.method.as_str() {
@@ -357,7 +510,9 @@ fn handle_notification(
                 params.text_document.text.len()
             );
             documents.open(uri.clone(), params.text_document.text);
-            publish_for(connection, config, documents, published, &uri)?;
+            if !schedule_analysis(config, documents, &uri, analysis_jobs) {
+                publish_for(connection, config, documents, published, &uri)?;
+            }
         }
         // -----------------------------
         // A document changed
@@ -371,7 +526,9 @@ fn handle_notification(
             if let Some(change) = params.content_changes.into_iter().next_back() {
                 log::debug!("didChange: uri={} len={}", uri, change.text.len());
                 documents.change(uri.clone(), change.text);
-                publish_for(connection, config, documents, published, &uri)?;
+                if !schedule_analysis(config, documents, &uri, analysis_jobs) {
+                    publish_for(connection, config, documents, published, &uri)?;
+                }
             }
         }
         // -----------------------------
@@ -385,6 +542,9 @@ fn handle_notification(
             // Clear diagnostics for the now-closed document.
             publish_diagnostics(connection, &params.text_document.uri, Vec::new())?;
             published.remove(&params.text_document.uri);
+            if config.journal_file.is_some() {
+                schedule_analysis(config, documents, &params.text_document.uri, analysis_jobs);
+            }
         }
         _ => {}
     }
@@ -455,14 +615,21 @@ fn collect_diagnostics(
     documents: &Documents,
     uri: &Url,
 ) -> HashMap<Url, Vec<Diagnostic>> {
+    let started = Instant::now();
     let project_publications = documents.with_analyzed_scope(config, uri, |project| {
         project.map(|project| {
+            let render_started = Instant::now();
             let mut publications = HashMap::new();
             for (path, diagnostics) in project_diagnostics(project) {
                 if let Some(file_uri) = path_to_url(&path) {
                     publications.insert(file_uri, diagnostics);
                 }
             }
+            log::debug!(
+                "diagnostics render: elapsed_ms={} files={}",
+                render_started.elapsed().as_secs_f64() * 1_000.0,
+                publications.len()
+            );
             publications
         })
     });
@@ -475,6 +642,11 @@ fn collect_diagnostics(
             let path = uri.to_file_path().unwrap_or_default();
             publications.insert(uri.clone(), standalone_diagnostics(&file, &path));
         }
+        log::debug!(
+            "diagnostics total: elapsed_ms={} publications={}",
+            started.elapsed().as_secs_f64() * 1_000.0,
+            publications.len()
+        );
         return publications;
     }
 
@@ -484,7 +656,13 @@ fn collect_diagnostics(
     };
     let file = pactole_storage_fs::analyze_file(source);
     let path = uri.to_file_path().unwrap_or_default();
-    HashMap::from([(uri.clone(), standalone_diagnostics(&file, &path))])
+    let publications = HashMap::from([(uri.clone(), standalone_diagnostics(&file, &path))]);
+    log::debug!(
+        "diagnostics total: elapsed_ms={} publications={} mode=standalone",
+        started.elapsed().as_secs_f64() * 1_000.0,
+        publications.len()
+    );
+    publications
 }
 
 /// Computes the set of URIs in `previously` that are absent from `now`,

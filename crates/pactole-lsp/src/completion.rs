@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionTextEdit,
@@ -432,7 +433,13 @@ fn completions_for_context_with_range(
                         items.push(CompletionItem {
                             label: format!("\"{}\"", name),
                             kind: Some(CompletionItemKind::FILE),
-                            insert_text: Some(format!("{}\"", name)),
+                            text_edit: replacement_range.map(|range| {
+                                CompletionTextEdit::Edit(TextEdit {
+                                    range,
+                                    new_text: format!("{}\"", name),
+                                })
+                            }),
+                            insert_text: replacement_range.is_none().then(|| format!("{}\"", name)),
                             insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
                             ..Default::default()
                         });
@@ -452,10 +459,22 @@ fn completions_for_context_with_range(
                         // The opening quote is already present when payee
                         // completion is requested. Complete the quoted string
                         // rather than leaving the document syntactically open.
-                        insert_text: Some(if *has_closing_quote {
-                            p.clone()
-                        } else {
-                            format!("{p}\"")
+                        text_edit: replacement_range.map(|range| {
+                            CompletionTextEdit::Edit(TextEdit {
+                                range,
+                                new_text: if *has_closing_quote {
+                                    p.clone()
+                                } else {
+                                    format!("{p}\"")
+                                },
+                            })
+                        }),
+                        insert_text: replacement_range.is_none().then(|| {
+                            if *has_closing_quote {
+                                p.clone()
+                            } else {
+                                format!("{p}\"")
+                            }
                         }),
                         insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
                         ..Default::default()
@@ -578,11 +597,13 @@ fn replacement_range(ctx: &CompletionContext, position: &Position) -> Option<Ran
         | CompletionContext::PriceBase { prefix }
         | CompletionContext::PriceQuote { prefix }
         | CompletionContext::Tag { prefix }
-        | CompletionContext::Link { prefix } => prefix,
+        | CompletionContext::Link { prefix }
+        | CompletionContext::IncludePath { prefix }
+        | CompletionContext::Payee { prefix, .. } => prefix,
         _ => return None,
     };
 
-    let prefix_width = u32::try_from(prefix.chars().count()).ok()?;
+    let prefix_width = u32::try_from(prefix.encode_utf16().count()).ok()?;
     Some(Range::new(
         Position::new(
             position.line,
@@ -606,6 +627,7 @@ pub fn handle_completion(
     documents: &Documents,
     params: CompletionParams,
 ) -> Result<CompletionList, Box<dyn Error + Sync + Send>> {
+    let started = Instant::now();
     let uri = params.text_document_position.text_document.uri;
     let pos = params.text_document_position.position;
 
@@ -619,10 +641,16 @@ pub fn handle_completion(
     let current_doc_path = uri_to_path(&uri);
 
     let items = documents.with_analyzed_scope(config, &uri, |project| {
+        let index_started = Instant::now();
         let index = project.map(build_index_from_project).unwrap_or_else(|| {
             let file = pactole_storage_fs::analyze_file(&source);
             build_index_from_file(&file)
         });
+        log::debug!(
+            "completion index: elapsed_ms={} files={}",
+            index_started.elapsed().as_secs_f64() * 1_000.0,
+            project.map_or(1, |project| project.files().len())
+        );
         completions_for_context_with_range(
             &ctx,
             &index,
@@ -630,6 +658,11 @@ pub fn handle_completion(
             replacement_range(&ctx, &pos),
         )
     });
+    log::debug!(
+        "completion total: elapsed_ms={} candidates={}",
+        started.elapsed().as_secs_f64() * 1_000.0,
+        items.len()
+    );
     Ok(CompletionList {
         is_incomplete: false,
         items,
@@ -813,6 +846,46 @@ mod tests {
         );
 
         assert!(items.iter().any(|item| item.label == "Whole Foods"));
+    }
+
+    #[test]
+    fn payee_completion_replaces_a_multi_word_prefix() {
+        let context = CompletionContext::Payee {
+            prefix: "Banque ".to_string(),
+            has_closing_quote: false,
+        };
+        let range = Range::new(Position::new(0, 7), Position::new(0, 14));
+        let items = completions_for_context_with_range(
+            &context,
+            &SymbolIndex {
+                payees: ["Banque xxxx".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+            Some(range),
+        );
+
+        let item = items
+            .iter()
+            .find(|item| item.label == "Banque xxxx")
+            .expect("payee completion");
+        assert!(matches!(
+            &item.text_edit,
+            Some(CompletionTextEdit::Edit(TextEdit { range: edit_range, new_text }))
+                if *edit_range == range && new_text == "Banque xxxx\""
+        ));
+    }
+
+    #[test]
+    fn replacement_range_counts_utf16_code_units() {
+        let context = CompletionContext::Payee {
+            prefix: "😀".to_string(),
+            has_closing_quote: false,
+        };
+        assert_eq!(
+            replacement_range(&context, &Position::new(0, 2)),
+            Some(Range::new(Position::new(0, 0), Position::new(0, 2)))
+        );
     }
 
     #[test]

@@ -40,6 +40,7 @@ chrono = "0.4.45"
 clap = { version = "4.6.6", features = ["derive"] }
 clap_complete = "4.6.0"
 cc = "1.2"
+crossbeam-channel = "0.5"
 encoding_rs = "0.8"
 env_logger = "0.11.8"
 log = "0.4.28"
