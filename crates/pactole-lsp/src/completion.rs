@@ -29,16 +29,37 @@ struct SymbolIndex {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum CompletionContext {
-    DirectiveKeyword { date_range: Option<Range> },
-    IncludePath { prefix: String },
-    Payee { prefix: String },
-    Account { prefix: String },
-    PostingAccount { prefix: String },
-    Commodity { prefix: String },
-    PriceBase { prefix: String },
-    PriceQuote { prefix: String },
-    Tag { prefix: String },
-    Link { prefix: String },
+    DirectiveKeyword {
+        date_range: Option<Range>,
+    },
+    IncludePath {
+        prefix: String,
+    },
+    Payee {
+        prefix: String,
+        has_closing_quote: bool,
+    },
+    Account {
+        prefix: String,
+    },
+    PostingAccount {
+        prefix: String,
+    },
+    Commodity {
+        prefix: String,
+    },
+    PriceBase {
+        prefix: String,
+    },
+    PriceQuote {
+        prefix: String,
+    },
+    Tag {
+        prefix: String,
+    },
+    Link {
+        prefix: String,
+    },
     Unknown,
 }
 
@@ -136,6 +157,10 @@ fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+fn contains_case_insensitive(value: &str, query: &str) -> bool {
+    value.to_lowercase().contains(&query.to_lowercase())
+}
+
 fn context_at(text: &str, offset: usize, position: &Position) -> CompletionContext {
     // `offset` is a byte offset. Find the line start using byte slices rather
     // than taking `offset` characters, which would overshoot when the source
@@ -160,7 +185,13 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
                 && transaction_header_before_payee(before_quote.trim_end()))
         {
             let prefix = line_text[quote_idx + 1..].to_string();
-            return CompletionContext::Payee { prefix };
+            let has_closing_quote = rest
+                .split_once('\n')
+                .map_or(rest.contains('"'), |(line, _)| line.contains('"'));
+            return CompletionContext::Payee {
+                prefix,
+                has_closing_quote,
+            };
         }
     }
 
@@ -323,6 +354,7 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
         }
         "payee" => CompletionContext::Payee {
             prefix: String::new(),
+            has_closing_quote: line_text.matches('"').count() >= 2,
         },
         "include" => CompletionContext::IncludePath {
             prefix: String::new(),
@@ -398,12 +430,24 @@ fn completions_for_context(
                 }
             }
         }
-        CompletionContext::Payee { prefix } => {
+        CompletionContext::Payee {
+            prefix,
+            has_closing_quote,
+        } => {
             for p in &index.payees {
-                if p.starts_with(prefix) {
+                if contains_case_insensitive(p, prefix) {
                     items.push(CompletionItem {
                         label: p.clone(),
                         kind: Some(CompletionItemKind::TEXT),
+                        // The opening quote is already present when payee
+                        // completion is requested. Complete the quoted string
+                        // rather than leaving the document syntactically open.
+                        insert_text: Some(if *has_closing_quote {
+                            p.clone()
+                        } else {
+                            format!("{p}\"")
+                        }),
+                        insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
                         ..Default::default()
                     });
                 }
@@ -411,7 +455,7 @@ fn completions_for_context(
         }
         CompletionContext::Account { prefix } | CompletionContext::PostingAccount { prefix } => {
             for acc in &index.accounts_open {
-                if acc.starts_with(prefix) {
+                if contains_case_insensitive(acc, prefix) {
                     items.push(CompletionItem {
                         label: acc.clone(),
                         kind: Some(CompletionItemKind::CONSTANT),
@@ -421,7 +465,7 @@ fn completions_for_context(
             }
             if items.is_empty() {
                 for acc in &index.accounts_all {
-                    if acc.starts_with(prefix) {
+                    if contains_case_insensitive(acc, prefix) {
                         items.push(CompletionItem {
                             label: acc.clone(),
                             kind: Some(CompletionItemKind::CONSTANT),
@@ -594,6 +638,85 @@ mod tests {
     }
 
     #[test]
+    fn account_completion_matches_inside_the_name() {
+        let context = CompletionContext::Account {
+            prefix: "HECK".to_string(),
+        };
+        let items = completions_for_context(
+            &context,
+            &SymbolIndex {
+                accounts_open: ["Assets:Checking".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert!(items.iter().any(|item| item.label == "Assets:Checking"));
+    }
+
+    #[test]
+    fn payee_completion_closes_the_opening_quote() {
+        let context = CompletionContext::Payee {
+            prefix: String::new(),
+            has_closing_quote: false,
+        };
+        let items = completions_for_context(
+            &context,
+            &SymbolIndex {
+                payees: ["Whole Foods".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        let item = items
+            .iter()
+            .find(|item| item.label == "Whole Foods")
+            .expect("payee completion");
+        assert_eq!(item.insert_text.as_deref(), Some("Whole Foods\""));
+    }
+
+    #[test]
+    fn payee_completion_does_not_duplicate_a_closing_quote() {
+        let source = "payee \"Whole F\"";
+        let offset = source.len() - 1;
+        let position = Position::new(0, offset as u32);
+        let context = context_at(source, offset, &position);
+        let items = completions_for_context(
+            &context,
+            &SymbolIndex {
+                payees: ["Whole Foods".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        let item = items
+            .iter()
+            .find(|item| item.label == "Whole Foods")
+            .expect("payee completion");
+        assert_eq!(item.insert_text.as_deref(), Some("Whole Foods"));
+    }
+
+    #[test]
+    fn payee_completion_matches_inside_the_name() {
+        let context = CompletionContext::Payee {
+            prefix: "OLE".to_string(),
+            has_closing_quote: false,
+        };
+        let items = completions_for_context(
+            &context,
+            &SymbolIndex {
+                payees: ["Whole Foods".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert!(items.iter().any(|item| item.label == "Whole Foods"));
+    }
+
+    #[test]
     fn offers_commodity_completions_for_price_base_and_quote() {
         let commodities: BTreeSet<String> = ["EUR".to_string(), "USD".to_string()].into();
         for (source, expected_context, prefix) in [
@@ -697,6 +820,7 @@ mod tests {
             context_at(source, offset, &Position::new(0, 9)),
             CompletionContext::Payee {
                 prefix: String::new(),
+                has_closing_quote: true,
             }
         );
     }
