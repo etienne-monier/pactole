@@ -12,13 +12,13 @@ way to unlearn the right things.
 
 ## A smaller set of directives
 
-Only eight directives exist:
+The supported directives are:
 
 `open`, `close`, `commodity`, `price`, `payee`, `balance`, a transaction,
-and `include`.
+`include`, `pushtag` and `poptag`.
 
-Beancount directives such as `pad`, `note`, `event`, `document`,
-`query`, `custom`, `option`, `plugin` and `pushtag`/`poptag` are not supported.
+Beancount directives such as `pad`, `note`, `event`, `document`, `query`,
+`custom`, `option` and `plugin` are not supported.
 
 ## Payee versus narration
 

@@ -155,6 +155,8 @@ fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
         ("payee", "Declare a payee"),
         ("balance", "Balance assertion"),
         ("include", "Include another file"),
+        ("pushtag", "Add a tag to following transactions"),
+        ("poptag", "Remove a tag from following transactions"),
     ]
 }
 
@@ -359,6 +361,13 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
         },
         "include" => CompletionContext::IncludePath {
             prefix: String::new(),
+        },
+        "pushtag" | "poptag" => CompletionContext::Tag {
+            prefix: words
+                .get(keyword_index + 1)
+                .copied()
+                .unwrap_or_default()
+                .to_string(),
         },
         _ => {
             if !is_indented(line_text) && !trimmed.contains(' ') {
@@ -723,6 +732,30 @@ mod tests {
                 .all(|item| item.detail.as_deref() != Some("Today's date"))
         );
         assert!(items.iter().any(|item| item.label == "open"));
+    }
+
+    #[test]
+    fn tag_directives_are_completed_and_accept_tag_names() {
+        let position = Position::new(0, 7);
+        let context = context_at("pushtag", 7, &position);
+        let items = completions_for_context(
+            &context,
+            &SymbolIndex {
+                tags: ["year".to_string()].into(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert!(items.iter().any(|item| item.label == "year"));
+
+        let keywords = completions_for_context(
+            &context_at("pu", 2, &Position::new(0, 2)),
+            &SymbolIndex::default(),
+            None,
+        );
+        assert!(keywords.iter().any(|item| item.label == "pushtag"));
+        assert!(keywords.iter().any(|item| item.label == "poptag"));
     }
 
     #[test]

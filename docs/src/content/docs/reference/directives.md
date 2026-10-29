@@ -20,6 +20,8 @@ their syntax and the validation rules enforced by `pactole check`.
 | `balance`     | Assert an account's balance on a date                | yes   |
 | transaction   | Record a movement of funds                           | yes   |
 | `include`     | Inline another `.pactole` file                       | no    |
+| `pushtag`     | Add a tag to following transactions                  | no    |
+| `poptag`      | Remove a tag from following transactions             | no    |
 
 ## `open`
 
@@ -159,6 +161,46 @@ include "ledger/2026.pactole"
 ```
 
 See [Split a journal with includes](/how-to/split-a-journal-with-includes/).
+
+## `pushtag`
+
+```text
+pushtag #TAG
+poptag #TAG
+```
+
+These directives maintain a global set of inherited tags in source order. The
+set is preserved across recursively expanded `include`s: `pushtag` adds a tag
+and `poptag` removes it. Inherited tags are combined with tags written directly
+on a transaction, without duplicates. The formatter preserves the directives
+and does not copy inherited tags onto each transaction.
+
+```pactole
+pushtag #2026
+2026-01-02 * "Shop" "Groceries"
+  Expenses:Food 50 EUR
+  Assets:Checking -50 EUR
+poptag #2026
+```
+
+The effective tags are available to reports and tag filters. Removing a tag
+that is not active produces a `tag-not-active` warning; `pactole check
+--strict` treats that warning as a failure.
+
+When the same file is reached through a diamond-shaped include graph, it is
+visited only once, as for the rest of project analysis. Its first
+source-order occurrence therefore determines the active-tag context used for
+that file.
+
+## `poptag`
+
+```text
+poptag #TAG
+```
+
+`poptag` removes the named tag from the active inherited-tag set. Removing a
+tag that is not currently active produces a warning; `pactole check --strict`
+treats that warning as a failure.
 
 ## Validation invariants
 

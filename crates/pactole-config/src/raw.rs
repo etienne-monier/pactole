@@ -66,6 +66,10 @@ pub(crate) struct RawImport {
     pub(crate) default_counter_account: Option<String>,
     #[serde(default)]
     pub(crate) payee_metadata_key: Option<String>,
+    #[serde(default)]
+    pub(crate) no_imported_payee: Option<bool>,
+    #[serde(default)]
+    pub(crate) omit_negative_amount: Option<bool>,
     /// Rules are replaced in block by the highest-precedence layer that
     /// defines them, never merged element-wise.
     pub(crate) rules: Option<Vec<RawRule>>,
@@ -95,7 +99,8 @@ pub(crate) struct RawRule {
     pub(crate) account: Option<String>,
     #[serde(default)]
     pub(crate) direction: Option<RawDirection>,
-    pub(crate) counter_account: String,
+    #[serde(default)]
+    pub(crate) counter_account: Option<String>,
     #[serde(default)]
     pub(crate) payee: Option<String>,
 }
@@ -185,6 +190,12 @@ impl RawFile {
             }
             if let Some(key) = import.payee_metadata_key {
                 target.payee_metadata_key = Some(key);
+            }
+            if let Some(no_imported_payee) = import.no_imported_payee {
+                target.no_imported_payee = Some(no_imported_payee);
+            }
+            if let Some(omit_negative_amount) = import.omit_negative_amount {
+                target.omit_negative_amount = Some(omit_negative_amount);
             }
             if let Some(rules) = import.rules {
                 target.rules = Some(rules);

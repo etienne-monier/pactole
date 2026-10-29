@@ -167,9 +167,38 @@ fn parses_import_accounts_and_rules() {
         import.rules[0].payee_contains.as_deref(),
         Some("supermarket")
     );
-    assert_eq!(import.rules[0].counter_account, "Expenses:Groceries");
+    assert_eq!(
+        import.rules[0].counter_account.as_deref(),
+        Some("Expenses:Groceries")
+    );
     assert_eq!(import.rules[0].payee.as_deref(), Some("Supermarket"));
     assert_eq!(import.rules[1].direction, Some(Direction::Debit));
+}
+
+#[test]
+fn parses_no_imported_payee_setting() {
+    let config = resolve(
+        "[import]\n\
+         bank_account = \"Assets:Checking\"\n\
+         default_counter_account = \"Expenses:Other\"\n\
+         no_imported_payee = true\n",
+    )
+    .unwrap();
+
+    assert!(config.import.unwrap().no_imported_payee);
+}
+
+#[test]
+fn parses_omit_negative_amount_setting() {
+    let config = resolve(
+        "[import]\n\
+         bank_account = \"Assets:Checking\"\n\
+         default_counter_account = \"Expenses:Other\"\n\
+         omit_negative_amount = true\n",
+    )
+    .unwrap();
+
+    assert!(config.import.unwrap().omit_negative_amount);
 }
 
 #[test]

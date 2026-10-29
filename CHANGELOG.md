@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Source-order tag contexts (roadmap 3.4):** added the non-dated `pushtag`
+  and `poptag` directives. Active tags are inherited across the flattened
+  include graph, combined with explicit transaction tags, and kept out of the
+  core domain as source-level syntax. Removing an inactive tag is a warning,
+  promoted to a failure by `pactole check --strict`.
+
 - **LSP formatting:** `pactole-lsp` now supports full-document
   `textDocument/formatting`, using the canonical formatter and the layered
   `[format]` configuration. Clients can override `posting_width` through

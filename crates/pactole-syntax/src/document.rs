@@ -316,6 +316,8 @@ fn describe_context(parent: &Node) -> Option<&'static str> {
         "price" => Some("a `price` directive"),
         "payee_declaration" => Some("a `payee` declaration"),
         "include" => Some("an `include` directive"),
+        "pushtag" => Some("a `pushtag` directive"),
+        "poptag" => Some("a `poptag` directive"),
         "balance" => Some("a `balance` directive"),
         "transaction" => Some("a transaction"),
         "posting" => Some("a posting"),
@@ -338,5 +340,18 @@ mod tests {
         let price = directive.named_child(0).expect("price node");
 
         assert_eq!(describe_context(&price), Some("a `price` directive"));
+    }
+
+    #[test]
+    fn tag_directives_provide_context_for_syntax_diagnostics() {
+        for source in ["pushtag #year\n", "poptag #year\n"] {
+            let document = parse_document(source);
+            let directive = document.root_node().named_child(0).expect("directive node");
+            let header = directive.named_child(0).expect("tag directive node");
+
+            assert!(describe_context(&header).is_some_and(|context| {
+                context == "a `pushtag` directive" || context == "a `poptag` directive"
+            }));
+        }
     }
 }

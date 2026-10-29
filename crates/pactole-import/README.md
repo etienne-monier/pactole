@@ -36,8 +36,8 @@ Re-exported from `src/lib.rs`:
   `[import]` section of `pactole.toml`, and re-exported here): describe the
   bank account, the optional `[import.accounts]` source-account mapping, the
   default counter account, an optional fallback currency, and the ordered
-  categorization rules (first match wins; a rule may also override the
-  payee).
+  categorization rules (evaluated in order; every matching rule is applied,
+  and a rule may also override the payee seen by subsequent rules).
 - **`ImportRecord`** (`record.rs`): the format-neutral intermediate
   representation, including the source account identifier (OFX `ACCTID`)
   when the format provides one.

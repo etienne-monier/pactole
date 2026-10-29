@@ -9,7 +9,8 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "pactole",
     version,
-    about = "Tools around the Pactole ledger format"
+    about = "Tools around the Pactole ledger format",
+    subcommand_help_heading = "Commands"
 )]
 pub(crate) struct Cli {
     /// Path to an explicit `pactole.toml`, replacing the global and project
@@ -121,7 +122,6 @@ pub(crate) enum Command {
         #[arg(long, value_name = "DATE", requires = "convert_to")]
         at: Option<NaiveDate>,
     },
-
     /// Show the balance sheet of a `.pactole` file at a given date.
     Balance {
         /// Path to the `.pactole` file to read.
@@ -247,12 +247,15 @@ pub(crate) enum Command {
         #[arg(long, value_name = "DATE", requires = "convert_to")]
         at: Option<NaiveDate>,
     },
-
     /// Import transactions from an OFX statement into canonical `.pactole`
     /// transaction directives.
     ImportOfx {
         /// Path to the OFX/QFX file to import.
         file: PathBuf,
+
+        /// Only import transactions on or after this date (`YYYY-MM-DD`).
+        #[arg(long, value_name = "DATE")]
+        from: Option<NaiveDate>,
 
         /// Path to an existing `.pactole` file used for deduplication.
         #[arg(long, value_name = "PATH")]
@@ -267,6 +270,14 @@ pub(crate) enum Command {
         /// Append generated transactions to `--into` instead of printing them.
         #[arg(long, requires = "into")]
         write: bool,
+
+        /// Do not preserve the source payee in transaction metadata.
+        #[arg(long)]
+        no_imported_payee: bool,
+
+        /// Omit the negative posting amount and let Pactole infer it.
+        #[arg(long)]
+        omit_negative_amount: bool,
     },
 
     /// Migrate an Actual Budget database into a new `.pactole` journal.
@@ -294,7 +305,6 @@ pub(crate) enum Command {
         #[arg(long, value_name = "KEY")]
         payee_metadata_key: Option<String>,
     },
-
     /// Initialize a ledger and, when missing, the `pactole.toml` configuration.
     Init {
         /// Path to the ledger file to create.

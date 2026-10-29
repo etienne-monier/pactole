@@ -14,6 +14,8 @@ const INLINE_KINDS: &[&str] = &[
     "payee_declaration",
     "balance",
     "include",
+    "pushtag",
+    "poptag",
     "transaction",
     "amount",
     "transaction_cost",
@@ -560,6 +562,14 @@ mod tests {
             "2026-01-01 commodity USD\n2026-01-01 commodity EUR\n\
              2026-01-02 price USD 0.920 EUR ; market quote\n"
         );
+    }
+
+    #[test]
+    fn preserves_tag_inheritance_directives_without_expanding_them() {
+        let source = "pushtag   #year\n\
+                       poptag #year\n";
+
+        assert_eq!(format(source).unwrap(), "pushtag #year\npoptag #year\n");
     }
 
     #[test]

@@ -184,16 +184,30 @@ fn main() -> ExitCode {
         }
         Command::ImportOfx {
             file,
+            from,
             into,
             account,
             write,
+            no_imported_payee,
+            omit_negative_amount,
         } => {
             let project_dir = into
                 .as_deref()
                 .and_then(parent_dir)
                 .or_else(|| std::env::current_dir().ok());
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
-                Ok(config) => import_ofx::run(file, into, account, write, &config),
+                Ok(config) => import_ofx::run(
+                    file,
+                    import_ofx::Options {
+                        from,
+                        into,
+                        account,
+                        write,
+                        no_imported_payee,
+                        omit_negative_amount,
+                    },
+                    &config,
+                ),
                 Err(error) => config::failure(error),
             }
         }

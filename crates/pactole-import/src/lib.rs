@@ -31,6 +31,7 @@ mod rules;
 
 use std::collections::HashSet;
 
+use chrono::NaiveDate;
 use pactole_core::Transaction;
 
 pub use crate::actual::{ActualMigration, migrate_actual_database, parse_actual_database};
@@ -65,7 +66,7 @@ pub enum ImportWarning {
 /// The result of importing a source document.
 #[derive(Debug, Clone)]
 pub struct ImportOutcome {
-    /// The transactions that were imported, in source order.
+    /// The transactions that were imported, ordered from oldest to newest.
     pub transactions: Vec<Transaction>,
 
     /// Number of source transactions skipped because their identifier was
@@ -74,6 +75,17 @@ pub struct ImportOutcome {
 
     /// Non-fatal issues encountered while lowering the kept transactions.
     pub warnings: Vec<ImportWarning>,
+}
+
+/// Optional controls for an OFX import.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ImportOptions {
+    /// Keep transactions on or after this date.
+    pub from: Option<NaiveDate>,
+    /// Overrides the configuration value when present.
+    pub no_imported_payee: Option<bool>,
+    /// Overrides the configuration value when present.
+    pub omit_negative_amount: Option<bool>,
 }
 
 /// Imports an OFX document (1.x SGML or 2.x XML) into Pactole transactions.
@@ -94,12 +106,25 @@ pub fn import_ofx(
     config: &ImportConfig,
     known_fitids: &HashSet<String>,
 ) -> Result<ImportOutcome, ImportError> {
+    import_ofx_with_options(source, config, known_fitids, ImportOptions::default())
+}
+
+/// Imports an OFX document with optional date and source-payee controls.
+pub fn import_ofx_with_options(
+    source: &str,
+    config: &ImportConfig,
+    known_fitids: &HashSet<String>,
+    options: ImportOptions,
+) -> Result<ImportOutcome, ImportError> {
     let records = ofx::parse_records(source)?;
 
     let mut kept = Vec::with_capacity(records.len());
     let mut skipped = 0usize;
 
     for record in records {
+        if options.from.is_some_and(|from| record.date < from) {
+            continue;
+        }
         if let Some(fitid) = record.fitid.as_deref()
             && known_fitids.contains(fitid)
         {
@@ -109,7 +134,16 @@ pub fn import_ofx(
         kept.push(record);
     }
 
-    let (transactions, warnings) = rules::lower(kept, config)?;
+    kept.sort_by_key(|record| record.date);
+
+    let no_imported_payee = options
+        .no_imported_payee
+        .unwrap_or(config.no_imported_payee);
+    let omit_negative_amount = options
+        .omit_negative_amount
+        .unwrap_or(config.omit_negative_amount);
+    let (transactions, warnings) =
+        rules::lower(kept, config, no_imported_payee, omit_negative_amount)?;
 
     Ok(ImportOutcome {
         transactions,

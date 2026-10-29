@@ -10,6 +10,7 @@ use crate::error::ImportError;
 use crate::record::ImportRecord;
 use pactole_config::{Direction, ImportConfig, Rule};
 use regex::Regex;
+use rust_decimal::Decimal;
 
 /// Payee used when a transaction has neither a rule-provided payee nor a
 /// source payee. A transaction's payee is mandatory in Pactole, so a
@@ -18,12 +19,15 @@ const FALLBACK_PAYEE: &str = "Unknown";
 
 /// Lowers each [`ImportRecord`] into a balanced [`Transaction`], resolving the
 /// counter account (and optional canonical payee) through the configured
-/// rules.
+/// rules. Rules are evaluated in order; every matching rule is applied, and a
+/// payee set by one rule is visible to subsequent rules.
 ///
 /// Returns the transactions alongside any non-fatal warnings.
 pub(crate) fn lower(
     records: Vec<ImportRecord>,
     config: &ImportConfig,
+    no_imported_payee: bool,
+    omit_negative_amount: bool,
 ) -> Result<(Vec<Transaction>, Vec<ImportWarning>), ImportError> {
     // ---------------------------------------------
     // Validate the configuration (account names ok)
@@ -48,12 +52,16 @@ pub(crate) fn lower(
     // import immediately, rather than midway through the record list.
     let mut rule_accounts = Vec::with_capacity(config.rules.len());
     for rule in &config.rules {
-        let account = AccountName::new(&rule.counter_account).map_err(|source| {
-            ImportError::InvalidAccount {
-                account: rule.counter_account.clone(),
-                source,
-            }
-        })?;
+        let account = rule
+            .counter_account
+            .as_ref()
+            .map(|name| {
+                AccountName::new(name).map_err(|source| ImportError::InvalidAccount {
+                    account: name.clone(),
+                    source,
+                })
+            })
+            .transpose()?;
         rule_accounts.push(account);
     }
 
@@ -117,29 +125,32 @@ pub(crate) fn lower(
             None => bank_account.clone(),
         };
 
-        // Locate a matching rule
-        let rule_index = config.rules.iter().enumerate().position(|(index, rule)| {
-            matches_rule(
+        // Evaluate every rule in order. A rule's fixed payee replacement is
+        // visible to the following rules, while all other match fields remain
+        // properties of the imported source record.
+        let mut current_payee = record.payee.clone();
+        let mut counter_account = None;
+        for (index, rule) in config.rules.iter().enumerate() {
+            if matches_rule(
                 rule,
                 &record,
+                current_payee.as_deref(),
                 payee_regexes[index].as_ref(),
                 memo_regexes[index].as_ref(),
-            )
-        });
+            ) {
+                if let Some(Some(account)) = rule_accounts.get(index) {
+                    counter_account = Some(account.clone());
+                }
+                if let Some(rule_payee) = &rule.payee {
+                    current_payee = Some(rule_payee.clone());
+                }
+            }
+        }
 
-        // Evaluate the counter account
-        // Rule counter account, or default from config
-        let counter_account = rule_index
-            .and_then(|index| rule_accounts.get(index).cloned())
-            .unwrap_or_else(|| default_counter_account.clone());
+        let counter_account = counter_account.unwrap_or_else(|| default_counter_account.clone());
 
-        // Evaluate the payee
-        // Rule payee, or raw payee, or fallback value (with warning)
-        let rule_payee = rule_index
-            .and_then(|index| config.rules.get(index))
-            .and_then(|rule| rule.payee.clone());
-
-        let payee = rule_payee.or_else(|| record.payee.clone());
+        // Rule payee replacements, or the raw payee, or the fallback value.
+        let payee = current_payee;
         let payee = match payee {
             Some(payee) => payee,
             None => {
@@ -168,28 +179,43 @@ pub(crate) fn lower(
         if let Some(fitid) = &record.fitid {
             meta.insert(fitid_key.clone(), fitid.clone());
         }
-        if let (Some(key), Some(payee)) = (&payee_metadata_key, &record.payee) {
+        if !no_imported_payee && let (Some(key), Some(payee)) = (&payee_metadata_key, &record.payee)
+        {
             meta.insert(key.clone(), payee.clone());
         }
 
         let counter_posting = Posting {
             account: counter_account,
-            amount: Some(Amount {
-                number: -record.amount,
-                commodity: commodity.clone(),
-            }),
+            amount: if omit_negative_amount && -record.amount < Decimal::ZERO {
+                None
+            } else {
+                Some(Amount {
+                    number: -record.amount,
+                    commodity: commodity.clone(),
+                })
+            },
             transaction_cost: None,
             meta: Metadata::new(),
         };
 
         let bank_posting = Posting {
             account: bank_account.clone(),
-            amount: Some(Amount {
-                number: record.amount,
-                commodity,
-            }),
+            amount: if omit_negative_amount && record.amount < Decimal::ZERO {
+                None
+            } else {
+                Some(Amount {
+                    number: record.amount,
+                    commodity,
+                })
+            },
             transaction_cost: None,
             meta: Metadata::new(),
+        };
+
+        let postings = if record.amount < Decimal::ZERO {
+            vec![counter_posting, bank_posting]
+        } else {
+            vec![bank_posting, counter_posting]
         };
 
         transactions.push(Transaction {
@@ -198,7 +224,7 @@ pub(crate) fn lower(
             status: TransactionStatus::Cleared,
             payee: Some(payee),
             narration: record.memo.clone(),
-            postings: vec![counter_posting, bank_posting],
+            postings,
             tags: Vec::new(),
             links: Vec::new(),
             reference: record.reference.clone(),
@@ -215,11 +241,12 @@ pub(crate) fn lower(
 fn matches_rule(
     rule: &Rule,
     record: &ImportRecord,
+    current_payee: Option<&str>,
     payee_regex: Option<&Regex>,
     memo_regex: Option<&Regex>,
 ) -> bool {
     if let Some(needle) = &rule.payee_contains {
-        let haystack = record.payee.as_deref().unwrap_or("");
+        let haystack = current_payee.unwrap_or("");
         if !contains_ignore_case(haystack, needle) {
             return false;
         }
@@ -228,13 +255,13 @@ fn matches_rule(
     if let Some(values) = &rule.payee_in
         && !values
             .iter()
-            .any(|value| equals_ignore_case(record.payee.as_deref().unwrap_or(""), value))
+            .any(|value| equals_ignore_case(current_payee.unwrap_or(""), value))
     {
         return false;
     }
 
     if let Some(regex) = payee_regex
-        && !regex.is_match(record.payee.as_deref().unwrap_or(""))
+        && !regex.is_match(current_payee.unwrap_or(""))
     {
         return false;
     }

@@ -33,7 +33,7 @@ directive   := header newline property* posting*
 ```
 
 Each directive starts with a header (`open`, `close`, `commodity`, `price`,
-`balance`, `transaction`, `payee` or `include`), followed by a newline,
+`balance`, `transaction`, `payee`, `include`, `pushtag` or `poptag`), followed by a newline,
 then an optional block of metadata (`property`) and — for transactions
 only — a sequence of postings. Postings may only appear under a
 `transaction` directive; the grammar rejects them under any other
@@ -56,6 +56,8 @@ never as metadata of the directive itself.
 | `balance`     | `DATE balance ACCOUNT NUMBER [~ TOLERANCE] COMMODITY_NAME`         |
 | `transaction` | `DATE[=EFFECTIVE_DATE] STATUS? "payee" ["narration"] TAGS/LINKS [(reference)]` |
 | `include`     | `include "path"`                                                    |
+| `pushtag`     | `pushtag #TAG`                                                        |
+| `poptag`      | `poptag #TAG`                                                         |
 
 Note `payee` is the only directive with no leading date: unlike an
 account or a commodity, a payee has no temporal life cycle (it is never
@@ -435,10 +437,10 @@ files:
 
 For reference, a summary of the deliberate deviations from Beancount:
 
-- Only 8 directives are supported (`open`, `close`, `commodity`, `price`,
-  `payee`, `balance`, `transaction`, `include`); `pad`, `note`,
-  `event`, `document`, `query`, `custom`, `option`, `plugin`,
-  `pushtag`/`poptag` do not exist.
+- The supported directives include `pushtag`/`poptag` in addition to `open`,
+  `close`, `commodity`, `price`, `payee`, `balance`, `transaction` and `include`;
+  `pad`, `note`, `event`, `document`, `query`, `custom`, `option` and `plugin`
+  are not supported.
 - `payee` is mandatory in a transaction; `narration` is optional (the
   reverse of the Beancount convention). A `payee` *declaration* (this
   file's `payee "name"` directive, borrowed from Ledger-cli) does not

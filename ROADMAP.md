@@ -335,8 +335,8 @@ tests, lowering, canonical printing, LSP support, documentation.
 
 ### 3.4 — `pushtag` and `poptag`
 
-- [ ] Add the two directives, and make the tags visible in the reports.
-- [ ] Decide how they interact with the tags already carried by transactions.
+- [x] Add the two directives, and make the tags visible in the reports.
+- [x] Decide how they interact with the tags already carried by transactions.
 
 ### 3.5 — `option` and `custom`
 

@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "https://raw.githubusercontent.com/etienne-monier/pactole/develop/schemas/pactole.schema.json",
+  "title": "Pactole configuration",
+  "description": "Schema for Pactole's pactole.toml configuration file.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "validation": { "$ref": "#/definitions/validation" },
+    "declaration": { "$ref": "#/definitions/declaration" },
+    "format": { "$ref": "#/definitions/format" },
+    "reports": { "$ref": "#/definitions/reports" },
+    "import": { "$ref": "#/definitions/import" }
+  },
+  "definitions": {
+    "validation": {
+      "type": "object",
+      "description": "Severity of configurable business validation checks.",
+      "additionalProperties": false,
+      "properties": {
+        "payee": {
+          "type": "string",
+          "description": "Severity of the undeclared-payee check.",
+          "enum": ["off", "warn", "error"],
+          "default": "error"
+        },
+        "unused": {
+          "type": "string",
+          "description": "Severity of unused declaration checks.",
+          "enum": ["off", "warn", "error"],
+          "default": "warn"
+        }
+      }
+    },
+    "declaration": {
+      "type": "object",
+      "description": "Optional files used by the language server for new declarations.",
+      "additionalProperties": false,
+      "properties": {
+        "payees": { "type": "string", "description": "File receiving new payee declarations." },
+        "accounts": { "type": "string", "description": "File receiving new account declarations." },
+        "commodities": { "type": "string", "description": "File receiving new commodity declarations." }
+      }
+    },
+    "format": {
+      "type": "object",
+      "description": "Options for Pactole's canonical formatter.",
+      "additionalProperties": false,
+      "properties": {
+        "posting_width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Column at which posting amounts are aligned.",
+          "default": 50
+        }
+      }
+    },
+    "reports": {
+      "type": "object",
+      "description": "Account roots and accounts used by financial reports.",
+      "additionalProperties": false,
+      "properties": {
+        "assets": { "$ref": "#/definitions/string-list", "description": "Roots classified as assets." },
+        "liabilities": { "$ref": "#/definitions/string-list", "description": "Roots classified as liabilities." },
+        "equity": { "$ref": "#/definitions/string-list", "description": "Roots classified as equity." },
+        "income": { "$ref": "#/definitions/string-list", "description": "Roots classified as income." },
+        "expenses": { "$ref": "#/definitions/string-list", "description": "Roots classified as expenses." },
+        "uncategorized": { "$ref": "#/definitions/string-list", "description": "Accounts considered uncategorized by the expenses report." }
+      }
+    },
+    "import": {
+      "type": "object",
+      "description": "Options for importing external bank statements.",
+      "additionalProperties": false,
+      "properties": {
+        "bank_account": { "type": "string", "description": "Fallback Pactole account for the imported statement." },
+        "accounts": {
+          "type": "object",
+          "description": "Mapping from source account identifiers to Pactole accounts.",
+          "additionalProperties": { "type": "string" }
+        },
+        "currency": { "type": "string", "description": "Fallback commodity when the source has no currency." },
+        "default_counter_account": { "type": "string", "description": "Counter account for transactions matched by no rule." },
+        "payee_metadata_key": { "type": "string", "description": "Metadata key preserving the original source payee." },
+        "no_imported_payee": { "type": "boolean", "description": "Do not preserve the source payee in transaction metadata.", "default": false },
+        "omit_negative_amount": { "type": "boolean", "description": "Omit the negative posting amount and let Pactole infer it.", "default": false },
+        "rules": {
+          "type": "array",
+          "description": "Rules evaluated in order for imported transactions.",
+          "items": { "$ref": "#/definitions/rule" }
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "payee_contains": { "type": "string" },
+        "payee_in": { "$ref": "#/definitions/string-list" },
+        "payee_regex": { "type": "string" },
+        "memo_contains": { "type": "string" },
+        "memo_in": { "$ref": "#/definitions/string-list" },
+        "memo_regex": { "type": "string" },
+        "trntype": { "type": "string" },
+        "trntype_in": { "$ref": "#/definitions/string-list" },
+        "account": { "type": "string" },
+        "direction": { "type": "string", "enum": ["debit", "credit"] },
+        "counter_account": { "type": "string" },
+        "payee": { "type": "string" }
+      }
+    },
+    "string-list": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use chrono::NaiveDate;
 use pactole_core::{Transaction, TransactionStatus};
-use pactole_import::{Direction, ImportConfig, ImportError, ImportWarning, Rule};
+use pactole_import::{Direction, ImportConfig, ImportError, ImportOptions, ImportWarning, Rule};
 use rust_decimal::Decimal;
 
 const XML: &str = include_str!("fixtures/statement_xml.ofx");
@@ -19,6 +19,8 @@ fn base_config() -> ImportConfig {
         currency: None,
         default_counter_account: "Depenses:A-Classer".to_string(),
         payee_metadata_key: None,
+        no_imported_payee: false,
+        omit_negative_amount: false,
         rules: Vec::new(),
     }
 }
@@ -29,6 +31,17 @@ fn dec(value: &str) -> Decimal {
 
 fn fitid(transaction: &Transaction) -> Option<&str> {
     transaction.meta.get("fitid").map(String::as_str)
+}
+
+fn posting_for_account<'a>(
+    transaction: &'a Transaction,
+    account: &str,
+) -> &'a pactole_core::Posting {
+    transaction
+        .postings
+        .iter()
+        .find(|posting| posting.account.as_str() == account)
+        .expect("posting for account")
 }
 
 fn no_fitids() -> HashSet<String> {
@@ -50,7 +63,7 @@ fn imports_an_xml_bank_statement() {
     assert_eq!(debit.narration.as_deref(), Some("Courses"));
     assert_eq!(fitid(debit), Some("2026090300001"));
 
-    // Counter account (no matching rule) first, then the imported account.
+    // The positive posting comes first, then the negative imported account.
     assert_eq!(debit.postings[0].account.as_str(), "Depenses:A-Classer");
     let counter = debit.postings[0].amount.as_ref().unwrap();
     assert_eq!(counter.number, dec("45.30"));
@@ -64,9 +77,76 @@ fn imports_an_xml_bank_statement() {
     let credit = &outcome.transactions[1];
     assert_eq!(credit.payee.as_deref(), Some("ACME CORP"));
     assert_eq!(
-        credit.postings[1].amount.as_ref().unwrap().number,
+        credit.postings[0].amount.as_ref().unwrap().number,
         dec("2000.00")
     );
+}
+
+#[test]
+fn filters_from_date_and_sorts_oldest_first() {
+    let outcome = pactole_import::import_ofx_with_options(
+        XML,
+        &base_config(),
+        &no_fitids(),
+        ImportOptions {
+            from: Some(NaiveDate::from_ymd_opt(2026, 9, 5).unwrap()),
+            no_imported_payee: None,
+            omit_negative_amount: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(outcome.transactions.len(), 1);
+    assert_eq!(
+        outcome.transactions[0].date,
+        NaiveDate::from_ymd_opt(2026, 9, 5).unwrap()
+    );
+}
+
+#[test]
+fn option_can_disable_configured_imported_payee_metadata() {
+    let config = ImportConfig {
+        payee_metadata_key: Some("imported-payee".to_string()),
+        ..base_config()
+    };
+
+    let outcome = pactole_import::import_ofx_with_options(
+        XML,
+        &config,
+        &no_fitids(),
+        ImportOptions {
+            from: None,
+            no_imported_payee: Some(true),
+            omit_negative_amount: None,
+        },
+    )
+    .unwrap();
+
+    assert!(!outcome.transactions[0].meta.contains_key("imported-payee"));
+    assert!(outcome.transactions[0].meta.contains_key("fitid"));
+}
+
+#[test]
+fn omits_the_negative_posting_amount_when_requested() {
+    let outcome = pactole_import::import_ofx_with_options(
+        XML,
+        &base_config(),
+        &no_fitids(),
+        ImportOptions {
+            from: None,
+            no_imported_payee: None,
+            omit_negative_amount: Some(true),
+        },
+    )
+    .unwrap();
+
+    let debit = &outcome.transactions[0];
+    assert!(debit.postings[0].amount.is_some());
+    assert!(debit.postings[1].amount.is_none());
+
+    let credit = &outcome.transactions[1];
+    assert!(credit.postings[0].amount.is_some());
+    assert!(credit.postings[1].amount.is_none());
 }
 
 #[test]
@@ -141,15 +221,21 @@ fn maps_each_statement_account_to_its_configured_pactole_account() {
     // Both statements are collected in document order, each transaction
     // posted to the account mapped from its statement's ACCTID.
     assert_eq!(
-        outcome.transactions[0].postings[1].account.as_str(),
+        posting_for_account(&outcome.transactions[0], "Actifs:Courant")
+            .account
+            .as_str(),
         "Actifs:Courant"
     );
     assert_eq!(
-        outcome.transactions[1].postings[1].account.as_str(),
+        posting_for_account(&outcome.transactions[1], "Actifs:Courant")
+            .account
+            .as_str(),
         "Actifs:Courant"
     );
     assert_eq!(
-        outcome.transactions[2].postings[1].account.as_str(),
+        posting_for_account(&outcome.transactions[2], "Actifs:Epargne")
+            .account
+            .as_str(),
         "Actifs:Epargne"
     );
 }
@@ -173,15 +259,21 @@ fn falls_back_to_the_bank_account_once_per_unmapped_statement_account() {
     );
 
     assert_eq!(
-        outcome.transactions[0].postings[1].account.as_str(),
+        posting_for_account(&outcome.transactions[0], "Actifs:Banque")
+            .account
+            .as_str(),
         "Actifs:Banque"
     );
     assert_eq!(
-        outcome.transactions[1].postings[1].account.as_str(),
+        posting_for_account(&outcome.transactions[1], "Actifs:Banque")
+            .account
+            .as_str(),
         "Actifs:Banque"
     );
     assert_eq!(
-        outcome.transactions[2].postings[1].account.as_str(),
+        posting_for_account(&outcome.transactions[2], "Actifs:Epargne")
+            .account
+            .as_str(),
         "Actifs:Epargne"
     );
 }
@@ -196,7 +288,12 @@ fn stays_silent_without_any_account_mapping() {
     assert!(outcome.warnings.is_empty());
     assert_eq!(outcome.transactions.len(), 3);
     for transaction in &outcome.transactions {
-        assert_eq!(transaction.postings[1].account.as_str(), "Actifs:Banque");
+        assert_eq!(
+            posting_for_account(transaction, "Actifs:Banque")
+                .account
+                .as_str(),
+            "Actifs:Banque"
+        );
     }
 }
 
@@ -329,7 +426,7 @@ fn skips_transactions_already_known() {
 }
 
 #[test]
-fn applies_the_first_matching_rule() {
+fn applies_matching_rules_in_order() {
     let config = ImportConfig {
         rules: vec![
             Rule {
@@ -343,7 +440,7 @@ fn applies_the_first_matching_rule() {
                 trntype_in: None,
                 account: None,
                 direction: None,
-                counter_account: "Depenses:Alimentation".to_string(),
+                counter_account: Some("Depenses:Alimentation".to_string()),
                 payee: Some("Carrefour".to_string()),
             },
             Rule {
@@ -357,7 +454,7 @@ fn applies_the_first_matching_rule() {
                 trntype_in: None,
                 account: None,
                 direction: Some(Direction::Credit),
-                counter_account: "Revenus:Salaire".to_string(),
+                counter_account: Some("Revenus:Salaire".to_string()),
                 payee: None,
             },
         ],
@@ -374,8 +471,56 @@ fn applies_the_first_matching_rule() {
     assert_eq!(groceries.payee.as_deref(), Some("Carrefour"));
 
     let salary = &outcome.transactions[1];
-    assert_eq!(salary.postings[0].account.as_str(), "Revenus:Salaire");
+    assert_eq!(
+        posting_for_account(salary, "Revenus:Salaire")
+            .account
+            .as_str(),
+        "Revenus:Salaire"
+    );
     assert_eq!(salary.payee.as_deref(), Some("ACME CORP"));
+}
+
+#[test]
+fn applies_matching_rules_in_order_to_the_transformed_payee() {
+    let config = ImportConfig {
+        rules: vec![
+            Rule {
+                payee_contains: Some("carrefour".to_string()),
+                payee_in: None,
+                payee_regex: None,
+                memo_contains: None,
+                memo_in: None,
+                memo_regex: None,
+                trntype: None,
+                trntype_in: None,
+                account: None,
+                direction: None,
+                counter_account: Some("Depenses:A-Classer".to_string()),
+                payee: Some("boulangerie 1".to_string()),
+            },
+            Rule {
+                payee_contains: Some("boulangerie".to_string()),
+                payee_in: None,
+                payee_regex: None,
+                memo_contains: None,
+                memo_in: None,
+                memo_regex: None,
+                trntype: None,
+                trntype_in: None,
+                account: None,
+                direction: None,
+                counter_account: Some("Depenses:Pain".to_string()),
+                payee: None,
+            },
+        ],
+        ..base_config()
+    };
+
+    let outcome = pactole_import::import_ofx(XML, &config, &no_fitids()).unwrap();
+    let transaction = &outcome.transactions[0];
+
+    assert_eq!(transaction.payee.as_deref(), Some("boulangerie 1"));
+    assert_eq!(transaction.postings[0].account.as_str(), "Depenses:Pain");
 }
 
 #[test]
@@ -393,7 +538,7 @@ fn applies_regex_list_and_account_rules_and_preserves_source_payee() {
             trntype_in: None,
             account: Some("00012345678".to_string()),
             direction: None,
-            counter_account: "Depenses:Alimentation".to_string(),
+            counter_account: Some("Depenses:Alimentation".to_string()),
             payee: Some("Carrefour".to_string()),
         }],
         ..base_config()
@@ -411,7 +556,9 @@ fn applies_regex_list_and_account_rules_and_preserves_source_payee() {
         "Depenses:Alimentation"
     );
     assert_eq!(
-        outcome.transactions[1].postings[0].account.as_str(),
+        posting_for_account(&outcome.transactions[1], "Depenses:A-Classer")
+            .account
+            .as_str(),
         "Depenses:A-Classer"
     );
 }

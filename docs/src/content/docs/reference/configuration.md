@@ -168,6 +168,8 @@ fails with a clear message when no layer defines this section.
 | `default_counter_account` | The counter account of the transactions that no rule matches (e.g. `Expenses:To-Be-Classified`). Required. |
 | `accounts` | A table mapping a source account identifier (for OFX, the statement's `ACCTID`) to a Pactole account. |
 | `payee_metadata_key` | Optional metadata key under which the original source payee is preserved, even when a rule replaces the displayed payee. |
+| `no_imported_payee` | When `true`, do not preserve the source payee in transaction metadata. The `import-ofx --no-imported-payee` flag overrides this setting for one run. |
+| `omit_negative_amount` | When `true`, omit the negative posting amount and let Pactole infer it from the positive posting. The `import-ofx --omit-negative-amount` flag overrides this setting for one run. |
 
 ```toml
 [import]
@@ -185,12 +187,13 @@ A transaction whose source account is absent from `accounts` is posted to
 ### `[[import.rules]]`
 
 Rules categorize the imported transactions. They are evaluated in order and
-**the first match wins**; a transaction matched by no rule uses
-`default_counter_account`.
+**every matching rule is applied**. A rule may replace the payee seen by later
+rules; the last matching rule that defines `counter_account` wins. A
+transaction matched by no rule uses `default_counter_account`.
 
 | Key | Meaning |
 |---|---|
-| `counter_account` | The Pactole account to post the opposite side to. Required. |
+| `counter_account` | Optional Pactole account to post the opposite side to. If omitted, the account selected by earlier rules (or the default account) is preserved. |
 | `payee_contains` | Matches, case-insensitively, a substring of the source payee or name. |
 | `payee_in` | Matches the source payee exactly against a case-insensitive list. |
 | `payee_regex` | Matches the source payee with a case-insensitive regular expression. |
@@ -201,11 +204,10 @@ Rules categorize the imported transactions. They are evaluated in order and
 | `trntype_in` | Matches the source transaction type against a case-insensitive list. |
 | `account` | Matches the source account identifier, such as an OFX `ACCTID`. |
 | `direction` | Matches the direction of the movement: `debit` (money leaving the account) or `credit` (money entering it). |
-| `payee` | The canonical payee to use instead of the raw source payee. |
+| `payee` | The fixed canonical payee to use from this rule onward instead of the current payee. |
 
-All the criteria but `counter_account` are optional, and a rule with no
-criterion at all matches every transaction — useful as a catch-all placed
-after the more specific rules.
+All criteria are optional, and a rule with no criterion at all matches every
+transaction — useful as a catch-all placed after the more specific rules.
 
 ```toml
 [[import.rules]]

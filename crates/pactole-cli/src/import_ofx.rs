@@ -3,18 +3,30 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use chrono::NaiveDate;
 use pactole_core::Entry;
 use pactole_storage_fs::FsSourceLoader;
 
 use pactole_config::Config;
 
-pub(crate) fn run(
-    file: PathBuf,
-    into: Option<PathBuf>,
-    account: Option<String>,
-    write: bool,
-    config: &Config,
-) -> ExitCode {
+pub(crate) struct Options {
+    pub(crate) from: Option<NaiveDate>,
+    pub(crate) into: Option<PathBuf>,
+    pub(crate) account: Option<String>,
+    pub(crate) write: bool,
+    pub(crate) no_imported_payee: bool,
+    pub(crate) omit_negative_amount: bool,
+}
+
+pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode {
+    let Options {
+        from,
+        into,
+        account,
+        write,
+        no_imported_payee,
+        omit_negative_amount,
+    } = options;
     let Some(mut import_config) = config.import.clone() else {
         eprintln!(
             "error: no `[import]` section configured; add one to `pactole.toml` \
@@ -63,7 +75,16 @@ pub(crate) fn run(
         }
     };
 
-    let outcome = match pactole_import::import_ofx(&source, &import_config, &known_fitids) {
+    let outcome = match pactole_import::import_ofx_with_options(
+        &source,
+        &import_config,
+        &known_fitids,
+        pactole_import::ImportOptions {
+            from,
+            no_imported_payee: no_imported_payee.then_some(true),
+            omit_negative_amount: omit_negative_amount.then_some(true),
+        },
+    ) {
         Ok(outcome) => outcome,
         Err(err) => {
             eprintln!("error: {err}");

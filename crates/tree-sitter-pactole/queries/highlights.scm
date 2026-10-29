@@ -9,6 +9,8 @@
 "payee" @keyword
 "balance" @keyword
 "include" @keyword
+"pushtag" @keyword
+"poptag" @keyword
 
 ; Transaction status flag (* ! ?)
 (status) @keyword.operator

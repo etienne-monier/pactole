@@ -40,6 +40,13 @@ pub struct ImportConfig {
     /// payee.
     pub payee_metadata_key: Option<String>,
 
+    /// Do not preserve the source payee in transaction metadata.
+    pub no_imported_payee: bool,
+
+    /// Omit the amount of the negative posting so Pactole infers it from the
+    /// positive posting.
+    pub omit_negative_amount: bool,
+
     /// Rules evaluated in order, first match wins, used to determine the
     /// counter account and optionally the canonical payee of each
     /// transaction.
@@ -87,8 +94,10 @@ pub struct Rule {
     pub direction: Option<Direction>,
 
     /// Pactole counter account to post the opposite side of a matching
-    /// transaction to (e.g. `Depenses:Alimentation`).
-    pub counter_account: String,
+    /// transaction to (e.g. `Depenses:Alimentation`). When omitted, the
+    /// rule leaves the counter account chosen by earlier rules (or the
+    /// default one) untouched.
+    pub counter_account: Option<String>,
 
     /// Optional canonical payee to use instead of the raw source payee.
     pub payee: Option<String>,

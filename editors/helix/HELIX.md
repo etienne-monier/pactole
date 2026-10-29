@@ -117,6 +117,35 @@ auto-format = true
 `hx --health pactole` should then show a `✓` next to the resolved
 `pactole` binary path under "Configured formatter".
 
+## 6. Validate `pactole.toml` with its schema (optional)
+
+Helix does not validate TOML schemas itself. Install [Taplo](https://taplo.tamasfe.dev/)
+and register its language server in `languages.toml`:
+
+```toml
+[[language-server]]
+name = "taplo"
+command = "taplo"
+args = ["lsp", "stdio"]
+
+[[language]]
+name = "toml"
+language-servers = ["taplo"]
+```
+
+The repository includes a `.taplo.toml` which associates `pactole.toml` with
+[`schemas/pactole.schema.json`](../../schemas/pactole.schema.json). Taplo will
+therefore provide completion and diagnostics for the Pactole-specific TOML
+keys when Helix opens the project. The same `.taplo.toml` configuration is
+also usable from Zed.
+
+If the schema is not available from the project root, add this directive as
+the first line of `pactole.toml` instead:
+
+```toml
+#:schema ./schemas/pactole.schema.json
+```
+
 ## Notes
 
 - If Helix segfaults or behaves oddly after regenerating the grammar,

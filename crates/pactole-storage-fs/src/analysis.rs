@@ -81,6 +81,28 @@ pub struct ParsedInclude {
     pub path: String,
 }
 
+/// A source-order tag directive. Tag directives are syntax-level state
+/// transitions and deliberately do not belong to `pactole-core`'s domain
+/// journal; transactions receive their effective tags during project analysis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTagDirective {
+    /// The span of the directive in its source file.
+    pub span: Span,
+    /// Whether this directive adds or removes the tag.
+    pub kind: TagDirectiveKind,
+    /// Tag name without the leading `#`.
+    pub tag: String,
+}
+
+/// The operation performed by a parsed tag directive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagDirectiveKind {
+    /// Add the tag to the active set.
+    Push,
+    /// Remove the tag from the active set.
+    Pop,
+}
+
 /// A diagnostic produced while lowering a syntactically valid directive into
 /// a domain entry (e.g. an invalid date, an unknown account name, an
 /// unbalanced transaction, ...).
@@ -170,6 +192,7 @@ fn business_severity(
     options: &ValidationOptions,
 ) -> Option<DiagnosticSeverity> {
     let level = match code {
+        DiagnosticCode::TagNotActive => return Some(DiagnosticSeverity::Warning),
         DiagnosticCode::PayeeNotDeclared => options.payee,
         DiagnosticCode::AccountUnused
         | DiagnosticCode::CommodityUnused
@@ -197,6 +220,7 @@ pub struct ParsedFile {
     document: ParsedDocument,
     entries: Vec<ParsedEntry>,
     includes: Vec<ParsedInclude>,
+    tag_directives: Vec<ParsedTagDirective>,
     lowering_diagnostics: Vec<LoweringDiagnostic>,
     missing: MissingData,
     lost_directives: usize,
@@ -221,6 +245,11 @@ impl ParsedFile {
     /// read or parsed.
     pub fn includes(&self) -> &[ParsedInclude] {
         &self.includes
+    }
+
+    /// The `pushtag`/`poptag` directives in document order.
+    pub fn tag_directives(&self) -> &[ParsedTagDirective] {
+        &self.tag_directives
     }
 
     /// The syntax diagnostics collected while parsing (`ERROR`/`MISSING`
@@ -274,6 +303,7 @@ pub fn analyze_file(source: &str) -> ParsedFile {
 
     let mut entries = Vec::new();
     let mut includes = Vec::new();
+    let mut tag_directives = Vec::new();
     let mut lowering_diagnostics = Vec::new();
     // What this file's analysis could neither confirm nor rule out: the
     // names the lost content may have declared or used.
@@ -328,6 +358,30 @@ pub fn analyze_file(source: &str) -> ParsedFile {
                     }
                     includes.push(ParsedInclude { span, path });
                 }
+                Ok(DirectiveOutcome::PushTag(tag)) => {
+                    if degraded {
+                        lost_directives += 1;
+                        uncertainty::record_unknown(&mut missing, child, document.source());
+                    } else {
+                        tag_directives.push(ParsedTagDirective {
+                            span,
+                            kind: TagDirectiveKind::Push,
+                            tag,
+                        });
+                    }
+                }
+                Ok(DirectiveOutcome::PopTag(tag)) => {
+                    if degraded {
+                        lost_directives += 1;
+                        uncertainty::record_unknown(&mut missing, child, document.source());
+                    } else {
+                        tag_directives.push(ParsedTagDirective {
+                            span,
+                            kind: TagDirectiveKind::Pop,
+                            tag,
+                        });
+                    }
+                }
                 Err(err) => {
                     lost_directives += 1;
                     if degraded {
@@ -348,6 +402,7 @@ pub fn analyze_file(source: &str) -> ParsedFile {
         document,
         entries,
         includes,
+        tag_directives,
         lowering_diagnostics,
         missing,
         lost_directives,
@@ -521,7 +576,7 @@ pub struct AnalyzedProject {
     files: Vec<AnalyzedFile>,
     include_issues: Vec<IncludeIssue>,
     business_diagnostics: Vec<BusinessDiagnostic>,
-    source_order: Vec<EntryRef>,
+    source_order: Vec<SourceRef>,
     validated_journal: Option<Journal>,
     validation: ValidationOptions,
     partial: Option<PartialAnalysis>,
@@ -656,16 +711,9 @@ impl AnalyzedProject {
     }
 
     fn source_order_journal(&self) -> Journal {
+        let (entries, _) = source_order_entries(&self.files, &self.source_order, false);
         Journal {
-            entries: self
-                .source_order
-                .iter()
-                .map(|entry_ref| {
-                    self.files[entry_ref.file_index].file.entries()[entry_ref.entry_index]
-                        .entry
-                        .clone()
-                })
-                .collect(),
+            entries: entries.into_iter().map(|entry| entry.entry).collect(),
         }
     }
 }
@@ -972,31 +1020,35 @@ struct EntryRef {
     entry_index: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct TagRef {
+    file_index: usize,
+    tag_index: usize,
+}
+
+enum SourceRef {
+    Entry(EntryRef),
+    Tag(TagRef),
+}
+
 enum SourceItem {
     Entry(usize),
     Include(ParsedInclude),
+    Tag(usize),
 }
 
 fn validate_project(
     files: &[AnalyzedFile],
-    source_order: &[EntryRef],
+    source_order: &[SourceRef],
     validation: &ValidationOptions,
     missing: &MissingData,
 ) -> (Vec<BusinessDiagnostic>, Option<Journal>) {
-    let located_entries: Vec<LocatedEntry> = source_order
-        .iter()
-        .map(|entry_ref| {
-            let file = &files[entry_ref.file_index];
-            let entry = &file.file.entries()[entry_ref.entry_index];
-            LocatedEntry {
-                path: file.path.clone(),
-                span: entry.span,
-                spans: entry.spans.clone(),
-                entry: entry.entry.clone(),
-            }
-        })
-        .collect();
-
+    // A lost directive may have changed the active-tag set, so an inactive
+    // `poptag` cannot be proven while the project is partial.
+    let tags_are_complete =
+        !missing.everything && files.iter().all(|file| file.file.lost_directives() == 0);
+    let (located_entries, tag_diagnostics) =
+        source_order_entries(files, source_order, tags_are_complete);
     let journal = Journal {
         entries: located_entries
             .iter()
@@ -1022,6 +1074,7 @@ fn validate_project(
     // cleanup hints, reported after the problems that break the journal.
     let mut diagnostics: Vec<BusinessDiagnostic> =
         report.issues.iter().map(to_diagnostic).collect();
+    diagnostics.extend(tag_diagnostics);
     diagnostics.extend(unused_issues.iter().map(to_diagnostic));
 
     // Warnings do not prevent a validated journal: only error-severity
@@ -1035,6 +1088,70 @@ fn validate_project(
     };
 
     (diagnostics, validated_journal)
+}
+
+/// Applies source-order tag inheritance without materializing the directives
+/// onto the source text. The effective tags are carried by domain transactions
+/// for reports and filters, while the original `pushtag`/`poptag` directives
+/// remain available in each [`ParsedFile`].
+fn source_order_entries(
+    files: &[AnalyzedFile],
+    source_order: &[SourceRef],
+    report_tag_diagnostics: bool,
+) -> (Vec<LocatedEntry>, Vec<BusinessDiagnostic>) {
+    let mut active = Vec::new();
+    let mut entries = Vec::new();
+    let mut diagnostics = Vec::new();
+
+    for source_ref in source_order {
+        match source_ref {
+            SourceRef::Tag(tag_ref) => {
+                let file = &files[tag_ref.file_index];
+                let tag = &file.file.tag_directives()[tag_ref.tag_index];
+                match tag.kind {
+                    TagDirectiveKind::Push => {
+                        if !active.iter().any(|existing| existing == &tag.tag) {
+                            active.push(tag.tag.clone());
+                        }
+                    }
+                    TagDirectiveKind::Pop => {
+                        if !active.iter().any(|existing| existing == &tag.tag) {
+                            if report_tag_diagnostics {
+                                diagnostics.push(BusinessDiagnostic {
+                                    path: file.path.clone(),
+                                    span: tag.span,
+                                    code: DiagnosticCode::TagNotActive,
+                                    message: format!("tag `#{}` is not active", tag.tag),
+                                });
+                            }
+                        } else {
+                            active.retain(|existing| existing != &tag.tag);
+                        }
+                    }
+                }
+            }
+            SourceRef::Entry(entry_ref) => {
+                let file = &files[entry_ref.file_index];
+                let parsed = &file.file.entries()[entry_ref.entry_index];
+                let mut entry = LocatedEntry {
+                    path: file.path.clone(),
+                    span: parsed.span,
+                    spans: parsed.spans.clone(),
+                    entry: parsed.entry.clone(),
+                };
+                if let Entry::Transaction(transaction) = &mut entry.entry {
+                    for tag in &active {
+                        if !transaction.tags.iter().any(|existing| existing == tag) {
+                            transaction.tags.push(tag.clone());
+                        }
+                    }
+                }
+                entries.push(entry);
+            }
+        }
+    }
+
+    (entries, diagnostics)
 }
 
 /// Aggregates the uncertainty of every analyzed file into a single
@@ -1111,26 +1228,36 @@ const MAX_INCLUDE_DEPTH: usize = 256;
 fn source_items(file: &ParsedFile) -> Vec<SourceItem> {
     let mut entries = file.entries().iter().enumerate().peekable();
     let mut includes = file.includes().iter().cloned().peekable();
+    let mut tags = file.tag_directives().iter().enumerate().peekable();
     let mut items = Vec::new();
 
-    while entries.peek().is_some() || includes.peek().is_some() {
-        let take_entry = match (entries.peek(), includes.peek()) {
-            (Some((_, entry)), Some(include)) => entry.span.start.byte <= include.span.start.byte,
-            (Some(_), None) => true,
-            (None, Some(_)) => false,
-            (None, None) => break,
+    while entries.peek().is_some() || includes.peek().is_some() || tags.peek().is_some() {
+        let next_entry = entries.peek().map(|(_, entry)| entry.span.start.byte);
+        let next_include = includes.peek().map(|include| include.span.start.byte);
+        let next_tag = tags.peek().map(|(_, tag)| tag.span.start.byte);
+        let Some(next) = [next_entry, next_include, next_tag]
+            .into_iter()
+            .flatten()
+            .min()
+        else {
+            break;
         };
 
-        if take_entry {
+        if next_entry == Some(next) {
             let Some((entry_index, _)) = entries.next() else {
                 break;
             };
             items.push(SourceItem::Entry(entry_index));
-        } else {
+        } else if next_include == Some(next) {
             let Some(include) = includes.next() else {
                 break;
             };
             items.push(SourceItem::Include(include));
+        } else {
+            let Some((tag_index, _)) = tags.next() else {
+                break;
+            };
+            items.push(SourceItem::Tag(tag_index));
         }
     }
 
@@ -1189,7 +1316,7 @@ fn visit(
     loader: &dyn SourceLoader,
     files: &mut Vec<AnalyzedFile>,
     include_issues: &mut Vec<IncludeIssue>,
-    source_order: &mut Vec<EntryRef>,
+    source_order: &mut Vec<SourceRef>,
     in_progress: &mut Vec<PathBuf>,
     depth: usize,
 ) -> Result<(), SourceLoadError> {
@@ -1219,10 +1346,17 @@ fn visit(
     for item in items {
         let include = match item {
             SourceItem::Entry(entry_index) => {
-                source_order.push(EntryRef {
+                source_order.push(SourceRef::Entry(EntryRef {
                     file_index,
                     entry_index,
-                });
+                }));
+                continue;
+            }
+            SourceItem::Tag(tag_index) => {
+                source_order.push(SourceRef::Tag(TagRef {
+                    file_index,
+                    tag_index,
+                }));
                 continue;
             }
             SourceItem::Include(include) => include,
@@ -1341,6 +1475,96 @@ mod tests {
         assert_eq!(entry.span.start.row, 0);
         assert_eq!(entry.span.start.byte, 0);
         assert_eq!(entry.span.end.byte, source.len());
+    }
+
+    #[test]
+    fn inherited_tags_follow_global_include_source_order() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 commodity EUR\n\
+2026-01-01 open Assets:Checking\n\
+2026-01-01 open Expenses:Food\n\
+payee \"Shop\"\n\
+pushtag #year\n\
+include \"transactions.pactole\"\n\
+poptag #year\n",
+        );
+        loader.insert(
+            "/journal/transactions.pactole",
+            "2026-01-02 * \"Shop\" #year\n\
+\u{20}\u{20}Expenses:Food 10 EUR\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n",
+        );
+
+        let project = analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader)
+            .expect("the in-memory journal should load");
+        let journal = project
+            .validated_journal()
+            .expect("the journal should validate");
+        let transaction = journal
+            .entries
+            .iter()
+            .find_map(|entry| match entry {
+                Entry::Transaction(transaction) => Some(transaction),
+                _ => None,
+            })
+            .expect("the included transaction should be present");
+        assert_eq!(transaction.tags, vec!["year"]);
+        assert_eq!(project.files()[0].file.tag_directives().len(), 2);
+    }
+
+    #[test]
+    fn poptag_without_an_active_tag_is_a_warning() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 commodity EUR\n\
+2026-01-01 open Assets:Checking\n\
+2026-01-01 open Expenses:Food\n\
+payee \"Shop\"\n\
+poptag #missing\n\
+2026-01-02 * \"Shop\"\n\
+\u{20}\u{20}Expenses:Food 10 EUR\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n",
+        );
+
+        let project = analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader)
+            .expect("the in-memory journal should load");
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::TagNotActive)
+            .expect("an inactive tag should be diagnosed");
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        assert!(project.validated_journal().is_ok());
+    }
+
+    #[test]
+    fn partial_analysis_suppresses_uncertain_inactive_tag_diagnostics() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 commodity EUR\n\
+2026-01-01 open Assets:Checking\n\
+2026-01-01 open Expenses:Food\n\
+payee \"Shop\"\n\
+not a valid directive\n\
+poptag #missing\n\
+2026-01-02 * \"Shop\"\n\
+\u{20}\u{20}Expenses:Food 10 EUR\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n",
+        );
+
+        let project = analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader)
+            .expect("the in-memory journal should load");
+        assert!(project.is_partial());
+        assert!(
+            !project
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::TagNotActive)
+        );
     }
 
     #[test]

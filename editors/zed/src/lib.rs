@@ -18,6 +18,30 @@ impl zed::Extension for PactoleExtension {
     ) -> Result<Command> {
         let settings = LspSettings::for_worktree(language_server_id.as_ref(), worktree)?;
 
+        if language_server_id.as_ref() == "taplo" {
+            if let Some(binary) = settings.binary {
+                if let Some(path) = binary.path {
+                    return Ok(Command {
+                        command: path,
+                        args: binary
+                            .arguments
+                            .unwrap_or_else(|| vec!["lsp".into(), "stdio".into()]),
+                        env: binary.env.unwrap_or_default().into_iter().collect(),
+                    });
+                }
+            }
+
+            let installed_binary = worktree.which("taplo").ok_or_else(|| {
+                "taplo not found. Install Taplo or configure lsp.taplo.binary.path.".to_string()
+            })?;
+
+            return Ok(Command {
+                command: installed_binary,
+                args: vec!["lsp".into(), "stdio".into()],
+                env: EnvVars::default(),
+            });
+        }
+
         if let Some(binary) = settings.binary {
             if let Some(path) = binary.path {
                 return Ok(Command {

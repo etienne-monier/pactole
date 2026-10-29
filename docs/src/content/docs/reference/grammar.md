@@ -282,8 +282,8 @@ amounts and indentation to be freely aligned:
 
 ## Main differences from Beancount
 
-- Only 8 directives are supported; `pad`, `note`, `event`, `document`,
-  `query`, `custom`, `option`, `plugin`, `pushtag`/`poptag` do not exist.
+- The supported directives include `pushtag`/`poptag`; `pad`, `note`, `event`,
+  `document`, `query`, `custom`, `option` and `plugin` do not exist.
 - `payee` is mandatory in a transaction and `narration` is optional (the reverse
   of the Beancount convention). A `payee` *declaration* does not exist in
   Beancount at all.

@@ -694,6 +694,41 @@ fn check_cycle_is_a_warning_unless_strict() {
 }
 
 #[test]
+fn check_inactive_poptag_is_a_warning_unless_strict() {
+    let path = std::env::temp_dir().join(format!(
+        "pactole-check-inactive-poptag-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2026-01-01 commodity EUR\n\
+2026-01-01 open Assets:Checking\n\
+2026-01-01 open Expenses:Food\n\
+payee \"Shop\"\n\
+poptag #missing\n\
+2026-01-02 * \"Shop\"\n\
+\u{20}\u{20}Expenses:Food 10 EUR\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n",
+    )
+    .unwrap();
+
+    let normal = pactole_cmd()
+        .args(["check", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(normal.status.success());
+    assert!(String::from_utf8_lossy(&normal.stderr).contains("tag-not-active"));
+
+    let strict = pactole_cmd()
+        .args(["check", "--strict", path.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(!strict.status.success());
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn check_reports_error_on_missing_file() {
     let output = pactole_cmd()
         .args(["check", "this-file-does-not-exist.pactole"])
@@ -1307,6 +1342,48 @@ fn import_ofx_prints_transactions_to_stdout() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("imported 2 transaction(s), skipped 0"));
+}
+
+#[test]
+fn import_ofx_filters_by_date_and_can_omit_the_imported_payee() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let config = write_import_temp(
+        "import-options.toml",
+        "[import]\n\
+         bank_account = \"Actifs:Banque\"\n\
+         currency = \"EUR\"\n\
+         default_counter_account = \"Depenses:A-Classer\"\n\
+         payee_metadata_key = \"imported_payee\"\n",
+    );
+
+    let output = pactole_cmd()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--from",
+            "2026-09-05",
+            "--no-imported-payee",
+            "--omit-negative-amount",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&config).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("2026-09-03 *"));
+    assert!(stdout.contains("2026-09-05 *"));
+    assert!(!stdout.contains("imported_payee:"));
+    assert!(stdout.contains("fitid: 2026090500002"));
+    assert!(!stdout.contains("Actifs:Banque -2000.00 EUR"));
 }
 
 #[test]

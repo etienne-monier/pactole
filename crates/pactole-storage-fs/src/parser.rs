@@ -18,6 +18,10 @@ use tree_sitter::Node;
 pub(crate) enum DirectiveOutcome {
     /// A directive that was successfully lowered into a domain entry.
     Entry(Entry),
+    /// Adds a tag to the source-order inheritance set.
+    PushTag(String),
+    /// Removes a tag from the source-order inheritance set.
+    PopTag(String),
     /// An `include` directive, with its raw (unresolved) path.
     Include(String),
 }
@@ -186,8 +190,19 @@ impl<'src> AstBuilder<'src> {
                 let path_node = self.require_child(header, "path")?;
                 DirectiveOutcome::Include(self.parse_quoted_text(path_node)?)
             }
+            "pushtag" => DirectiveOutcome::PushTag(self.build_tag(header)?),
+            "poptag" => DirectiveOutcome::PopTag(self.build_tag(header)?),
             other => return Err(self.error(format!("unexpected directive header `{other}`"))),
         })
+    }
+
+    fn build_tag(&self, header: Node<'_>) -> Result<String, PactoleFsStorageError> {
+        Ok(self
+            .require_child(header, "tag")?
+            .utf8_text(self.source.as_bytes())
+            .map_err(|error| self.error(error.to_string()))?
+            .trim_start_matches('#')
+            .to_string())
     }
 
     fn build_open(

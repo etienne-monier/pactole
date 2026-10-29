@@ -14,3 +14,7 @@ rev = "develop"
 [language_servers.pactole-lsp]
 name = "Pactole Language Server"
 languages = ["Pactole"]
+
+[language_servers.taplo]
+name = "Taplo TOML Language Server"
+languages = ["TOML"]

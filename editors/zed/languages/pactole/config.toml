@@ -3,7 +3,7 @@ grammar = "pactole"
 
 path_suffixes = ["pactole"]
 
-line_comments = [";"]
+line_comments = ["; "]
 
 tab_size = 2
 hard_tabs = false

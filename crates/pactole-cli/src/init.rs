@@ -160,7 +160,11 @@ fn render_config(account: &str, currency: &str, counter_account: &str) -> String
          bank_account = \"{account}\"\n\
          currency = \"{currency}\"\n\
          default_counter_account = \"{counter_account}\"\n\n\
-         # Store the original source payee in transaction metadata while rules\n\
+          # Set this to true to omit the source payee metadata.\n\
+          # no_imported_payee = true\n\
+          # Omit negative posting amounts and let Pactole infer them.\n\
+          # omit_negative_amount = true\n\n\
+          # Store the original source payee in transaction metadata while rules\n\
          # are free to replace the visible Pactole payee.\n\
          # payee_metadata_key = \"source_payee\"\n\n\
          # For statements covering several accounts, map each statement\n\

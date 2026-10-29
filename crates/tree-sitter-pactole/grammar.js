@@ -51,6 +51,8 @@ export default grammar({
         seq($.payee_declaration, $._newline, repeat($._property_or_comment)),
         seq($.balance, $._newline, repeat($._property_or_comment)),
         seq($.include, $._newline, repeat($._property_or_comment)),
+        seq($.pushtag, $._newline, repeat($._property_or_comment)),
+        seq($.poptag, $._newline, repeat($._property_or_comment)),
         seq(
           $.transaction,
           $._newline,
@@ -129,6 +131,8 @@ export default grammar({
       seq("payee", $._ws, $.string, optional($._trailing_comment)),
     include: ($) =>
       seq("include", $._ws, $.path, optional($._trailing_comment)),
+    pushtag: ($) => seq("pushtag", $._ws, $.tag, optional($._trailing_comment)),
+    poptag: ($) => seq("poptag", $._ws, $.tag, optional($._trailing_comment)),
 
     balance: ($) =>
       seq(

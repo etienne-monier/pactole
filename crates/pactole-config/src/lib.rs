@@ -36,6 +36,8 @@
 //! bank_account = "Assets:Checking"
 //! currency = "EUR"
 //! default_counter_account = "Expenses:To-Be-Classified"
+//! no_imported_payee = false
+//! omit_negative_amount = false
 //! # [import.accounts]
 //! # "00012345678" = "Assets:Checking"
 //! # [[import.rules]]
@@ -382,6 +384,8 @@ fn resolve_import(
         currency: import.currency.clone(),
         default_counter_account,
         payee_metadata_key: import.payee_metadata_key.clone(),
+        no_imported_payee: import.no_imported_payee.unwrap_or(false),
+        omit_negative_amount: import.omit_negative_amount.unwrap_or(false),
         rules: import
             .rules
             .as_ref()

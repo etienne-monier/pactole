@@ -116,7 +116,8 @@ pactole/
       `pactole-storage-fs` for now; it is not moved or duplicated into
       `pactole-syntax`.
     - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `EntrySpans`,
-      `PostingSpans`, `ParsedInclude`, `LoweringDiagnostic`, `Diagnostic`, `DiagnosticSeverity`,
+      `PostingSpans`, `ParsedInclude`, `ParsedTagDirective`, `TagDirectiveKind`,
+      `LoweringDiagnostic`, `Diagnostic`, `DiagnosticSeverity`,
       `DiagnosticSource`, `PartialAnalysis`, `FileLoss`): a positioned, directive-by-directive analysis for tooling (editors, a
      future `pactole-lsp`) that needs spans and per-directive diagnostics instead of an
      all-or-nothing `Journal`. Every `Diagnostic` carries a typed `code: DiagnosticCode`
@@ -137,9 +138,16 @@ pactole/
       - `AnalyzedProject::journal()` returns the source-order flattened journal, while
         `validated_journal()` returns the chronologically validated and auto-balanced journal.
       - `ParsedFile::syntax_diagnostics()` exposes the underlying `pactole-syntax`
-       `SyntaxDiagnostic`s (`ERROR`/`MISSING` nodes) unchanged, so callers can distinguish
-       syntax-level issues from lowering-level ones.
-     - No `Span`/tree-sitter type leaks into `pactole-core`: `ParsedEntry`/`ParsedInclude`/
+        `SyntaxDiagnostic`s (`ERROR`/`MISSING` nodes) unchanged, so callers can distinguish
+        syntax-level issues from lowering-level ones.
+      - `pushtag`/`poptag` are source-level, non-dated directives. Their parsed
+        `ParsedTagDirective`s stay in `pactole-storage-fs`; project analysis walks the
+        flattened include graph in source order, maintains an active tag set, and adds
+        effective tags only to domain transactions. A `poptag` for an inactive tag emits
+        the `tag-not-active` warning, except when partial analysis makes the state uncertain.
+        A diamond include is visited once, so its first source-order occurrence determines
+        the active-tag context used for that file.
+      - No `Span`/tree-sitter type leaks into `pactole-core`: `ParsedEntry`/`ParsedInclude`/
        `LoweringDiagnostic` live in `pactole-storage-fs` and only wrap `pactole_syntax::Span`
        around existing `pactole-core` types.
      - **`loader.rs`** (public API: `SourceLoader`, `SourceLoadError`, `FsSourceLoader`,
@@ -389,8 +397,10 @@ pactole/
        header (Windows code pages 1250–1258, 874, the CJK code pages 932/936/949/950, Mac
        Roman), or a byte order mark — and otherwise falls back to strict UTF-8 and then
        windows-1252, so mislabeled bank exports still decode instead of being rejected.
-     - `ImportConfig`, `Rule`, `Direction` are **defined in `pactole-config`** (the `[import]`
-       section of `pactole.toml`) and re-exported here for convenience.
+      - `ImportConfig`, `Rule`, `Direction` are **defined in `pactole-config`** (the `[import]`
+        section of `pactole.toml`) and re-exported here for convenience. Import configuration
+        can disable source-payee metadata (`no_imported_payee`) and omit negative posting
+        amounts (`omit_negative_amount`).
      - `rules.rs`: shared rule engine lowering an `ImportRecord` into a balanced
        `pactole_core::Transaction` (first matching rule wins, otherwise the default counter
        account; a rule may also override the payee). The bank-side account is resolved per
@@ -398,11 +408,12 @@ pactole/
        falling back to `ImportConfig::bank_account` with an `ImportWarning::UnmappedAccount`
        (emitted once per distinct unmapped identifier, only when a mapping table exists).
      - `error.rs`: `ImportError`.
-    - **Public API**: `import_ofx(source, &config, &HashSet<String>) -> Result<ImportOutcome,
-      ImportError>`, `migrate_actual_database(path, currency, opening_equity, opening_date,
-      payee_metadata_key) -> Result<ActualMigration, ImportError>`, `parse_actual_database`,
-      `decode_ofx_source(&[u8]) -> String`, plus `ActualMigration`, `ImportConfig`, `Rule`,
-      `Direction`, `ImportRecord`, `ImportOutcome`, `ImportWarning`, `ImportError`. `import_ofx`
+     - **Public API**: `import_ofx(source, &config, &HashSet<String>) -> Result<ImportOutcome,
+       ImportError>`, `migrate_actual_database(path, currency, opening_equity, opening_date,
+       payee_metadata_key) -> Result<ActualMigration, ImportError>`, `parse_actual_database`,
+       `decode_ofx_source(&[u8]) -> String`, plus `ActualMigration`, `ImportConfig`, `Rule`,
+       `Direction`, `ImportRecord`, `ImportOutcome`, `ImportOptions`, `ImportWarning`,
+       `ImportError`, and `import_ofx_with_options`. `import_ofx`
      skips any source transaction whose FITID is
      already in `known_fitids` (reported in `ImportOutcome::skipped`), and stores each produced
      transaction's FITID as `fitid` metadata so a later run can rebuild `known_fitids`.

@@ -172,6 +172,10 @@
           "named": true
         },
         {
+          "type": "poptag",
+          "named": true
+        },
+        {
           "type": "posting",
           "named": true
         },
@@ -181,6 +185,10 @@
         },
         {
           "type": "property",
+          "named": true
+        },
+        {
+          "type": "pushtag",
           "named": true
         },
         {
@@ -327,6 +335,32 @@
     }
   },
   {
+    "type": "poptag",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "tag",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "posting",
     "named": true,
     "fields": {
@@ -449,6 +483,32 @@
         },
         {
           "type": "value",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pushtag",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "tag",
           "named": true
         }
       ]
@@ -700,7 +760,15 @@
     "named": false
   },
   {
+    "type": "poptag",
+    "named": false
+  },
+  {
     "type": "price",
+    "named": false
+  },
+  {
+    "type": "pushtag",
     "named": false
   },
   {

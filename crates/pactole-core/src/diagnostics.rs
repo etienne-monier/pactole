@@ -92,6 +92,8 @@ pub enum DiagnosticCode {
     CommodityUnused,
     /// A declared payee is never used by any transaction.
     PayeeUnused,
+    /// A `poptag` directive tries to remove a tag that is not active.
+    TagNotActive,
 }
 
 impl DiagnosticCode {
@@ -128,6 +130,7 @@ impl DiagnosticCode {
         Self::AccountUnused,
         Self::CommodityUnused,
         Self::PayeeUnused,
+        Self::TagNotActive,
     ];
 
     /// Returns the stable text form of this code.
@@ -163,6 +166,7 @@ impl DiagnosticCode {
             Self::AccountUnused => "account-unused",
             Self::CommodityUnused => "commodity-unused",
             Self::PayeeUnused => "payee-unused",
+            Self::TagNotActive => "tag-not-active",
         }
     }
 

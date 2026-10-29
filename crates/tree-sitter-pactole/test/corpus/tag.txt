@@ -1,0 +1,16 @@
+====================
+Tag inheritance directives
+====================
+
+pushtag #year
+poptag #year
+
+---
+
+(source_file
+  (directive
+    (pushtag
+      (tag)))
+  (directive
+    (poptag
+      (tag))))

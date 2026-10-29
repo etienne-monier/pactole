@@ -94,6 +94,36 @@ Install it with Cargo if necessary:
 cargo install pactole-cli
 ```
 
+### Validate `pactole.toml`
+
+Install [Taplo](https://taplo.tamasfe.dev/) and the TOML extension for Zed.
+The repository's `.taplo.toml` associates `pactole.toml` with the Pactole
+schema in `schemas/pactole.schema.json`. Taplo then provides TOML completion
+and diagnostics for Pactole-specific sections and keys in Zed.
+
+The Pactole Zed extension registers Taplo for TOML files. If Taplo is not on
+your `PATH`, configure its location in `settings.json`:
+
+```json
+{
+  "lsp": {
+    "taplo": {
+      "binary": {
+        "path": "/absolute/path/to/taplo"
+      }
+    }
+  }
+}
+```
+
+If you use a project checkout, no extra Zed-specific schema setting is needed:
+open the project root so Taplo can discover `.taplo.toml`. The schema can also
+be selected explicitly by putting this directive at the top of `pactole.toml`:
+
+```toml
+#:schema ./schemas/pactole.schema.json
+```
+
 You can format the current document manually with `editor: format`. If Zed
 cannot start the formatter, inspect the error with `zed: open log`.
 
@@ -157,6 +187,9 @@ output: formatted document on stdout
 The exact configuration syntax depends on the editor. The formatter does not
 read or write the file directly; the editor is responsible for supplying the
 buffer on stdin and applying stdout as the new document contents.
+
+The TOML schema setup is editor-independent: configure a TOML language server
+such as Taplo and point it at the shared `.taplo.toml` file.
 
 ## Current limitations
 

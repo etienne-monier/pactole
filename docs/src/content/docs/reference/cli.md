@@ -9,6 +9,7 @@ The `pactole` binary exposes twelve subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
+
 On success a command exits with status `0`. Errors are printed on stderr and
 cause a non-zero status. Commands that support warnings may still exit with
 status `0` unless `--strict` is passed.
@@ -450,7 +451,9 @@ render-agnostic formats used by the other reports.
 ## `pactole import-ofx`
 
 ```text
-pactole import-ofx <FILE> [--into <PATH>] [--account <ACCOUNT>] [--write]
+pactole import-ofx <FILE> [--from <DATE>] [--into <PATH>] [--account <ACCOUNT>]
+  [--write] [--no-imported-payee]
+  [--omit-negative-amount]
 ```
 
 Imports an OFX or QFX bank statement into canonical `.pactole` transaction
@@ -459,9 +462,12 @@ directives. Both OFX 1.x SGML and OFX 2.x XML are supported.
 | Option | Description |
 |---|---|
 | `<FILE>` | OFX or QFX statement to import |
+| `--from <DATE>` | Import only transactions dated on or after this date |
 | `--into <PATH>` | Existing `.pactole` file whose `fitid` metadata is used for deduplication |
 | `--account <ACCOUNT>` | Post every imported transaction to this account, overriding `import.bank_account` and the `[import.accounts]` mapping for this run |
 | `--write` | Append new transactions to `--into` instead of printing them; requires `--into` |
+| `--no-imported-payee` | Do not preserve the source payee in transaction metadata; overrides `[import].no_imported_payee` |
+| `--omit-negative-amount` | Omit the negative posting amount and let Pactole infer it; overrides `[import].omit_negative_amount` |
 
 The bank account and categorization rules come from the `[import]` section of
 the resolved `pactole.toml` (see [Global options](#global-options)); use the
@@ -493,6 +499,11 @@ Without `--into`, generated transactions are printed to stdout. With `--into`,
 source transactions whose OFX `FITID` is already stored as `fitid` metadata in
 the target file are skipped. The command reports the imported and skipped counts
 on stderr.
+
+Transactions are emitted from the oldest to the newest transaction date. The
+`--from` boundary is inclusive. With `--omit-negative-amount`, the positive
+posting is emitted first and the negative posting is left without an amount so
+Pactole can infer it.
 
 Each transaction is posted to the account mapped from its statement's `ACCTID`
 in `[import.accounts]`, to `--account` when given, and to `bank_account`

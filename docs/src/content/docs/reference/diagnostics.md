@@ -180,6 +180,7 @@ reported), `warn` (reported as a warning) or `error` (blocking).
 | `account-unused` | `unused` | warn | An account is opened but neither a transaction nor a balance assertion uses it. |
 | `commodity-unused` | `unused` | warn | A commodity is declared but no amount, price directive, transaction-cost annotation or `open` restriction uses it. |
 | `payee-unused` | `unused` | warn | A payee is declared but no transaction uses it. |
+| `tag-not-active` | — | warn | A `poptag` directive tries to remove a tag that is not active. `--strict` treats the warning as a failure. |
 
 These diagnostics point at the declared name itself (the account or
 commodity token, the payee string). Merely `close`ing an account does not
