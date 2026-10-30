@@ -50,20 +50,24 @@ foundation is in place and should be preserved:
 
 The main gaps, in order of impact:
 
-1. **Reporting.** The only report is the register. There is no shared reporting
-   API, no balance sheet, no income statement, no spending breakdown. This
-   blocks the CLI, the web interface, and budgets alike.
-2. **Multi-currency.** Postings are single-commodity and transactions must
-   balance *per commodity*. A transaction that exchanges currencies therefore
-   cannot balance today, and there is no price, cost, or conversion concept.
-3. **Grammar coverage.** `pad`, `price`, `note`, `document`, tags and
-   `custom` are missing, and strings cannot contain a double quote.
+1. **Reporting.** The shared reporting API, balance sheet, income statement,
+   spending breakdowns and CLI renderings are now in place. The remaining work
+   is to expose them through shared application and web interfaces.
+2. **Multi-currency.** The domain model, prices, transaction costs and valued
+   reports are now in place; further work is refinement rather than a blocker
+   for the web interface.
+3. **Grammar coverage.** `pad`, `note`, `document`, `custom` and string escape
+   sequences are still missing.
 4. **Budgeting.** Nothing exists yet, in any form.
-5. **Debt in the current code.** Phase 0 is complete: a broken file no longer
+5. **Application and web interfaces.** The reporting API and CLI are available,
+   but there is not yet a shared application layer for terminal, web and future
+   database front-ends.
+6. **Debt in the current code.** Phase 0 is complete: a broken file no longer
    suspends business validation for the whole project, diagnostic codes are a
    typed catalogue, and the test suite pins the partial-analysis, formatting
    and editor-positioning contracts with realistic fixtures and property
-   tests. What remains is the reporting layer that Phase 1 introduces.
+   tests. The next missing foundation is the shared application layer and its
+   web facade.
 
 ---
 
@@ -123,13 +127,14 @@ decide whether envelopes need their own model.
 
 ### 4. Web server for reports
 
-A read-only web interface would make the reports pleasant to consult, and
-would let charts and period comparisons live outside the terminal.
+A web interface would make the reports pleasant to consult, and would let
+charts and period comparisons live outside the terminal.
 
-This direction is a *facade over the reporting API*, not a product of its
-own. It must come after the reports exist and are stable, and it must not
-introduce its own accounting logic. Scope: local, read-only, no write-back to
-the ledger.
+This direction is a *facade over a shared application and reporting API*, not
+a product of its own. The first version is local and read-only. Later versions
+may expose writing when the selected storage backend supports it. The same UI
+must work with file-backed and database-backed services and must discover
+backend capabilities instead of assuming that every backend is writable.
 
 ### 5. Complete the CLI reports
 
@@ -343,7 +348,7 @@ tests, lowering, canonical printing, LSP support, documentation.
 - [ ] Add `option`, with a documented set of known keys.
 - [ ] Add `custom`, as an extension point carrying structured metadata.
 - [ ] Decide whether `custom` becomes the carrier for the budget directive
-  (Phase 4).
+  (Phase 6).
 
 ### 3.6 — Explicitly out of scope
 
@@ -352,26 +357,111 @@ tests, lowering, canonical printing, LSP support, documentation.
 
 ---
 
-## Phase 4 — Envelope budgeting (P2, v0.7)
+## Phase 4 — Shared application layer (P1, v0.5)
+
+*Goal: provide one set of use cases for the CLI, web interface and future
+database-backed front-ends, without making `pactole-core` depend on I/O or
+making the web interface depend on `pactole-cli`.*
+
+### 4.1 — Define the application boundary
+
+- [ ] Create `pactole-app` as a transport- and presentation-independent crate.
+- [ ] Define typed queries and results for balance, income, expenses, register
+  and diagnostics.
+- [ ] Define structured application errors without HTTP or terminal concerns.
+- [ ] Define backend capabilities (`read`, `write`, `transactions`, `budgets`)
+  so clients can adapt to read-only and read/write backends.
+
+### 4.2 — Connect the file backend
+
+- [ ] Implement the file-backed service using the existing project analysis,
+  configuration and reporting APIs.
+- [ ] Migrate CLI reports to the shared application layer without changing
+  their current text, JSON or CSV output.
+- [ ] Add regression tests comparing application results with existing CLI
+  report outputs.
+
+### 4.3 — Specify writing without implementing it yet
+
+- [ ] Define the `LedgerWriter` boundary and the supported write operations.
+- [ ] Decide transaction identity, validation-before-write, atomicity,
+  canonical formatting, include handling and conflict behaviour.
+- [ ] Keep writing unavailable until a storage backend can provide these
+  guarantees explicitly.
+
+*Placement: `pactole-app` owns use cases and contracts. `pactole-core` remains
+pure; storage crates implement backend ports; CLI and web are independent
+adapters.*
+
+---
+
+## Phase 5 — Web reports MVP (P1, v0.5)
+
+*Goal: provide a local, extensible, read-only web interface over the shared
+application layer.*
+
+### 5.1 — Define the API contract
+
+- [ ] List what the web interface adds over the CLI: dashboard, period
+  selection, charts and comparisons.
+- [ ] Define a versioned JSON API (`/api/v1`) for capabilities, balance,
+  income, expenses, register and diagnostics.
+- [ ] Define consistent JSON error responses and map diagnostic codes without
+  duplicating accounting rules.
+- [ ] Ensure the API does not expose storage-specific details to the UI.
+
+### 5.2 — Build the server adapter
+
+- [ ] Create `pactole-web`, depending on `pactole-app` and `pactole-config`,
+  but never on `pactole-cli`.
+- [ ] Add a `pactole serve` command as a thin CLI entry point, while keeping
+  the HTTP server reusable independently of the CLI.
+- [ ] Bind to `127.0.0.1` by default, with explicit bind and port options.
+- [ ] Keep the MVP read-only; expose backend capabilities to the client.
+- [ ] Reload the project per request initially; add caching or file watching
+  only after measuring the need.
+
+### 5.3 — Build the extensible interface
+
+- [ ] Serve static assets without coupling the UI to a Node build chain.
+- [ ] Implement a dashboard with current balances and month-to-date income and
+  expenses.
+- [ ] Implement balance sheet, income statement and spending breakdown views.
+- [ ] Support period, grouping, commodity and valuation-date parameters already
+  supported by the reporting API.
+- [ ] Make the UI consume `/api/v1/capabilities`, so read-only and read/write
+  backends can use the same interface.
+
+### 5.4 — Verify the boundary
+
+- [ ] Add HTTP integration tests using `fixtures/journal`.
+- [ ] Check that web JSON results agree with the corresponding CLI JSON
+  reports.
+- [ ] Test malformed journals, missing includes, partial analysis and
+  multi-commodity reports through the API.
+
+---
+
+## Phase 6 — Envelope budgeting (P2, v0.7)
 
 *Goal: answer "am I on budget?" from the ledger, without a second accounting
 model.*
 
-### 4.1 — Decide the model
+### 6.1 — Decide the model
 
 - [ ] Write a short design note comparing the two models, and pick one.
 - [ ] Define the period semantics (monthly, annual, and what happens to an
   unused amount).
 - [ ] Define the interaction with a partially-elapsed month.
 
-### 4.2 — Declare budgets
+### 6.2 — Declare budgets
 
 - [ ] Add the budget declaration (a `budget` directive, or `custom "budget"`).
 - [ ] Support an amount, a commodity, a period and a target account.
 - [ ] Validate the target account, the commodity, and the period.
 - [ ] Add LSP support.
 
-### 4.3 — Report budgets
+### 6.3 — Report budgets
 
 - [ ] `pactole budget [--month YYYY-MM]`: planned, actual, remaining, and the
   deviation.
@@ -380,8 +470,10 @@ model.*
 - [ ] Report the budget as a warning (or an error, when configured) when it is
   exceeded.
 - [ ] Reuse the Phase 1 reporting API; do not write a second accounting path.
+- [ ] Expose budget queries through `pactole-app` so the CLI and web reuse the
+  same result model.
 
-### 4.4 — Envelopes, if the design note asks for them
+### 6.4 — Envelopes, if the design note asks for them
 
 - [ ] Define how an envelope is represented, without polluting the account
   tree if possible.
@@ -390,34 +482,27 @@ model.*
 
 ---
 
-## Phase 5 — Web server for reports (P3)
+## Phase 7 — Web advanced capabilities (P3)
 
-*Goal: a pleasant, local, read-only view of the reports.*
+*Goal: extend the web facade without coupling it to a particular storage
+backend or adding accounting logic to the UI.*
 
-### 5.1 — Define the use cases
+### 7.1 — Extend the interface
 
-- [ ] List what the web interface must do that the CLI and the LSP do not
-  (overview, charts, period comparison, sharing).
-- [ ] Confirm the reports it needs are all available from Phase 1.
-
-### 5.2 — Build the server
-
-- [ ] New crate `pactole-web`, depending only on the public APIs of
-  `pactole-core`, `pactole-storage-fs` and `pactole-config`.
-- [ ] Reuse the project analysis and the reporting API; no accounting logic of
-  its own.
-- [ ] Serve the reports as JSON, and the UI as static assets.
-- [ ] Bind to `127.0.0.1` by default, read-only, with no write-back to the
-  ledger.
-- [ ] Reload when the ledger files change on disk.
-
-### 5.3 — Build the interface
-
-- [ ] Dashboard: current balances, month-to-date income and expenses.
-- [ ] Balance sheet, income statement, spending breakdowns.
-- [ ] Budget view, once Phase 4 exists.
-- [ ] Charts over time, and period comparison.
+- [ ] Add file watching or server-sent events after measuring the MVP reload
+  behaviour.
+- [ ] Add charts over time and period comparison.
+- [ ] Add the budget view once Phase 6 exists.
 - [ ] Ship the front-end as static assets, without a Node build chain.
+
+### 7.2 — Add writing and alternate backends
+
+- [ ] Add write routes only after the `LedgerWriter` contract is implemented
+  and the selected backend advertises the `write` capability.
+- [ ] Add a database-backed storage crate implementing the same application
+  contracts, without changing the web UI.
+- [ ] Add optimistic concurrency or another explicit conflict strategy before
+  enabling multi-client writes.
 
 ---
 
@@ -457,7 +542,9 @@ These items improve the existing product without waiting for a phase:
 - Lot tracking and securities (`{cost}`, `{}`).
 - A graph of "value" independent of a price.
 - A hosted or multi-user service; the web interface stays local.
-- Writing back to the ledger from the web interface.
+- Writing back to the ledger from the web interface before the application
+  write contract and a storage backend provide explicit validation, atomicity
+  and conflict guarantees (Phase 7).
 - Beancount's `event`, `query` and `plugin` directives.
 - A graphical desktop application.
 
@@ -472,9 +559,12 @@ These items improve the existing product without waiting for a phase:
 3. **Phase 2** — the multi-currency model, then the `price` directive, the
    price annotations, the converted balancing, and the valued reports.
 4. **Phase 3** — the grammar, selectively, in order of real usage.
-5. **Phase 4** — the design note, then the budget declaration and the budget
-   report.
-6. **Phase 5** — the web server, last, as a facade over stable reports.
+5. **Phase 4** — the shared application layer and the file-backed service.
+6. **Phase 5** — the local web reports MVP, as a facade over the application
+   layer.
+7. **Phase 6** — the budget declaration and budget report, exposed through the
+   shared application layer.
+8. **Phase 7** — advanced web features, writing and the database backend.
 
 This order maximizes user value while reusing the foundations already in
 place: tolerant analysis, spans, include resolution, the domain model, the
