@@ -402,13 +402,13 @@ application layer.*
 
 ### 5.1 — Define the API contract
 
-- [ ] List what the web interface adds over the CLI: dashboard, period
+- [x] List what the web interface adds over the CLI: dashboard, period
   selection, charts and comparisons.
-- [ ] Define a versioned JSON API (`/api/v1`) for capabilities, balance,
+- [x] Define a versioned JSON API (`/api/v1`) for capabilities, balance,
   income, expenses, register and diagnostics.
-- [ ] Define consistent JSON error responses and map diagnostic codes without
+- [x] Define consistent JSON error responses and map diagnostic codes without
   duplicating accounting rules.
-- [ ] Ensure the API does not expose storage-specific details to the UI.
+- [x] Ensure the API does not expose storage-specific details to the UI.
 
 ### 5.2 — Build the server adapter
 

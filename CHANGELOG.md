@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Web API contract (roadmap 5.1):** documented the read-only `/api/v1`
+  contract for capabilities, balance, income, expenses, register and
+  diagnostics. The contract defines exact decimal JSON values, report and
+  diagnostic envelopes, structured HTTP errors, project-relative source
+  identifiers, versioning rules and the constraints that the web adapter must
+  preserve from `pactole-app`.
+
 - **Shared application boundary (roadmap 4.1):** added the
   `pactole-app` crate with transport-independent report queries and results for
   balance, income, expenses, register and diagnostics. It defines the
