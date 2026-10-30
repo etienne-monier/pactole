@@ -110,6 +110,17 @@ pactole completions zsh > ~/.zfunc/_pactole
 pactole completions fish > ~/.config/fish/completions/pactole.fish
 ```
 
+Start the local, read-only web interface (the default address is
+`http://127.0.0.1:3000`):
+
+```sh
+pactole serve path/to/file.pactole
+pactole serve path/to/file.pactole --port 8080
+```
+
+The server serves the bundled frontend and the versioned JSON API. It reloads
+the journal for every request and stops with `Ctrl-C`.
+
 Inspect which journal files are included, detect cycles and repeated includes,
 and find `.pactole` files in the root journal's directory that are not
 reachable from it:

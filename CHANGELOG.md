@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Web reports MVP server (roadmap 5.2):** added the generic `pactole-web`
+  HTTP adapter and `pactole serve`, exposing the versioned capabilities,
+  balance, income, expenses, register and diagnostics endpoints. The local
+  server binds to `127.0.0.1:3000` by default, reloads the filesystem project
+  for each request, serves bundled frontend assets, and remains read-only.
+
 - **Web API contract (roadmap 5.1):** documented the read-only `/api/v1`
   contract for capabilities, balance, income, expenses, register and
   diagnostics. The contract defines exact decimal JSON values, report and

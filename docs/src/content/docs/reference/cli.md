@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-The `pactole` binary exposes twelve subcommands. Run `pactole --help` or
+The `pactole` binary exposes thirteen subcommands. Run `pactole --help` or
 `pactole <command> --help` for the built-in help, and `pactole --version` to
 print the version.
 
@@ -93,6 +93,30 @@ For Bash:
 mkdir -p ~/.local/share/bash-completion/completions
 pactole completions bash > ~/.local/share/bash-completion/completions/pactole
 ```
+
+## `pactole serve`
+
+```text
+pactole serve <FILE> [--bind <ADDRESS>] [--port <PORT>]
+```
+
+Starts the local, read-only web interface for the project rooted at `<FILE>`.
+The server binds to `127.0.0.1:3000` by default and serves both the web bundle
+and the versioned JSON API:
+
+```sh
+pactole serve ledger.pactole
+pactole serve ledger.pactole --port 8080
+pactole serve ledger.pactole --bind 127.0.0.1 --port 3000
+```
+
+The project is reloaded for every API request, so changes written to the ledger
+are visible without restarting the server. The server does not expose write
+operations. See the [web API contract](/reference/web-api/) for the available
+routes, query parameters and error responses.
+
+The frontend assets are bundled with the web server; Node.js is not required at
+runtime. Press `Ctrl-C` to stop the server.
 
 ## `pactole check`
 

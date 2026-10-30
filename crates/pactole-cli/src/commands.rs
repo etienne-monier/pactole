@@ -49,6 +49,20 @@ pub(crate) enum Command {
         shell: clap_complete::Shell,
     },
 
+    /// Serve the local read-only web interface for a `.pactole` file.
+    Serve {
+        /// Root `.pactole` file.
+        file: PathBuf,
+
+        /// Address to bind. Defaults to `127.0.0.1`.
+        #[arg(long, default_value = "127.0.0.1")]
+        bind: std::net::IpAddr,
+
+        /// TCP port to bind. Defaults to `3000`.
+        #[arg(long, default_value_t = 3000)]
+        port: u16,
+    },
+
     /// Check that a `.pactole` file is valid, both grammatically and from a
     /// business point of view.
     Check {

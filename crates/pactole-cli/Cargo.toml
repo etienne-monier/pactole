@@ -26,6 +26,8 @@ pactole-config.workspace = true
 pactole-core.workspace = true
 pactole-import.workspace = true
 pactole-storage-fs.workspace = true
+pactole-web.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]

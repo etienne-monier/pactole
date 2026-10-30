@@ -412,18 +412,21 @@ application layer.*
 
 ### 5.2 — Build the server adapter
 
-- [ ] Create `pactole-web`, depending on `pactole-app` and `pactole-config`,
+- [x] Create `pactole-web`, depending on `pactole-app` and `pactole-config`,
   but never on `pactole-cli`.
-- [ ] Add a `pactole serve` command as a thin CLI entry point, while keeping
+- [x] Add a `pactole serve` command as a thin CLI entry point, while keeping
   the HTTP server reusable independently of the CLI.
-- [ ] Bind to `127.0.0.1` by default, with explicit bind and port options.
-- [ ] Keep the MVP read-only; expose backend capabilities to the client.
-- [ ] Reload the project per request initially; add caching or file watching
+- [x] Bind to `127.0.0.1` by default, with explicit bind and port options.
+- [x] Keep the MVP read-only; expose backend capabilities to the client.
+- [x] Reload the project per request initially; add caching or file watching
   only after measuring the need.
+- [x] Serve the bundled frontend shell and static assets from the same local
+  server, while keeping API routes JSON-only.
 
 ### 5.3 — Build the extensible interface
 
-- [ ] Serve static assets without coupling the UI to a Node build chain.
+- [ ] Replace the bundled shell with the full Vuetify interface without
+  requiring Node.js at runtime.
 - [ ] Implement a dashboard with current balances and month-to-date income and
   expenses.
 - [ ] Implement balance sheet, income statement and spending breakdown views.

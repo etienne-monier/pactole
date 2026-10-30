@@ -1,0 +1,24 @@
+[package]
+name = "pactole-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Local read-only web server for Pactole reports."
+
+[dependencies]
+axum.workspace = true
+chrono.workspace = true
+pactole-app.workspace = true
+pactole-config.workspace = true
+pactole-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

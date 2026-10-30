@@ -66,6 +66,41 @@ fn main() -> ExitCode {
             generate(shell, &mut command, "pactole", &mut std::io::stdout());
             ExitCode::SUCCESS
         }
+        Command::Serve { file, bind, port } => {
+            let project_dir = parent_dir(&file);
+            match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
+                Ok(config) => {
+                    let reader = pactole_storage_fs::FsLedgerReader::new(&file, config.validation);
+                    let application = pactole_app::Application::new(reader);
+                    let options = pactole_web::ServerOptions {
+                        bind,
+                        port,
+                        source_root: project_dir,
+                        reports: config.reports,
+                        import: config.import,
+                    };
+                    match tokio::runtime::Builder::new_multi_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        Ok(runtime) => {
+                            match runtime.block_on(pactole_web::serve(application, options)) {
+                                Ok(()) => ExitCode::SUCCESS,
+                                Err(error) => {
+                                    eprintln!("error: {error}");
+                                    ExitCode::FAILURE
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!("error: could not start async runtime: {error}");
+                            ExitCode::FAILURE
+                        }
+                    }
+                }
+                Err(error) => config::failure(error),
+            }
+        }
         Command::Check {
             file,
             strict,

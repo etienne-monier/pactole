@@ -29,6 +29,7 @@ pactole/
 │   ├── pactole-core/          # Pure domain models, validation, and reports
 │   ├── pactole-syntax/        # Tolerant CST analysis, spans, and syntax diagnostics
 │   ├── pactole-app/           # Transport-independent application use cases and backend ports
+│   ├── pactole-web/           # Generic local HTTP adapter and bundled web assets
 │   ├── pactole-storage-fs/    # Tree-sitter-based parser, includes, and canonical formatter
 │   ├── pactole-import/        # Import external formats (OFX) into domain models
 │   ├── pactole-lsp/           # Minimal stdio Language Server Protocol server
@@ -230,11 +231,24 @@ pactole/
      write support. The crate is the shared boundary for the CLI, web and
      future storage adapters. `LedgerWriter`, `WritableApplication`,
      `WriteTransactionRequest`, `WriteTarget`, `Revision`, `EntryId`,
-     `ValidationPolicy`, `ConflictPolicy` and `WriteResult` define the future
-     write contract, but no concrete backend implements it yet. Writes must be
-     validated before persistence, use an expected revision for conflict
-     detection, and provide atomic-commit guarantees; filesystem formatting
-     and include-target rules remain backend responsibilities.
+      `ValidationPolicy`, `ConflictPolicy` and `WriteResult` define the future
+      write contract, but no concrete backend implements it yet. Writes must be
+      validated before persistence, use an expected revision for conflict
+      detection, and provide atomic-commit guarantees; filesystem formatting
+      and include-target rules remain backend responsibilities.
+
+5.5. **`pactole-web`**:
+   - A generic local HTTP adapter over `pactole-app`, independent of the CLI
+     and concrete storage backends.
+   - Exposes the versioned read-only `/api/v1` routes for capabilities, balance,
+     income, expenses, register and diagnostics, with structured JSON errors.
+   - `router` builds a reusable Axum router; `serve` binds to
+     `127.0.0.1:3000` by default and reloads the supplied `LedgerReader` on
+     every request.
+   - The server embeds and serves the frontend shell and static assets at `/`,
+     `/assets/app.js` and `/assets/app.css`; it does not require Node.js at
+     runtime. API routes remain JSON-only and frontend routes fall back to
+     `index.html`.
 
 6. **`pactole-cli`**:
    - Command-line application binary named `pactole` (using `clap` derive).
@@ -640,7 +654,7 @@ by pushing a `v*` tag (`.github/workflows/release.yml`).
   bumping every crate that depends on it.
 - **Publication order** is handled by `cargo publish --workspace` (Cargo 1.90
   and later): `tree-sitter-pactole` → `pactole-core` → `pactole-config` →
-  `pactole-syntax` → `pactole-storage-fs` → `pactole-import` → `pactole-cli` →
+  `pactole-syntax` → `pactole-storage-fs` → `pactole-import` → `pactole-web` → `pactole-cli` →
   `pactole-lsp`. The CI runs the same command as a dry run
   (`publish-check` job) to catch non-publishable manifests before the tag.
 - **The minimum supported Rust version is `rust-version = "1.90"`** (required

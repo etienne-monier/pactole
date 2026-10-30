@@ -1,0 +1,5 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #f5f7fb; color: #172033; }
+.pactole-app { max-width: 60rem; margin: 4rem auto; padding: 2rem; background: white; border-radius: 0.75rem; box-shadow: 0 0.5rem 2rem #17203318; }
+.status { color: #176b3a; }
+.error { color: #a51d2d; }
