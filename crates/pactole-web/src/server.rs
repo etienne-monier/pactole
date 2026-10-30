@@ -9,15 +9,16 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{RawQuery, Request, State},
     http::{HeaderValue, StatusCode, Uri, header},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
 };
 use chrono::{Datelike, Local, NaiveDate};
 use pactole_app::{
-    Application, ApplicationError, BalanceQuery, ComparisonRequest, Diagnostic, DiagnosticsQuery,
-    ExpensesQuery, IncomeQuery, RegisterQuery, ValuationRequest,
+    Application, ApplicationError, BackendError, BackendOperation, BalanceQuery, ComparisonRequest,
+    Diagnostic, DiagnosticsQuery, ExpensesQuery, IncomeQuery, RegisterQuery, ValuationRequest,
 };
 use pactole_config::{ImportConfig, ReportOptions};
 use pactole_core::{
@@ -104,7 +105,12 @@ where
         .route("/", get(index))
         .route("/assets/app.js", get(app_js))
         .route("/assets/app.css", get(app_css))
+        .method_not_allowed_fallback(method_not_allowed)
         .fallback(frontend_fallback)
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            validate_host::<R>,
+        ))
         .with_state(state)
 }
 
@@ -120,19 +126,80 @@ where
     let listener = tokio::net::TcpListener::bind(address)
         .await
         .map_err(ServerError::Bind)?;
+    let address = listener.local_addr().map_err(ServerError::Bind)?;
+    let mut options = options;
+    options.bind = address.ip();
+    options.port = address.port();
+    if !address.ip().is_loopback() {
+        eprintln!(
+            "warning: the Pactole web server is exposed beyond loopback without authentication"
+        );
+    }
     println!("Serving Pactole web interface at http://{address}/");
     println!("API available at http://{address}/api/v1/");
     axum::serve(listener, router(application, options))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(ServerError::Serve)
 }
 
+async fn shutdown_signal() {
+    let interrupt = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            signal.recv().await;
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = interrupt => {}
+        () = terminate => {}
+    }
+}
+
+async fn validate_host<R>(
+    State(state): State<AppState<R>>,
+    request: Request,
+    next: Next,
+) -> Response
+where
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
+{
+    if state.options.bind.is_loopback()
+        && let Some(host) = request
+            .headers()
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok())
+    {
+        let allowed = [
+            format!("{}:{}", state.options.bind, state.options.port),
+            format!("{}", state.options.bind),
+            format!("localhost:{}", state.options.port),
+            "localhost".to_string(),
+        ];
+        if !allowed
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(host))
+        {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": { "code": "host-not-allowed", "message": "host is not allowed", "details": null } })),
+            )
+                .into_response();
+        }
+    }
+    next.run(request).await
+}
+
 async fn capabilities<R>(State(state): State<AppState<R>>) -> Json<Value>
 where
-    R: pactole_app::LedgerReader,
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
 {
     let capabilities = state.application.capabilities();
     Json(json!({
@@ -147,69 +214,116 @@ where
 
 async fn balance<R>(
     State(state): State<AppState<R>>,
-    Query(params): Query<HashMap<String, String>>,
+    RawQuery(raw_query): RawQuery,
 ) -> Result<Json<Value>, ApiError>
 where
-    R: pactole_app::LedgerReader,
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
 {
+    let params = query_params(raw_query)?;
+    check_params(
+        &params,
+        &["as_of", "depth", "convert_to", "at", "include_warnings"],
+    )?;
     let date = optional_date(&params, "as_of")?.unwrap_or_else(|| Local::now().date_naive());
     let grouping = account_grouping(&params)?;
     let valuation = valuation(&params, date)?;
-    let result = state
-        .application
-        .balance(BalanceQuery {
+    let include_warnings = boolean(&params, "include_warnings")?;
+    let reports = state.options.reports.clone();
+    let application = Arc::clone(&state.application);
+    let result = run_application(application, move |application| {
+        application.balance(BalanceQuery {
             as_of: ReferenceDate::new(date),
             grouping,
-            classification: classification(&state.options.reports),
+            classification: classification(&reports),
             valuation,
         })
-        .map_err(|error| ApiError::from_application(error, &state.options))?;
+    })
+    .await
+    .map_err(|error| ApiError::from_application(error, &state.options))?;
     Ok(Json(report_response(
         result.report.render(ReportFormat::Json),
         result.diagnostics,
         &state.options,
-        boolean(&params, "include_warnings")?,
+        include_warnings,
     )))
 }
 
 async fn income<R>(
     State(state): State<AppState<R>>,
-    Query(params): Query<HashMap<String, String>>,
+    RawQuery(raw_query): RawQuery,
 ) -> Result<Json<Value>, ApiError>
 where
-    R: pactole_app::LedgerReader,
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
 {
+    let params = query_params(raw_query)?;
+    check_params(
+        &params,
+        &[
+            "from",
+            "to",
+            "by",
+            "depth",
+            "convert_to",
+            "at",
+            "include_warnings",
+        ],
+    )?;
     let (period, _) = period_from(&params)?;
     let grouping = income_grouping(&params)?;
     let valuation = valuation(&params, period.end())?;
-    let result = state
-        .application
-        .income(IncomeQuery {
+    let include_warnings = boolean(&params, "include_warnings")?;
+    let reports = state.options.reports.clone();
+    let application = Arc::clone(&state.application);
+    let result = run_application(application, move |application| {
+        application.income(IncomeQuery {
             period,
             grouping,
-            classification: classification(&state.options.reports),
+            classification: classification(&reports),
             valuation,
         })
-        .map_err(|error| ApiError::from_application(error, &state.options))?;
+    })
+    .await
+    .map_err(|error| ApiError::from_application(error, &state.options))?;
     Ok(Json(report_response(
         result.report.render(ReportFormat::Json),
         result.diagnostics,
         &state.options,
-        boolean(&params, "include_warnings")?,
+        include_warnings,
     )))
 }
 
 async fn expenses<R>(
     State(state): State<AppState<R>>,
-    Query(params): Query<HashMap<String, String>>,
+    RawQuery(raw_query): RawQuery,
 ) -> Result<Json<Value>, ApiError>
 where
-    R: pactole_app::LedgerReader,
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
 {
+    let params = query_params(raw_query)?;
+    check_params(
+        &params,
+        &[
+            "from",
+            "to",
+            "by",
+            "depth",
+            "uncategorized",
+            "inactive",
+            "compare",
+            "compare_from",
+            "compare_to",
+            "diff",
+            "reverse_diff",
+            "convert_to",
+            "at",
+            "include_warnings",
+        ],
+    )?;
     let (period, _) = period_from(&params)?;
     let grouping = expense_grouping(&params)?;
     let include_uncategorized = boolean(&params, "uncategorized")?;
     let include_inactive = boolean(&params, "inactive")?;
+    let include_warnings = boolean(&params, "include_warnings")?;
     let uncategorized = if include_uncategorized {
         let names = state
             .options
@@ -235,9 +349,10 @@ where
     };
     let comparison = comparison(&params, period)?;
     let valuation = valuation(&params, period.end())?;
-    let result = state
-        .application
-        .expenses(ExpensesQuery {
+    let reports = state.options.reports.clone();
+    let application = Arc::clone(&state.application);
+    let result = run_application(application, move |application| {
+        application.expenses(ExpensesQuery {
             period,
             grouping,
             options: ExpenseOptions {
@@ -245,32 +360,45 @@ where
                 include_uncategorized,
                 include_inactive,
             },
-            classification: classification(&state.options.reports),
+            classification: classification(&reports),
             comparison,
             valuation,
         })
-        .map_err(|error| ApiError::from_application(error, &state.options))?;
-    let data = if let Some(comparison) = result.comparison {
-        json!({
-            "current": serde_json::from_str::<Value>(&result.current.render(ReportFormat::Json)).unwrap_or_else(|_| json!({})),
-            "comparison": serde_json::from_str::<Value>(&comparison.render(ReportFormat::Json)).unwrap_or_else(|_| json!({})),
-        })
-    } else {
-        serde_json::from_str::<Value>(&result.current.render(ReportFormat::Json))
-            .unwrap_or_else(|_| json!({}))
-    };
+    })
+    .await
+    .map_err(|error| ApiError::from_application(error, &state.options))?;
+    let data = json!({
+        "current": report_value(&result.current),
+        "comparison": result.comparison.as_ref().map(comparison_value).unwrap_or(Value::Null),
+    });
     Ok(Json(
-        json!({ "data": data, "diagnostics": diagnostics_for(&params, &result.diagnostics, &state.options)? }),
+        json!({ "data": data, "diagnostics": diagnostics_json(&result.diagnostics, &state.options, include_warnings) }),
     ))
 }
 
 async fn register<R>(
     State(state): State<AppState<R>>,
-    Query(params): Query<HashMap<String, String>>,
+    RawQuery(raw_query): RawQuery,
 ) -> Result<Json<Value>, ApiError>
 where
-    R: pactole_app::LedgerReader,
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
 {
+    let params = query_params(raw_query)?;
+    check_params(
+        &params,
+        &[
+            "account",
+            "from",
+            "to",
+            "payee",
+            "narration",
+            "tag",
+            "status",
+            "convert_to",
+            "at",
+            "include_warnings",
+        ],
+    )?;
     let filter = RegisterFilter {
         account: params
             .get("account")
@@ -289,14 +417,15 @@ where
             .map(|value| parse_status(value))
             .transpose()?,
     };
-    let valuation = valuation(
-        &params,
-        optional_date(&params, "at")?.unwrap_or_else(|| Local::now().date_naive()),
-    )?;
-    let result = state
-        .application
-        .register(RegisterQuery { filter, valuation })
-        .map_err(|error| ApiError::from_application(error, &state.options))?;
+    let default_valuation_date = filter.to.unwrap_or_else(|| Local::now().date_naive());
+    let valuation = valuation(&params, default_valuation_date)?;
+    let include_warnings = boolean(&params, "include_warnings")?;
+    let application = Arc::clone(&state.application);
+    let result = run_application(application, move |application| {
+        application.register(RegisterQuery { filter, valuation })
+    })
+    .await
+    .map_err(|error| ApiError::from_application(error, &state.options))?;
     let entries = result.entries.into_iter().map(|entry| json!({
         "date": entry.date.to_string(),
         "status": status_name(&entry.status),
@@ -307,25 +436,28 @@ where
         "balance": entry.balance.into_iter().map(|(commodity, number)| json!({ "commodity": commodity.as_str(), "number": number.to_string() })).collect::<Vec<_>>(),
     })).collect::<Vec<_>>();
     Ok(Json(
-        json!({ "data": { "entries": entries, "valuation": result.valuation.map(|value| value_json(&value)) }, "diagnostics": diagnostics_for(&params, &result.diagnostics, &state.options)? }),
+        json!({ "data": { "entries": entries, "valuation": result.valuation.map(|value| value_json(&value)) }, "diagnostics": diagnostics_json(&result.diagnostics, &state.options, include_warnings) }),
     ))
 }
 
 async fn diagnostics<R>(
     State(state): State<AppState<R>>,
-    Query(params): Query<HashMap<String, String>>,
+    RawQuery(raw_query): RawQuery,
 ) -> Result<Json<Value>, ApiError>
 where
-    R: pactole_app::LedgerReader,
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
 {
-    let result = state
-        .application
-        .diagnostics(DiagnosticsQuery {
-            include_warnings: boolean(&params, "include_warnings")?,
-        })
-        .map_err(|error| ApiError::from_application(error, &state.options))?;
+    let params = query_params(raw_query)?;
+    check_params(&params, &["include_warnings"])?;
+    let include_warnings = boolean(&params, "include_warnings")?;
+    let application = Arc::clone(&state.application);
+    let result = run_application(application, move |application| {
+        application.diagnostics(DiagnosticsQuery { include_warnings })
+    })
+    .await
+    .map_err(|error| ApiError::from_application(error, &state.options))?;
     Ok(Json(
-        json!({ "data": { "diagnostics": diagnostics_json(&result.diagnostics, &state.options, boolean(&params, "include_warnings")?) } }),
+        json!({ "data": { "diagnostics": diagnostics_json(&result.diagnostics, &state.options, include_warnings) }, "diagnostics": [] }),
     ))
 }
 
@@ -337,16 +469,12 @@ async fn app_js() -> Response {
     static_response(
         APP_JS,
         "application/javascript; charset=utf-8",
-        Some("public, max-age=31536000, immutable"),
+        Some("no-cache"),
     )
 }
 
 async fn app_css() -> Response {
-    static_response(
-        APP_CSS,
-        "text/css; charset=utf-8",
-        Some("public, max-age=31536000, immutable"),
-    )
+    static_response(APP_CSS, "text/css; charset=utf-8", Some("no-cache"))
 }
 
 async fn frontend_fallback(uri: Uri) -> Response {
@@ -357,6 +485,14 @@ async fn frontend_fallback(uri: Uri) -> Response {
         return (StatusCode::NOT_FOUND, Json(json!({ "error": { "code": "not-found", "message": "asset not found", "details": null } }))).into_response();
     }
     static_response(INDEX_HTML, "text/html; charset=utf-8", None)
+}
+
+async fn method_not_allowed() -> Response {
+    (
+        StatusCode::METHOD_NOT_ALLOWED,
+        Json(json!({ "error": { "code": "method-not-allowed", "message": "HTTP method is not supported", "details": null } })),
+    )
+        .into_response()
 }
 
 fn static_response(
@@ -404,12 +540,20 @@ impl ApiError {
 
     fn from_application(error: ApplicationError, options: &ServerOptions) -> Self {
         match error {
-            ApplicationError::InvalidQuery(error) => Self {
-                status: StatusCode::BAD_REQUEST,
-                code: "invalid-query",
-                message: error.to_string(),
-                details: None,
-            },
+            ApplicationError::InvalidQuery(error) => {
+                let code = match &error {
+                    pactole_app::InvalidQuery::UndeclaredValuationCommodity(_) => {
+                        "undeclared-valuation-commodity"
+                    }
+                    _ => "invalid-query",
+                };
+                Self {
+                    status: StatusCode::BAD_REQUEST,
+                    code,
+                    message: error.to_string(),
+                    details: None,
+                }
+            }
             ApplicationError::LedgerUnavailable { diagnostics } => Self {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "ledger-unavailable",
@@ -447,6 +591,25 @@ impl ApiError {
     }
 }
 
+async fn run_application<R, T, F>(
+    application: Arc<Application<R>>,
+    operation: F,
+) -> Result<T, ApplicationError>
+where
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
+    T: Send + 'static,
+    F: FnOnce(&Application<R>) -> Result<T, ApplicationError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || operation(&application))
+        .await
+        .map_err(|error| {
+            ApplicationError::Backend(BackendError {
+                operation: BackendOperation::LoadSnapshot,
+                message: format!("application task failed: {error}"),
+            })
+        })?
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.status, Json(json!({ "error": { "code": self.code, "message": self.message, "details": self.details } }))).into_response()
@@ -459,8 +622,29 @@ fn report_response(
     options: &ServerOptions,
     include_warnings: bool,
 ) -> Value {
-    let data = serde_json::from_str::<Value>(&rendered).unwrap_or_else(|_| json!({}));
+    let mut data = serde_json::from_str::<Value>(&rendered).unwrap_or_else(|_| json!({}));
+    if !data.get("valuation").is_some() {
+        data["valuation"] = Value::Null;
+    }
     json!({ "data": data, "diagnostics": diagnostics_json(&diagnostics, options, include_warnings) })
+}
+
+fn report_value(report: &pactole_core::Report) -> Value {
+    let mut value = serde_json::from_str::<Value>(&report.render(ReportFormat::Json))
+        .unwrap_or_else(|_| json!({}));
+    if !value.get("valuation").is_some() {
+        value["valuation"] = Value::Null;
+    }
+    value
+}
+
+fn comparison_value(comparison: &pactole_core::ComparisonReport) -> Value {
+    let mut value = serde_json::from_str::<Value>(&comparison.render(ReportFormat::Json))
+        .unwrap_or_else(|_| json!({}));
+    if !value.get("valuation").is_some() {
+        value["valuation"] = Value::Null;
+    }
+    value
 }
 
 fn diagnostics_json(
@@ -470,29 +654,71 @@ fn diagnostics_json(
 ) -> Vec<Value> {
     diagnostics.iter().filter(|diagnostic| include_warnings || diagnostic.is_error()).map(|diagnostic| {
         let source = diagnostic.source.as_ref().map(|source| {
-            options.source_root.as_ref().and_then(|root| PathBuf::from(&source.0).strip_prefix(root).ok().map(|path| path.display().to_string())).unwrap_or_else(|| source.0.clone())
+            source_name(&source.0, options.source_root.as_deref())
         });
         json!({
             "severity": if diagnostic.is_error() { "error" } else { "warning" },
-            "origin": format!("{:?}", diagnostic.origin).to_lowercase(),
+            "origin": origin_name(diagnostic.origin),
             "code": diagnostic.code.as_str(),
             "message": diagnostic.message,
             "source": source,
-            "span": diagnostic.span.map(|span| json!({ "start": { "line": span.start.line + 1, "column": span.start.column + 1 }, "end": { "line": span.end.line + 1, "column": span.end.column + 1 } })),
+            "span": diagnostic.span.map(|span| json!({ "start": { "line": span.start.line + 1, "column": span.start.column + 1 }, "end": { "line": span.end.line + 1, "column": span.end.column + 1 }, "column_encoding": "utf8-byte" })),
         })
     }).collect()
 }
 
-fn diagnostics_for(
-    params: &HashMap<String, String>,
-    diagnostics: &[Diagnostic],
-    options: &ServerOptions,
-) -> Result<Vec<Value>, ApiError> {
-    Ok(diagnostics_json(
-        diagnostics,
-        options,
-        boolean(params, "include_warnings")?,
-    ))
+fn source_name(source: &str, root: Option<&std::path::Path>) -> String {
+    let path = PathBuf::from(source);
+    if let Some(root) = root
+        && let Ok(relative) = path.strip_prefix(root)
+    {
+        return relative.display().to_string();
+    }
+    let escapes_project = path.is_absolute()
+        || path
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir));
+    if escapes_project {
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "<source>".to_string())
+    } else {
+        source.to_string()
+    }
+}
+
+fn query_params(raw_query: Option<String>) -> Result<HashMap<String, String>, ApiError> {
+    let mut params = HashMap::new();
+    if let Some(raw_query) = raw_query {
+        for (key, value) in url::form_urlencoded::parse(raw_query.as_bytes()) {
+            if key.is_empty() {
+                return Err(ApiError::invalid("query parameter names cannot be empty"));
+            }
+            params.insert(key.into_owned(), value.into_owned());
+        }
+    }
+    Ok(params)
+}
+
+fn check_params(params: &HashMap<String, String>, allowed: &[&str]) -> Result<(), ApiError> {
+    for key in params.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(ApiError::invalid(format!(
+                "unknown query parameter `{key}`"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn origin_name(origin: pactole_app::DiagnosticOrigin) -> &'static str {
+    match origin {
+        pactole_app::DiagnosticOrigin::Syntax => "syntax",
+        pactole_app::DiagnosticOrigin::Lowering => "lowering",
+        pactole_app::DiagnosticOrigin::Include => "include",
+        pactole_app::DiagnosticOrigin::Analysis => "analysis",
+        pactole_app::DiagnosticOrigin::Business => "business",
+    }
 }
 
 fn classification(options: &ReportOptions) -> AccountClassification {
@@ -813,5 +1039,180 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let value: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["error"]["code"], "invalid-parameter");
+    }
+
+    #[tokio::test]
+    async fn rejects_unexpected_loopback_hosts() {
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(header::HOST, "evil.example")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["error"]["code"], "host-not-allowed");
+    }
+
+    #[tokio::test]
+    async fn rejects_unknown_query_parameters_and_methods() {
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/balance?bogus=1")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["error"]["code"], "invalid-parameter");
+
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/balance")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+    }
+
+    #[tokio::test]
+    async fn keeps_expense_and_diagnostic_response_shapes_stable() {
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/expenses")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert!(value["data"]["current"].is_object());
+        assert_eq!(value["data"]["comparison"], Value::Null);
+        assert_eq!(value["diagnostics"], json!([]));
+
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/diagnostics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["data"]["diagnostics"], json!([]));
+        assert_eq!(value["diagnostics"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn maps_unavailable_ledgers_to_structured_errors() {
+        struct UnavailableReader;
+
+        impl LedgerReader for UnavailableReader {
+            fn capabilities(&self) -> BackendCapabilities {
+                BackendCapabilities::read_only()
+            }
+
+            fn snapshot(&self) -> Result<LedgerSnapshot, BackendError> {
+                Ok(LedgerSnapshot::Unavailable {
+                    diagnostics: vec![Diagnostic {
+                        source: Some(pactole_app::SourceId(
+                            "/home/user/private/journal.pactole".to_string(),
+                        )),
+                        span: None,
+                        severity: pactole_app::DiagnosticSeverity::Error,
+                        origin: pactole_app::DiagnosticOrigin::Business,
+                        code: pactole_core::DiagnosticCode::AccountNotOpen,
+                        message: "account is not open".to_string(),
+                    }],
+                })
+            }
+        }
+
+        let response = router(
+            Application::new(UnavailableReader),
+            ServerOptions::default(),
+        )
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/balance")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["error"]["code"], "ledger-unavailable");
+        assert_eq!(
+            value["error"]["details"]["diagnostics"][0]["source"],
+            "journal.pactole"
+        );
+        assert_eq!(
+            value["error"]["details"]["diagnostics"][0]["origin"],
+            "business"
+        );
+    }
+
+    #[test]
+    fn keeps_diagnostic_sources_project_relative() {
+        assert_eq!(
+            source_name(
+                "/project/journal.pactole",
+                Some(std::path::Path::new("/project"))
+            ),
+            "journal.pactole"
+        );
+        assert_eq!(
+            source_name("/elsewhere/journal.pactole", None),
+            "journal.pactole"
+        );
+        assert_eq!(source_name("../journal.pactole", None), "journal.pactole");
+        assert_eq!(
+            source_name("accounts/checking.pactole", None),
+            "accounts/checking.pactole"
+        );
+    }
+
+    #[tokio::test]
+    async fn serves_a_real_fixture_through_the_application_boundary() {
+        let reader = pactole_storage_fs::FsLedgerReader::new(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/journal/ledger.pactole"),
+            pactole_config::ValidationOptions::default(),
+        );
+        let response = router(Application::new(reader), ServerOptions::default())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/balance?as_of=2026-10-30")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["data"]["scope"]["kind"], "as_of");
+        assert!(value["data"]["sections"].is_array());
     }
 }

@@ -53,3 +53,7 @@ editors/zed/grammars
 opencode*
 !AGENTS.md
 opencode.jsonc
+
+# Embedded web assets are committed even though frontend build output is ignored
+!crates/pactole-web/web/dist/
+!crates/pactole-web/web/dist/**

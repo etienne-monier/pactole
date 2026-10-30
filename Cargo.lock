@@ -1090,11 +1090,12 @@ dependencies = [
  "pactole-app",
  "pactole-config",
  "pactole-core",
- "serde",
+ "pactole-storage-fs",
  "serde_json",
  "thiserror",
  "tokio",
  "tower",
+ "url",
 ]
 
 [[package]]

@@ -27,7 +27,10 @@ version. Clients must use the stable `code` fields rather than matching human-
 readable messages.
 
 The server is local by default. Authentication and remote multi-user access are
-outside the MVP contract.
+outside the MVP contract. When it listens on a loopback address, requests whose
+`Host` header is not the bind address or `localhost` are rejected with
+`host-not-allowed`; binding to a non-loopback address is possible but prints a
+warning because the ledger is then exposed without authentication.
 
 ## API surface
 
@@ -74,6 +77,9 @@ not implicitly add amounts in different commodities.
 
 Dates use ISO `YYYY-MM-DD` strings. Absent optional values are represented by
 `null`, not by an empty string.
+
+Query parameters are validated strictly: an unknown parameter or a value of the
+wrong type is rejected with `invalid-parameter` instead of being ignored.
 
 ## Capabilities
 
@@ -265,7 +271,10 @@ the allowed severities are `error` and `warning`.
 Source identifiers are logical project-relative names. Absolute filesystem
 paths, loader types, Tree-sitter nodes and other storage details are not part
 of the web contract. Lines and columns in HTTP responses are one-based and
-refer to the source file identified by `source`.
+refer to the source file identified by `source`. The current application
+boundary exposes byte columns within UTF-8 lines, so spans include
+`column_encoding: "utf8-byte"`; a future backend may provide a richer source
+mapping without changing diagnostic codes.
 
 ## Error responses
 
@@ -288,10 +297,13 @@ Clients must branch on `error.code`; `message` is for display and diagnostics.
 | `400` | `invalid-parameter` | A parameter has an invalid syntax or value |
 | `400` | `invalid-query` | Parameters form an unsupported combination |
 | `400` | `undeclared-valuation-commodity` | The requested valuation commodity is absent |
+| `400` | `report-error` | The report could not be computed (invalid period, valuation overflow) |
+| `403` | `host-not-allowed` | The request `Host` header does not match the loopback server |
 | `404` | `not-found` | The route or requested resource does not exist |
 | `405` | `method-not-allowed` | The HTTP method is not supported |
 | `422` | `ledger-unavailable` | Error diagnostics prevent report construction |
 | `500` | `backend-error` | The backend could not load its snapshot |
+| `500` | `application-error` | An unexpected application failure occurred |
 | `501` | `capability-unavailable` | The backend lacks a required capability |
 
 `ledger-unavailable` includes the blocking diagnostics in `details`:

@@ -2106,3 +2106,72 @@ fn the_project_configuration_overrides_the_global_one() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn serve_exposes_the_reports_api_over_http() {
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::time::{Duration, Instant};
+
+    struct ChildGuard(std::process::Child);
+
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    let directory = std::env::temp_dir().join(format!("pactole-serve-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let config = directory.join("pactole.toml");
+    std::fs::write(&config, "").unwrap();
+
+    let port = TcpListener::bind(("127.0.0.1", 0))
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let child = pactole_cmd()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "serve",
+            SAMPLE_FILE,
+            "--port",
+            &port.to_string(),
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to run pactole-cli");
+    let _guard = ChildGuard(child);
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let response = loop {
+        match TcpStream::connect(("127.0.0.1", port)) {
+            Ok(mut stream) => {
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                write!(
+                    stream,
+                    "GET /api/v1/capabilities HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).unwrap();
+                break response;
+            }
+            Err(_) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => panic!("server did not start: {error}"),
+        }
+    };
+
+    std::fs::remove_dir_all(&directory).ok();
+
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("\"read\":true"), "{response}");
+}
