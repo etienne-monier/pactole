@@ -435,11 +435,12 @@ pactole/
        ImportError>`, `migrate_actual_database(path, currency, opening_equity, opening_date,
        payee_metadata_key) -> Result<ActualMigration, ImportError>`, `parse_actual_database`,
        `decode_ofx_source(&[u8]) -> String`, plus `ActualMigration`, `ImportConfig`, `Rule`,
-       `Direction`, `ImportRecord`, `ImportOutcome`, `ImportOptions`, `ImportWarning`,
-       `ImportError`, and `import_ofx_with_options`. `import_ofx`
+        `Direction`, `ImportRecord`, `ImportOutcome`, `ImportOptions`, `ImportWarning`,
+        `ImportError`, `qualified_fitid`, and `import_ofx_with_options`. `import_ofx`
      skips any source transaction whose FITID is
      already in `known_fitids` (reported in `ImportOutcome::skipped`), and stores each produced
-     transaction's FITID as `fitid` metadata so a later run can rebuild `known_fitids`.
+      bank-side posting's qualified FITID as `fitid` metadata so a later run can rebuild
+      `known_fitids`.
    - **Deliberate two-step pipeline** (format parser → `ImportRecord`, then shared rule engine →
      `Transaction`) so future importers (CSV, QIF, ...) reuse the rule engine instead of
      duplicating it. Only OFX is implemented for now.

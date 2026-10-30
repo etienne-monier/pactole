@@ -22,8 +22,10 @@
 //!    [`ImportConfig`].
 //!
 //! Transactions are marked [`pactole_core::TransactionStatus::Cleared`] and
-//! carry their source identifier (the OFX `FITID`) as `fitid` metadata, so a
-//! re-import can skip transactions already present.
+//! carry their source identifier as `fitid` metadata on the bank-side posting,
+//! so a re-import can skip source records already present. For OFX, each
+//! identifier is namespaced with the source account:
+//! `ofx:<ACCTID>:<FITID>`.
 
 /// Actual Budget database migration support.
 mod actual;
@@ -48,6 +50,11 @@ pub use crate::encoding::decode_ofx_source;
 pub use crate::error::ImportError;
 pub use crate::record::ImportRecord;
 pub use pactole_config::{Direction, ImportConfig, Rule};
+
+/// Builds the stored provenance identifier for an OFX transaction.
+pub fn qualified_fitid(account_id: &str, fitid: &str) -> String {
+    format!("ofx:{account_id}:{fitid}")
+}
 
 /// A non-fatal issue encountered while importing; the affected transaction is
 /// still produced.
@@ -99,11 +106,12 @@ pub struct ImportOptions {
 
 /// Imports an OFX document (1.x SGML or 2.x XML) into Pactole transactions.
 ///
-/// `known_fitids` is the set of source transaction identifiers already present
-/// in the target (e.g. gathered from an existing `.pactole` file or from a
-/// database): any source transaction whose `FITID` is in this set is counted
-/// in [`ImportOutcome::skipped`] and left out of the result, making re-imports
-/// idempotent.
+/// `known_fitids` is the set of qualified source transaction identifiers
+/// already present in the target (e.g. gathered from an existing `.pactole`
+/// file or from a database): any source transaction whose qualified `FITID` is
+/// in this set is counted in [`ImportOutcome::skipped`] and left out of the
+/// result, making re-imports idempotent. The values are produced by
+/// [`qualified_fitid`].
 ///
 /// # Errors
 ///
@@ -135,7 +143,10 @@ pub fn import_ofx_with_options(
             continue;
         }
         if let Some(fitid) = record.fitid.as_deref()
-            && known_fitids.contains(fitid)
+            && known_fitids.contains(&qualified_fitid(
+                record.account_id.as_deref().unwrap_or("unknown"),
+                fitid,
+            ))
         {
             skipped += 1;
             continue;

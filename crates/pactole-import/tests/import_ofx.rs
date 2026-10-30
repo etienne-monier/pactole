@@ -30,7 +30,10 @@ fn dec(value: &str) -> Decimal {
 }
 
 fn fitid(transaction: &Transaction) -> Option<&str> {
-    transaction.meta.get("fitid").map(String::as_str)
+    transaction
+        .postings
+        .iter()
+        .find_map(|posting| posting.meta.get("fitid").map(String::as_str))
 }
 
 fn posting_for_account<'a>(
@@ -61,7 +64,7 @@ fn imports_an_xml_bank_statement() {
     assert_eq!(debit.status, TransactionStatus::Cleared);
     assert_eq!(debit.payee.as_deref(), Some("CARREFOUR"));
     assert_eq!(debit.narration.as_deref(), Some("Courses"));
-    assert_eq!(fitid(debit), Some("2026090300001"));
+    assert_eq!(fitid(debit), Some("ofx:00012345678:2026090300001"));
 
     // The positive posting comes first, then the negative imported account.
     assert_eq!(debit.postings[0].account.as_str(), "Depenses:A-Classer");
@@ -123,7 +126,8 @@ fn option_can_disable_configured_imported_payee_metadata() {
     .unwrap();
 
     assert!(!outcome.transactions[0].meta.contains_key("imported-payee"));
-    assert!(outcome.transactions[0].meta.contains_key("fitid"));
+    assert!(!outcome.transactions[0].meta.contains_key("fitid"));
+    assert!(fitid(&outcome.transactions[0]).is_some());
 }
 
 #[test]
@@ -317,7 +321,7 @@ fn imports_a_sgml_bank_statement() {
 
     let transaction = &outcome.transactions[0];
     assert_eq!(transaction.payee.as_deref(), Some("BOULANGERIE"));
-    assert_eq!(fitid(transaction), Some("SGML-1"));
+    assert_eq!(fitid(transaction), Some("ofx:00012345678:SGML-1"));
     assert_eq!(
         transaction.postings[0].amount.as_ref().unwrap().number,
         dec("12.00")
@@ -338,7 +342,7 @@ fn imports_a_sgml_bank_statement_carrying_acctkey() {
         transaction.payee.as_deref(),
         Some("VIREMENT PERMANENT POUR")
     );
-    assert_eq!(fitid(transaction), Some("1234sen"));
+    assert_eq!(fitid(transaction), Some("ofx:1231:1234sen"));
     assert_eq!(
         transaction.postings[0].amount.as_ref().unwrap().number,
         dec("10.00")
@@ -364,7 +368,7 @@ fn decodes_and_imports_a_windows_1252_statement() {
         transaction.narration.as_deref(),
         Some("Croissants à la boulangerie")
     );
-    assert_eq!(fitid(transaction), Some("CP1252-1"));
+    assert_eq!(fitid(transaction), Some("ofx:00012345678:CP1252-1"));
     assert_eq!(
         transaction.postings[0].amount.as_ref().unwrap().number,
         dec("12.50")
@@ -379,7 +383,7 @@ fn imports_the_banking_transactions_of_an_investment_statement() {
     // trade is an investment operation and is left out.
     assert_eq!(outcome.transactions.len(), 1);
     let transaction = &outcome.transactions[0];
-    assert_eq!(fitid(transaction), Some("INV-1"));
+    assert_eq!(fitid(transaction), Some("ofx:PEA-1:INV-1"));
     assert_eq!(
         transaction.payee.as_deref(),
         Some("VIREMENT PERMANENT POUR")
@@ -416,13 +420,36 @@ NEWFILEUID:NONE
 
 #[test]
 fn skips_transactions_already_known() {
-    let known: HashSet<String> = ["2026090300001".to_string()].into_iter().collect();
+    let known: HashSet<String> = ["ofx:00012345678:2026090300001".to_string()]
+        .into_iter()
+        .collect();
 
     let outcome = pactole_import::import_ofx(XML, &base_config(), &known).unwrap();
 
     assert_eq!(outcome.skipped, 1);
     assert_eq!(outcome.transactions.len(), 1);
-    assert_eq!(fitid(&outcome.transactions[0]), Some("2026090500002"));
+    assert_eq!(
+        fitid(&outcome.transactions[0]),
+        Some("ofx:00012345678:2026090500002")
+    );
+}
+
+#[test]
+fn fitids_are_namespaced_by_the_ofx_account() {
+    let known: HashSet<String> = ["ofx:00011111111:TWO-1".to_string()].into_iter().collect();
+
+    let outcome = pactole_import::import_ofx(TWO_ACCOUNTS, &base_config(), &known).unwrap();
+
+    assert_eq!(outcome.skipped, 1);
+    assert_eq!(outcome.transactions.len(), 2);
+    assert_eq!(
+        fitid(&outcome.transactions[0]),
+        Some("ofx:00011111111:TWO-2")
+    );
+    assert_eq!(
+        fitid(&outcome.transactions[1]),
+        Some("ofx:00022222222:TWO-3")
+    );
 }
 
 #[test]

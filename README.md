@@ -284,9 +284,12 @@ for that run, whatever the configuration says:
 pactole import-ofx statement.ofx --account Actifs:Epargne
 ```
 
-Each transaction records its OFX `FITID` as `fitid` metadata, which makes
-re-imports idempotent. Pass `--into` an existing `.pactole` file to skip
-transactions whose `FITID` is already there, and add `--write` to append
+Each imported bank posting records its OFX `ACCTID` and `FITID` as `fitid`
+metadata in the form `ofx:<ACCTID>:<FITID>`, which makes re-imports idempotent
+without depending on the configured Pactole account name. A merged transaction
+can therefore carry one source identifier on each bank posting. Pass `--into`
+an existing `.pactole` file to skip transactions whose source identifier is
+already there, and add `--write` to append
 the new transactions to that file instead of printing them:
 
 ```sh

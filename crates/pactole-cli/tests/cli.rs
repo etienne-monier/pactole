@@ -1391,9 +1391,9 @@ fn import_ofx_prints_transactions_to_stdout() {
     // The imported account carries the signed source amount...
     assert_posting(&stdout, "Actifs:Banque", "-45.30 EUR");
     assert_posting(&stdout, "Actifs:Banque", "2000.00 EUR");
-    // ... and each transaction keeps its FITID for idempotent re-imports.
-    assert!(stdout.contains("fitid: 2026090300001"));
-    assert!(stdout.contains("fitid: 2026090500002"));
+    // ... and each transaction keeps its qualified FITID for idempotent re-imports.
+    assert!(stdout.contains("fitid: \"ofx:00012345678:2026090300001\""));
+    assert!(stdout.contains("fitid: \"ofx:00012345678:2026090500002\""));
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("imported 2 transaction(s), skipped 0"));
@@ -1437,7 +1437,7 @@ fn import_ofx_filters_by_date_and_can_omit_the_imported_payee() {
     assert!(!stdout.contains("2026-09-03 *"));
     assert!(stdout.contains("2026-09-05 *"));
     assert!(!stdout.contains("imported_payee:"));
-    assert!(stdout.contains("fitid: 2026090500002"));
+    assert!(stdout.contains("fitid: \"ofx:00012345678:2026090500002\""));
     assert!(!stdout.contains("Actifs:Banque -2000.00 EUR"));
 }
 
@@ -1581,9 +1581,9 @@ fn import_ofx_skips_transactions_already_in_the_target_file() {
     let into = write_import_temp(
         "journal.pactole",
         "2026-09-03 * \"Carrefour\" \"Courses\"\n\
-         \u{20}\u{20}fitid: 2026090300001\n\
-         \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
-         \u{20}\u{20}Actifs:Banque -45.30 EUR\n",
+          \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
+          \u{20}\u{20}Actifs:Banque -45.30 EUR\n\
+          \u{20}\u{20}\u{20}\u{20}fitid: \"ofx:00012345678:2026090300001\"\n",
     );
 
     let output = pactole_cmd()
@@ -1623,9 +1623,9 @@ fn import_ofx_skips_transactions_already_in_an_included_file() {
     let included = write_import_temp(
         "included.pactole",
         "2026-09-03 * \"Carrefour\" \"Courses\"\n\
-         \u{20}\u{20}fitid: 2026090300001\n\
-         \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
-         \u{20}\u{20}Actifs:Banque -45.30 EUR\n",
+          \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
+          \u{20}\u{20}Actifs:Banque -45.30 EUR\n\
+          \u{20}\u{20}\u{20}\u{20}fitid: \"ofx:00012345678:2026090300001\"\n",
     );
     let into = write_import_temp(
         "journal.pactole",
@@ -1708,9 +1708,9 @@ fn import_ofx_write_appends_to_the_target_file() {
     let into = write_import_temp(
         "journal.pactole",
         "2026-09-03 * \"Carrefour\" \"Courses\"\n\
-         \u{20}\u{20}fitid: 2026090300001\n\
-         \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
-         \u{20}\u{20}Actifs:Banque -45.30 EUR\n",
+          \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
+          \u{20}\u{20}Actifs:Banque -45.30 EUR\n\
+          \u{20}\u{20}\u{20}\u{20}fitid: \"ofx:00012345678:2026090300001\"\n",
     );
 
     let output = pactole_cmd()
@@ -1741,8 +1741,8 @@ fn import_ofx_write_appends_to_the_target_file() {
     // Nothing new on stdout when writing...
     assert!(String::from_utf8_lossy(&output.stdout).is_empty());
     // ... and the file keeps its original transaction plus the new one.
-    assert!(written.contains("fitid: 2026090300001"));
-    assert!(written.contains("fitid: 2026090500002"));
+    assert!(written.contains("fitid: \"ofx:00012345678:2026090300001\""));
+    assert!(written.contains("fitid: \"ofx:00012345678:2026090500002\""));
     assert!(written.contains("2026-09-05 * \"ACME CORP\" \"Salary\""));
 }
 

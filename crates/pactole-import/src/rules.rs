@@ -7,6 +7,7 @@ use pactole_core::{
 
 use crate::ImportWarning;
 use crate::error::ImportError;
+use crate::qualified_fitid;
 use crate::record::ImportRecord;
 use pactole_config::{Direction, ImportConfig, Rule};
 use regex::Regex;
@@ -174,14 +175,18 @@ pub(crate) fn lower(
                 source,
             })?;
 
-        // Evaluate transaction id if any
+        // Keep the source identifier on the bank-side posting. A merged
+        // transfer can then carry one identifier on each of its postings.
         let mut meta = Metadata::new();
-        if let Some(fitid) = &record.fitid {
-            meta.insert(fitid_key.clone(), fitid.clone());
-        }
         if !no_imported_payee && let (Some(key), Some(payee)) = (&payee_metadata_key, &record.payee)
         {
             meta.insert(key.clone(), payee.clone());
+        }
+
+        let mut bank_meta = Metadata::new();
+        if let Some(fitid) = &record.fitid {
+            let account_id = record.account_id.as_deref().unwrap_or("unknown");
+            bank_meta.insert(fitid_key.clone(), qualified_fitid(account_id, fitid));
         }
 
         let counter_posting = Posting {
@@ -209,7 +214,7 @@ pub(crate) fn lower(
                 })
             },
             transaction_cost: None,
-            meta: Metadata::new(),
+            meta: bank_meta,
         };
 
         let postings = if record.amount < Decimal::ZERO {

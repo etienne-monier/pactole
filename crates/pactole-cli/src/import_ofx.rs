@@ -147,9 +147,13 @@ fn collect_fitids(path: &Path) -> Result<HashSet<String>, pactole_storage_fs::So
         .files()
         .iter()
         .flat_map(|file| file.file.entries())
-        .filter_map(|parsed_entry| match &parsed_entry.entry {
-            Entry::Transaction(transaction) => transaction.meta.get("fitid").cloned(),
-            _ => None,
+        .flat_map(|parsed_entry| match &parsed_entry.entry {
+            Entry::Transaction(transaction) => transaction
+                .postings
+                .iter()
+                .filter_map(|posting| posting.meta.get("fitid").cloned())
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
         })
         .collect())
 }
