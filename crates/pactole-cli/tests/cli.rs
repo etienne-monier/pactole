@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::Command;
 
 /// Path to the sample `.pactole` file shipped with the tree-sitter grammar,
@@ -1138,6 +1139,7 @@ fn graph_resolves_mixed_and_parent_relative_paths() {
         );
         let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(json["ok"], true);
+        assert!(!Path::new(json["root"].as_str().unwrap()).is_absolute());
         assert_eq!(json["unreachable"].as_array().unwrap().len(), 1);
         assert!(
             json["unreachable"][0]
@@ -1149,7 +1151,36 @@ fn graph_resolves_mixed_and_parent_relative_paths() {
             file["state"] == "reachable"
                 && file["path"].as_str().unwrap().ends_with("included.pactole")
         }));
+        assert!(
+            json["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|file| { !Path::new(file["path"].as_str().unwrap()).is_absolute() })
+        );
     }
+}
+
+#[test]
+fn graph_accepts_a_filename_without_a_parent_directory() {
+    let directory =
+        std::env::temp_dir().join(format!("pactole-graph-bare-file-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(directory.join("ledger.pactole"), "\n").unwrap();
+
+    let output = pactole_cmd()
+        .current_dir(&directory)
+        .args(["graph", "ledger.pactole", "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_dir_all(&directory).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

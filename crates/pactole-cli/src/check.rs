@@ -77,14 +77,17 @@ pub(crate) fn run(
     }
 }
 
-/// Converts a filesystem diagnostic to the check command's JSON shape.
-pub(crate) fn diagnostic_json(diagnostic: &Diagnostic) -> serde_json::Value {
+/// Converts a filesystem diagnostic to JSON while using a caller-provided file path.
+pub(crate) fn diagnostic_json_with_file(
+    diagnostic: &Diagnostic,
+    file: String,
+) -> serde_json::Value {
     let severity = match diagnostic.severity {
         DiagnosticSeverity::Error => "error",
         DiagnosticSeverity::Warning => "warning",
     };
     serde_json::json!({
-        "file": diagnostic.path.display().to_string(),
+        "file": file,
         "range": {
             "start": {
                 "line": diagnostic.span.start.row + 1,

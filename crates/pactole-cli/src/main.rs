@@ -276,7 +276,11 @@ fn main() -> ExitCode {
 /// Directory of the journal a command operates on, used to locate the
 /// project `pactole.toml` layer.
 fn parent_dir(path: &Path) -> Option<PathBuf> {
-    Some(path.parent().unwrap_or(Path::new("")).to_path_buf())
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    Some(parent.to_path_buf())
 }
 
 /// Directory of the journal being formatted, or the current directory when

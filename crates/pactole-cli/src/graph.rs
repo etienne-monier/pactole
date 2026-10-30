@@ -23,6 +23,15 @@ struct Edge {
 
 /// Analyzes and renders the include graph for a journal.
 pub(crate) fn run(file: PathBuf, scan: Option<PathBuf>, format: GraphFormatArg) -> ExitCode {
+    let display_root = match std::env::current_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            return fail(
+                format,
+                format!("cannot determine current directory: {error}"),
+            );
+        }
+    };
     let analysis_path = match absolute_lexically(&file) {
         Ok(path) => path,
         Err(error) => return fail(format, format!("{}: {error}", file.display())),
@@ -59,9 +68,17 @@ pub(crate) fn run(file: PathBuf, scan: Option<PathBuf>, format: GraphFormatArg) 
         .collect();
 
     match format {
-        GraphFormatArg::Text => print_text(&file, &edges, &reachable, &unreachable, &diagnostics),
+        GraphFormatArg::Text => print_text(
+            &analysis_path,
+            &display_root,
+            &edges,
+            &reachable,
+            &unreachable,
+            &diagnostics,
+        ),
         GraphFormatArg::Json => print_json(
-            &file,
+            &analysis_path,
+            &display_root,
             &edges,
             &reachable,
             &unreachable,
@@ -83,6 +100,33 @@ pub(crate) fn run(file: PathBuf, scan: Option<PathBuf>, format: GraphFormatArg) 
 /// Makes a path absolute and normalizes its lexical components.
 fn absolute_lexically(path: &Path) -> std::io::Result<PathBuf> {
     std::path::absolute(path).map(|absolute| normalize_lexically(&absolute))
+}
+
+/// Renders an absolute path relative to the current working directory.
+fn display_path(path: &Path, current_dir: &Path) -> String {
+    let path_components: Vec<_> = path.components().collect();
+    let base_components: Vec<_> = current_dir.components().collect();
+    let common = path_components
+        .iter()
+        .zip(&base_components)
+        .take_while(|(path, base)| path == base)
+        .count();
+
+    let mut relative = PathBuf::new();
+    for component in base_components.iter().skip(common) {
+        if matches!(component, std::path::Component::Normal(_)) {
+            relative.push("..");
+        }
+    }
+    for component in path_components.iter().skip(common) {
+        relative.push(component.as_os_str());
+    }
+
+    if relative.as_os_str().is_empty() {
+        String::from(".")
+    } else {
+        relative.display().to_string()
+    }
 }
 
 /// Extracts and sorts include edges from an analyzed project.
@@ -120,12 +164,13 @@ fn edges(project: &AnalyzedProject) -> Vec<Edge> {
 /// Renders the graph and include diagnostics as human-readable text.
 fn print_text(
     root: &Path,
+    current_dir: &Path,
     edges: &[Edge],
     reachable: &BTreeSet<PathBuf>,
     unreachable: &BTreeSet<PathBuf>,
     diagnostics: &[Diagnostic],
 ) {
-    println!("Include graph: {}", root.display());
+    println!("Include graph: {}", display_path(root, current_dir));
     if edges.is_empty() {
         println!("  (no includes)");
     }
@@ -152,14 +197,14 @@ fn print_text(
                 };
                 println!(
                     "  {}:{} -> {} ({state}){repeated_label}",
-                    edge.from.display(),
+                    display_path(&edge.from, current_dir),
                     edge.line,
-                    target.display()
+                    display_path(target, current_dir)
                 );
             }
             None => println!(
                 "  {}:{} -> {} (unresolved: no base directory)",
-                edge.from.display(),
+                display_path(&edge.from, current_dir),
                 edge.line,
                 edge.include
             ),
@@ -178,7 +223,7 @@ fn print_text(
         for diagnostic in diagnostics {
             println!(
                 "  {}:{} [{}] {}",
-                diagnostic.path.display(),
+                display_path(&diagnostic.path, current_dir),
                 diagnostic.span.start.row + 1,
                 diagnostic.code,
                 diagnostic.message
@@ -190,6 +235,7 @@ fn print_text(
 /// Renders the graph and include diagnostics as JSON.
 fn print_json(
     root: &Path,
+    current_dir: &Path,
     edges: &[Edge],
     reachable: &BTreeSet<PathBuf>,
     unreachable: &BTreeSet<PathBuf>,
@@ -221,7 +267,7 @@ fn print_json(
                 "unresolved"
             };
             serde_json::json!({
-                "path": path.display().to_string(),
+                "path": display_path(path, current_dir),
                 "state": state,
                 "include_count": target_counts.get(path).copied().unwrap_or_default(),
             })
@@ -237,8 +283,8 @@ fn print_json(
                 .copied()
                 .unwrap_or_default();
             serde_json::json!({
-                "from": edge.from.display().to_string(),
-                "to": edge.to.as_ref().map(|path| path.display().to_string()),
+                "from": display_path(&edge.from, current_dir),
+                "to": edge.to.as_ref().map(|path| display_path(path, current_dir)),
                 "include": edge.include,
                 "line": edge.line,
                 "repeated_target": count > 1,
@@ -247,22 +293,32 @@ fn print_json(
         .collect();
     let diagnostics_json: Vec<_> = diagnostics
         .iter()
-        .map(crate::check::diagnostic_json)
+        .map(|diagnostic| {
+            crate::check::diagnostic_json_with_file(
+                diagnostic,
+                display_path(&diagnostic.path, current_dir),
+            )
+        })
         .collect();
     let cycles: Vec<_> = diagnostics
         .iter()
         .filter(|diagnostic| diagnostic.code == DiagnosticCode::IncludeCycle)
-        .map(crate::check::diagnostic_json)
+        .map(|diagnostic| {
+            crate::check::diagnostic_json_with_file(
+                diagnostic,
+                display_path(&diagnostic.path, current_dir),
+            )
+        })
         .collect();
 
     println!(
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
             "ok": !diagnostics.iter().any(|diagnostic| diagnostic.severity == pactole_storage_fs::DiagnosticSeverity::Error),
-            "root": root.display().to_string(),
+            "root": display_path(root, current_dir),
             "files": files,
             "edges": edges_json,
-            "unreachable": unreachable.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+            "unreachable": unreachable.iter().map(|path| display_path(path, current_dir)).collect::<Vec<_>>(),
             "cycles": cycles,
             "diagnostics": diagnostics_json,
         }))
