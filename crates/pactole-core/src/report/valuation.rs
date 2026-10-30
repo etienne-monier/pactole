@@ -41,10 +41,15 @@ pub struct Valuation {
 /// commodity and are listed in [`Valuation::missing`].
 #[derive(Debug, Clone)]
 pub struct Valuator {
+    /// Commodity into which amounts are converted.
     currency: CommodityName,
+    /// Latest date eligible for price selection.
     date: NaiveDate,
+    /// Latest direct price per source commodity.
     rates: BTreeMap<CommodityName, ValuationPrice>,
+    /// Commodities converted during the current scope.
     used: BTreeSet<CommodityName>,
+    /// Commodities without a usable direct price.
     missing: BTreeSet<CommodityName>,
 }
 
@@ -135,6 +140,7 @@ impl Valuator {
         }
     }
 
+    /// Creates an empty provenance scope sharing the same conversion rates.
     pub(super) fn fresh_scope(&self) -> Self {
         let mut scope = self.clone();
         scope.used.clear();
@@ -142,6 +148,7 @@ impl Valuator {
         scope
     }
 
+    /// Merges the provenance collected by a nested valuation scope.
     pub(super) fn record_scope(&mut self, scope: &Self) {
         self.used.extend(scope.used.iter().cloned());
         self.missing.extend(scope.missing.iter().cloned());

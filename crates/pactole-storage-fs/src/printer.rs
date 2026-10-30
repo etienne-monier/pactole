@@ -293,12 +293,16 @@ fn is_grammar_number(value: &str) -> bool {
     index == bytes.len()
 }
 
+/// Canonical formatter state for one source document.
 struct Printer<'src> {
+    /// Original source text used by syntax nodes.
     source: &'src str,
+    /// Formatting options selected by the caller.
     options: &'src FormatOptions,
 }
 
 impl<'src> Printer<'src> {
+    /// Returns the source text covered by a syntax node.
     fn text(&self, node: Node<'_>) -> &'src str {
         match node.utf8_text(self.source.as_bytes()) {
             Ok(text) => text,
@@ -488,6 +492,7 @@ impl<'src> Printer<'src> {
     }
 }
 
+/// Appends a posting's transaction-cost annotation to a formatted line.
 fn append_transaction_cost(line: &mut String, cost: &pactole_core::TransactionCost) {
     line.push(' ');
     match cost.annotation {

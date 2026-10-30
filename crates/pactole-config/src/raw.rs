@@ -13,10 +13,15 @@ use serde::Deserialize;
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawFile {
+    /// Optional validation settings from this layer.
     pub(crate) validation: Option<RawValidation>,
+    /// Optional declaration-file settings from this layer.
     pub(crate) declaration: Option<RawDeclaration>,
+    /// Optional formatting settings from this layer.
     pub(crate) format: Option<RawFormat>,
+    /// Optional reporting settings from this layer.
     pub(crate) reports: Option<RawReports>,
+    /// Optional import settings from this layer.
     pub(crate) import: Option<RawImport>,
 }
 
@@ -24,7 +29,9 @@ pub(crate) struct RawFile {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawValidation {
+    /// Validation level for undeclared payees.
     pub(crate) payee: Option<String>,
+    /// Validation level for unused declarations.
     pub(crate) unused: Option<String>,
 }
 
@@ -32,8 +39,11 @@ pub(crate) struct RawValidation {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawDeclaration {
+    /// File receiving inserted payee declarations.
     pub(crate) payees: Option<String>,
+    /// File receiving inserted account declarations.
     pub(crate) accounts: Option<String>,
+    /// File receiving inserted commodity declarations.
     pub(crate) commodities: Option<String>,
 }
 
@@ -41,6 +51,7 @@ pub(crate) struct RawDeclaration {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawFormat {
+    /// Column at which posting amounts are aligned.
     pub(crate) posting_width: Option<usize>,
 }
 
@@ -48,11 +59,17 @@ pub(crate) struct RawFormat {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawReports {
+    /// Account roots classified as assets.
     pub(crate) assets: Option<Vec<String>>,
+    /// Account roots classified as liabilities.
     pub(crate) liabilities: Option<Vec<String>>,
+    /// Account roots classified as equity.
     pub(crate) equity: Option<Vec<String>>,
+    /// Account roots classified as income.
     pub(crate) income: Option<Vec<String>>,
+    /// Account roots classified as expenses.
     pub(crate) expenses: Option<Vec<String>>,
+    /// Accounts shown in the uncategorized expense section.
     pub(crate) uncategorized: Option<Vec<String>>,
 }
 
@@ -60,15 +77,22 @@ pub(crate) struct RawReports {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawImport {
+    /// Default bank-side account for imported transactions.
     pub(crate) bank_account: Option<String>,
+    /// Source-account to Pactole-account mappings.
     pub(crate) accounts: Option<BTreeMap<String, String>>,
+    /// Fallback currency for records without a source currency.
     pub(crate) currency: Option<String>,
+    /// Counter-account used when no rule matches.
     pub(crate) default_counter_account: Option<String>,
     #[serde(default)]
+    /// Metadata key used to retain the source payee.
     pub(crate) payee_metadata_key: Option<String>,
     #[serde(default)]
+    /// Whether imported payee metadata is disabled.
     pub(crate) no_imported_payee: Option<bool>,
     #[serde(default)]
+    /// Whether negative posting amounts are omitted from output.
     pub(crate) omit_negative_amount: Option<bool>,
     /// Rules are replaced in block by the highest-precedence layer that
     /// defines them, never merged element-wise.
@@ -80,28 +104,40 @@ pub(crate) struct RawImport {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawRule {
     #[serde(default)]
+    /// Case-insensitive substring required in the imported payee.
     pub(crate) payee_contains: Option<String>,
     #[serde(default)]
+    /// Allowed imported payee values.
     pub(crate) payee_in: Option<Vec<String>>,
     #[serde(default)]
+    /// Regular expression matched against the imported payee.
     pub(crate) payee_regex: Option<String>,
     #[serde(default)]
+    /// Case-insensitive substring required in the imported memo.
     pub(crate) memo_contains: Option<String>,
     #[serde(default)]
+    /// Allowed imported memo values.
     pub(crate) memo_in: Option<Vec<String>>,
     #[serde(default)]
+    /// Regular expression matched against the imported memo.
     pub(crate) memo_regex: Option<String>,
     #[serde(default)]
+    /// Exact imported transaction type to match.
     pub(crate) trntype: Option<String>,
     #[serde(default)]
+    /// Allowed imported transaction types.
     pub(crate) trntype_in: Option<Vec<String>>,
     #[serde(default)]
+    /// Counter account selected by this rule.
     pub(crate) account: Option<String>,
     #[serde(default)]
+    /// Optional debit/credit direction restriction.
     pub(crate) direction: Option<RawDirection>,
     #[serde(default)]
+    /// Explicit counter-account override.
     pub(crate) counter_account: Option<String>,
     #[serde(default)]
+    /// Payee override emitted by this rule.
     pub(crate) payee: Option<String>,
 }
 
@@ -109,7 +145,9 @@ pub(crate) struct RawRule {
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum RawDirection {
+    /// Outgoing movement from the source account.
     Debit,
+    /// Incoming movement to the source account.
     Credit,
 }
 

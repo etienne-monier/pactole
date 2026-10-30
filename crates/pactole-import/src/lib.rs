@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 //! Import external financial formats into Pactole domain models.
 //!
 //! This crate is the boundary adapter between a foreign input format (OFX,
@@ -22,11 +25,17 @@
 //! carry their source identifier (the OFX `FITID`) as `fitid` metadata, so a
 //! re-import can skip transactions already present.
 
+/// Actual Budget database migration support.
 mod actual;
+/// Source encoding detection and decoding.
 mod encoding;
+/// Import error definitions.
 mod error;
+/// OFX document parsing.
 mod ofx;
+/// Format-neutral imported transaction records.
 mod record;
+/// Rule matching and transaction construction.
 mod rules;
 
 use std::collections::HashSet;

@@ -1,8 +1,12 @@
 //! Domain entities used by Pactole journals.
 
+/// Monetary amounts and balance assertions.
 mod balance;
+/// Dated account, commodity, payee and price declarations.
 mod declarations;
+/// Validated account, commodity and metadata names.
 mod names;
+/// Transactions, postings and transaction costs.
 mod transaction;
 
 pub use balance::{Amount, Balance};

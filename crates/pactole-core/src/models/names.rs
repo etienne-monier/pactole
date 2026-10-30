@@ -102,6 +102,7 @@ impl fmt::Display for CommodityName {
     }
 }
 
+/// Validates the restricted lowercase syntax used for metadata keys.
 fn is_valid_metadata_key(value: &str) -> bool {
     !value.is_empty()
         && value
@@ -109,6 +110,7 @@ fn is_valid_metadata_key(value: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c == '_' || c == '-')
 }
 
+/// Validates an account name and all of its colon-separated segments.
 fn is_valid_account_name(value: &str) -> bool {
     let mut segments = value.split(':');
 
@@ -122,6 +124,7 @@ fn is_valid_account_name(value: &str) -> bool {
     segments.all(is_valid_account_other_segment)
 }
 
+/// Validates the root segment of an account name.
 fn is_valid_account_first_segment(segment: &str) -> bool {
     let mut chars = segment.chars();
     match chars.next() {
@@ -131,14 +134,17 @@ fn is_valid_account_first_segment(segment: &str) -> bool {
     chars.all(is_account_char)
 }
 
+/// Validates a non-root account segment.
 fn is_valid_account_other_segment(segment: &str) -> bool {
     !segment.is_empty() && segment.chars().all(is_account_char)
 }
 
+/// Returns whether a character is allowed inside an account segment.
 fn is_account_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '-'
 }
 
+/// Validates the Beancount-like commodity-name syntax.
 fn is_valid_commodity_name(value: &str) -> bool {
     let chars: Vec<char> = value.chars().collect();
     let len = chars.len();

@@ -29,6 +29,7 @@ pub enum AccountGrouping {
 /// rendering a report.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AccountBalances {
+    /// Accumulated amounts keyed by exact account name.
     balances: BTreeMap<AccountName, Amounts>,
 }
 
@@ -122,6 +123,7 @@ impl AccountBalances {
         }
     }
 
+    /// Builds one report line for each non-zero exact account balance.
     fn exact_lines(&self) -> Vec<ReportLine> {
         let mut lines: Vec<ReportLine> = self
             .balances
@@ -133,6 +135,7 @@ impl AccountBalances {
         lines
     }
 
+    /// Aggregates balances by account prefix up to the requested depth.
     fn depth_lines(&self, depth: usize) -> Vec<ReportLine> {
         let mut grouped: BTreeMap<AccountName, Amounts> = BTreeMap::new();
         for (account, amounts) in &self.balances {
@@ -154,6 +157,7 @@ impl AccountBalances {
         lines
     }
 
+    /// Builds cumulative lines for every non-zero account subtree.
     fn full_lines(&self) -> Vec<ReportLine> {
         let mut grouped: BTreeMap<AccountName, Amounts> = BTreeMap::new();
         let mut keep: BTreeSet<AccountName> = BTreeSet::new();
@@ -205,6 +209,7 @@ fn prefix(account: &AccountName, segments: usize) -> Option<AccountName> {
     }
 }
 
+/// Counts the colon-separated segments in an account name.
 fn segment_count(account: &AccountName) -> usize {
     account.as_str().split(':').count()
 }
@@ -215,6 +220,7 @@ fn sort_lines(lines: &mut [ReportLine]) {
     lines.sort_by(|left, right| compare_labels(&left.label, &right.label));
 }
 
+/// Compares account labels by their individual path segments.
 fn compare_labels(left: &str, right: &str) -> std::cmp::Ordering {
     left.split(':').cmp(right.split(':'))
 }

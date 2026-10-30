@@ -199,21 +199,35 @@ pub fn migrate_actual_database(
 }
 
 #[derive(Debug)]
+/// A row loaded from Actual Budget's transactions table.
 struct Row {
+    /// Actual transaction identifier.
     id: String,
+    /// Actual account identifier.
     account: String,
+    /// Actual category identifier, when assigned.
     category: Option<String>,
+    /// Signed amount in Actual minor units.
     amount: i64,
+    /// Date encoded as `YYYYMMDD`.
     date: i64,
+    /// Payee identifier stored by Actual.
     description: Option<String>,
+    /// Imported transaction description.
     imported_description: String,
+    /// Linked transfer transaction identifier.
     transferred_id: Option<String>,
+    /// Parent transaction identifier for split transactions.
     parent_id: Option<String>,
+    /// Whether this row owns child split rows.
     is_parent: i64,
+    /// Whether this row is an opening-balance row.
     starting_balance: i64,
+    /// Whether Actual marked this row as deleted.
     tombstone: i64,
 }
 
+/// Loads non-deleted payees keyed by their Actual identifiers.
 fn load_payees(conn: &Connection) -> Result<HashMap<String, String>, ImportError> {
     let mut stmt = conn.prepare("SELECT id, name FROM payees WHERE tombstone = 0")?;
     Ok(stmt
@@ -221,6 +235,7 @@ fn load_payees(conn: &Connection) -> Result<HashMap<String, String>, ImportError
         .collect::<Result<_, _>>()?)
 }
 
+/// Loads non-deleted accounts keyed by their Actual identifiers.
 fn load_accounts(conn: &Connection) -> Result<HashMap<String, String>, ImportError> {
     let mut stmt = conn.prepare("SELECT id, name FROM accounts WHERE tombstone = 0")?;
     Ok(stmt
@@ -228,6 +243,7 @@ fn load_accounts(conn: &Connection) -> Result<HashMap<String, String>, ImportErr
         .collect::<Result<_, _>>()?)
 }
 
+/// Loads non-deleted categories with their group-qualified names.
 fn load_categories(conn: &Connection) -> Result<HashMap<String, String>, ImportError> {
     let mut stmt = conn.prepare("SELECT categories.id, category_groups.name || ':' || categories.name FROM categories LEFT JOIN category_groups ON category_groups.id = categories.cat_group WHERE categories.tombstone = 0")?;
     Ok(stmt
@@ -235,6 +251,7 @@ fn load_categories(conn: &Connection) -> Result<HashMap<String, String>, ImportE
         .collect::<Result<_, _>>()?)
 }
 
+/// Loads transactions in the order used by the migration output.
 fn load_transactions(conn: &Connection) -> Result<Vec<Row>, ImportError> {
     let mut stmt = conn.prepare("SELECT id, acct, category, amount, date, description, COALESCE(imported_description, ''), transferred_id, parent_id, isParent, starting_balance_flag, tombstone FROM transactions ORDER BY date, sort_order")?;
     Ok(stmt
@@ -258,11 +275,15 @@ fn load_transactions(conn: &Connection) -> Result<Vec<Row>, ImportError> {
 }
 
 #[derive(Debug)]
+/// A supported Actual Budget pre-stage rule.
 struct Rule {
+    /// Regex matched against the imported description.
     pattern: regex::Regex,
+    /// Actual payee selected when the rule matches.
     payee_id: String,
 }
 
+/// Loads supported pre-stage Actual rules and compiles their match patterns.
 fn load_rules(conn: &Connection) -> Result<Vec<Rule>, ImportError> {
     let mut stmt = conn.prepare("SELECT conditions, actions FROM rules WHERE tombstone = 0 AND (stage = 'pre' OR stage IS NULL)")?;
     let mut result = Vec::new();
@@ -319,6 +340,7 @@ fn load_rules(conn: &Connection) -> Result<Vec<Rule>, ImportError> {
     Ok(result)
 }
 
+/// Resolves a matching Actual rule to a category account.
 fn apply_rules(
     rules: &[Rule],
     row: &Row,
@@ -332,6 +354,7 @@ fn apply_rules(
     Some(resolve_category(categories, row.category.as_deref()))
 }
 
+/// Resolves a matching Actual rule to its configured payee.
 fn apply_payee_rules(
     rules: &[Rule],
     row: &Row,
@@ -344,6 +367,7 @@ fn apply_payee_rules(
         .cloned()
 }
 
+/// Resolves the preferred payee name for an Actual transaction row.
 fn resolve_payee(row: &Row, payees: &HashMap<String, String>) -> Option<String> {
     row.description
         .as_ref()
@@ -354,6 +378,7 @@ fn resolve_payee(row: &Row, payees: &HashMap<String, String>) -> Option<String> 
         })
 }
 
+/// Converts an Actual account identifier into a valid Pactole asset account.
 fn resolve_account(
     accounts: &HashMap<String, String>,
     id: &str,
@@ -364,6 +389,7 @@ fn resolve_account(
     ))
 }
 
+/// Converts an Actual category into an Income or Expenses account path.
 fn resolve_category(categories: &HashMap<String, String>, id: Option<&str>) -> String {
     id.and_then(|id| categories.get(id))
         .map(|name| {
@@ -384,6 +410,7 @@ fn resolve_category(categories: &HashMap<String, String>, id: Option<&str>) -> S
         .unwrap_or_else(|| "Expenses:Uncategorized".to_string())
 }
 
+/// Sanitizes and validates a colon-separated Pactole account name.
 fn account_name(value: &str) -> Result<AccountName, ImportError> {
     let value = value
         .split(':')
@@ -396,6 +423,7 @@ fn account_name(value: &str) -> Result<AccountName, ImportError> {
     })
 }
 
+/// Replaces characters that are invalid in an account segment.
 fn sanitize_segment(value: &str) -> String {
     let mut result: String = value
         .chars()
@@ -413,11 +441,13 @@ fn sanitize_segment(value: &str) -> String {
     result
 }
 
+/// Converts Actual's numeric date representation to a calendar date.
 fn parse_date(value: i64) -> Result<NaiveDate, ImportError> {
     NaiveDate::parse_from_str(&value.to_string(), "%Y%m%d")
         .map_err(|e| ImportError::InvalidTransaction(e.to_string()))
 }
 
+/// Converts Actual minor units into Pactole's decimal major units.
 fn amount(value: i64) -> Decimal {
     // Actual stores transaction amounts as integer minor units (cents for
     // the currencies supported by this migration), while Pactole amounts are
@@ -427,6 +457,7 @@ fn amount(value: i64) -> Decimal {
     Decimal::new(value, 2)
 }
 
+/// Builds a posting with the supplied account, amount and commodity.
 fn posting(account: AccountName, number: Decimal, commodity: &CommodityName) -> Posting {
     Posting {
         account,
@@ -439,6 +470,7 @@ fn posting(account: AccountName, number: Decimal, commodity: &CommodityName) -> 
     }
 }
 
+/// Builds a cleared transaction from migrated postings.
 fn transaction(
     date: NaiveDate,
     payee: String,
@@ -459,6 +491,7 @@ fn transaction(
     }
 }
 
+/// Adds the source payee as metadata when migration settings request it.
 fn with_payee_metadata(
     mut transaction: Transaction,
     payee: Option<&str>,

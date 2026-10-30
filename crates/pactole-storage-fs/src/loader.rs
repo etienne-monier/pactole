@@ -81,6 +81,7 @@ impl SourceLoader for FsSourceLoader {
 /// what is on disk.
 #[derive(Debug, Default, Clone)]
 pub struct InMemorySourceLoader {
+    /// Source text keyed by normalized or caller-provided path.
     files: HashMap<PathBuf, String>,
 }
 

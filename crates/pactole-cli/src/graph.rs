@@ -9,13 +9,19 @@ use pactole_storage_fs::{AnalyzedProject, Diagnostic, FsSourceLoader, normalize_
 use crate::commands::GraphFormatArg;
 
 #[derive(Debug)]
+/// One include edge in the analyzed project graph.
 struct Edge {
+    /// File containing the include directive.
     from: PathBuf,
+    /// Resolved target, when the include has a usable base directory.
     to: Option<PathBuf>,
+    /// Include path as written in the source.
     include: String,
+    /// One-based source line of the include directive.
     line: usize,
 }
 
+/// Analyzes and renders the include graph for a journal.
 pub(crate) fn run(file: PathBuf, scan: Option<PathBuf>, format: GraphFormatArg) -> ExitCode {
     let analysis_path = match absolute_lexically(&file) {
         Ok(path) => path,
@@ -74,10 +80,12 @@ pub(crate) fn run(file: PathBuf, scan: Option<PathBuf>, format: GraphFormatArg) 
     }
 }
 
+/// Makes a path absolute and normalizes its lexical components.
 fn absolute_lexically(path: &Path) -> std::io::Result<PathBuf> {
     std::path::absolute(path).map(|absolute| normalize_lexically(&absolute))
 }
 
+/// Extracts and sorts include edges from an analyzed project.
 fn edges(project: &AnalyzedProject) -> Vec<Edge> {
     let mut edges = Vec::new();
     for file in project.files() {
@@ -109,6 +117,7 @@ fn edges(project: &AnalyzedProject) -> Vec<Edge> {
     edges
 }
 
+/// Renders the graph and include diagnostics as human-readable text.
 fn print_text(
     root: &Path,
     edges: &[Edge],
@@ -178,6 +187,7 @@ fn print_text(
     }
 }
 
+/// Renders the graph and include diagnostics as JSON.
 fn print_json(
     root: &Path,
     edges: &[Edge],
@@ -260,6 +270,7 @@ fn print_json(
     );
 }
 
+/// Recursively finds normalized `.pactole` files below a directory.
 fn find_pactole_files(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
     let mut found = BTreeSet::new();
     let mut pending = vec![root.to_path_buf()];
@@ -286,6 +297,7 @@ fn find_pactole_files(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
     Ok(found)
 }
 
+/// Renders a graph error in the requested format.
 fn fail(format: GraphFormatArg, message: String) -> ExitCode {
     match format {
         GraphFormatArg::Json => println!("{}", serde_json::json!({"ok": false, "error": message})),

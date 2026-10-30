@@ -93,6 +93,7 @@ pub fn income_statement(
     }
 }
 
+/// Builds an income statement grouped by payee or transaction tag.
 fn grouped_income_statement(
     journal: &Journal,
     period: Period,

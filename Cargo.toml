@@ -5,6 +5,7 @@ members = [
   "crates/pactole-config",
   "crates/pactole-core",
   "crates/pactole-import",
+  "crates/pactole-app",
   "crates/pactole-lsp",
   "crates/pactole-storage-fs",
   "crates/pactole-syntax",
@@ -29,6 +30,7 @@ edition = "2024"
 # crates require from the registry. Both must match the version of the crate
 # they point at, which Cargo checks on every build.
 pactole-config = { version = "0.4.0", path = "crates/pactole-config" }
+pactole-app = { version = "0.4.0", path = "crates/pactole-app" }
 pactole-core = { version = "0.4.0", path = "crates/pactole-core" }
 pactole-import = { version = "0.4.0", path = "crates/pactole-import" }
 pactole-storage-fs = { version = "0.4.0", path = "crates/pactole-storage-fs" }

@@ -30,6 +30,7 @@ pub(crate) enum DirectiveOutcome {
 ///
 /// Holds a ref to the source.
 pub(crate) struct AstBuilder<'src> {
+    /// Source text referenced by the CST nodes being lowered.
     source: &'src str,
 }
 
@@ -70,6 +71,7 @@ impl<'src> AstBuilder<'src> {
             .ok_or_else(|| self.error(format!("missing `{kind}` node in `{}`", node.kind())))
     }
 
+    /// Finds a required named field or returns a lowering error.
     fn require_field<'a>(
         &self,
         node: Node<'a>,
@@ -79,6 +81,7 @@ impl<'src> AstBuilder<'src> {
             .ok_or_else(|| self.error(format!("missing `{field}` field in `{}`", node.kind())))
     }
 
+    /// Parses a grammar date node as a calendar date.
     fn parse_date(&self, node: Node<'_>) -> Result<NaiveDate, PactoleFsStorageError> {
         let text = self.text(node);
         NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|e| {
@@ -88,6 +91,7 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
+    /// Parses a decimal node after removing optional thousands separators.
     fn parse_number(&self, node: Node<'_>) -> Result<Decimal, PactoleFsStorageError> {
         let text = self.text(node);
         // Numbers may use `,` as a thousands separator (Beancount-like),
@@ -97,10 +101,12 @@ impl<'src> AstBuilder<'src> {
             .map_err(|e| self.error(format!("invalid number `{text}`: {e} (expected an optionally signed decimal number, e.g. `1,234.56`)")))
     }
 
+    /// Converts an account grammar node into a validated account name.
     fn parse_account(&self, node: Node<'_>) -> Result<AccountName, PactoleFsStorageError> {
         Ok(AccountName::new(self.text(node))?)
     }
 
+    /// Converts a commodity grammar node into a validated commodity name.
     fn parse_commodity_name(&self, node: Node<'_>) -> Result<CommodityName, PactoleFsStorageError> {
         Ok(CommodityName::new(self.text(node))?)
     }
@@ -110,6 +116,7 @@ impl<'src> AstBuilder<'src> {
         self.text(node).trim_matches('"').to_string()
     }
 
+    /// Converts the grammar status marker into a transaction status.
     fn parse_status(&self, node: Node<'_>) -> Result<TransactionStatus, PactoleFsStorageError> {
         match self.text(node) {
             "*" => Ok(TransactionStatus::Cleared),
@@ -196,6 +203,7 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
+    /// Extracts a tag name from a `pushtag` or `poptag` header.
     fn build_tag(&self, header: Node<'_>) -> Result<String, PactoleFsStorageError> {
         Ok(self
             .require_child(header, "tag")?
@@ -205,6 +213,7 @@ impl<'src> AstBuilder<'src> {
             .to_string())
     }
 
+    /// Lowers an `open` directive into a domain entry.
     fn build_open(
         &self,
         directive: Node<'_>,
@@ -242,6 +251,7 @@ impl<'src> AstBuilder<'src> {
             .collect()
     }
 
+    /// Lowers a `close` directive into a domain entry.
     fn build_close(
         &self,
         directive: Node<'_>,
@@ -258,6 +268,7 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
+    /// Lowers a `commodity` directive into a domain entry.
     fn build_commodity(
         &self,
         directive: Node<'_>,
@@ -270,6 +281,7 @@ impl<'src> AstBuilder<'src> {
         Ok(Commodity { date, name, meta })
     }
 
+    /// Lowers a dated `price` directive into a domain entry.
     fn build_price(
         &self,
         directive: Node<'_>,
@@ -289,6 +301,7 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
+    /// Lowers a payee declaration into a domain entry.
     fn build_payee_declaration(
         &self,
         directive: Node<'_>,
@@ -300,6 +313,7 @@ impl<'src> AstBuilder<'src> {
         Ok(Payee { name, meta })
     }
 
+    /// Lowers a balance assertion into a domain entry.
     fn build_balance(
         &self,
         directive: Node<'_>,
@@ -325,6 +339,7 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
+    /// Lowers an amount node into a validated domain amount.
     fn build_amount(&self, amount: Node<'_>) -> Result<Amount, PactoleFsStorageError> {
         let number = self.parse_number(self.require_child(amount, "number")?)?;
         let commodity = self.parse_commodity_name(self.require_child(amount, "commodity_name")?)?;
@@ -332,6 +347,7 @@ impl<'src> AstBuilder<'src> {
         Ok(Amount { number, commodity })
     }
 
+    /// Lowers a transaction header and its postings into a domain transaction.
     fn build_transaction(
         &self,
         directive: Node<'_>,
@@ -407,6 +423,7 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
+    /// Lowers one posting, including amount, cost annotation and metadata.
     fn build_posting(&self, posting: Node<'_>) -> Result<Posting, PactoleFsStorageError> {
         let account = self.parse_account(self.require_child(posting, "account")?)?;
         let amount = self
@@ -439,6 +456,7 @@ impl<'src> AstBuilder<'src> {
         })
     }
 
+    /// Lowers and validates a posting transaction-cost annotation.
     fn build_transaction_cost(
         &self,
         node: Node<'_>,

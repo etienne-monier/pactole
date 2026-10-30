@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 //! Filesystem-backed parsing, analysis and formatting for Pactole journals.
 //!
 //! Use [`analyze_file`] for tolerant single-file tooling, or
@@ -13,10 +16,14 @@ use std::path::{Path, PathBuf};
 pub use crate::analysis::normalize_lexically;
 
 pub mod analysis;
+pub mod application;
 pub mod errors;
 pub mod loader;
+/// CST-to-domain lowering implementation.
 mod parser;
+/// Canonical source formatter implementation.
 mod printer;
+/// Recovery of uncertainty from partially parsed directives.
 mod uncertainty;
 
 pub use crate::analysis::{
@@ -25,6 +32,7 @@ pub use crate::analysis::{
     PartialAnalysis, PostingSpans, TagDirectiveKind, analyze_file, analyze_file_with_loader,
     analyze_file_with_loader_with_options,
 };
+pub use crate::application::FsLedgerReader;
 pub use crate::errors::PactoleFsStorageError;
 pub use crate::loader::{FsSourceLoader, InMemorySourceLoader, SourceLoadError, SourceLoader};
 pub use crate::printer::{
@@ -63,9 +71,13 @@ pub struct PactoleFileStorage {
     pub journal: Option<Journal>,
 }
 
+/// Loader that overlays in-memory root content over filesystem includes.
 struct RootContentLoader {
+    /// Normalized path of the in-memory root document.
     root: PathBuf,
+    /// Current unsaved root-document content.
     content: String,
+    /// Filesystem fallback for included documents.
     fs: FsSourceLoader,
 }
 
@@ -97,6 +109,7 @@ impl PactoleFileStorage {
     }
 }
 
+/// Converts project diagnostics into the storage parser error format.
 fn describe_project_diagnostics(diagnostics: Vec<Diagnostic>) -> errors::PactoleFsStorageError {
     let diagnostic = diagnostics
         .iter()

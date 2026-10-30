@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 //! Tolerant syntax analysis for `.pactole` source text.
 //!
 //! `pactole-syntax` sits between the raw tree-sitter grammar

@@ -18,6 +18,7 @@ name = "pactole"
 path = "src/main.rs"
 
 [dependencies]
+pactole-app.workspace = true
 chrono.workspace = true
 clap.workspace = true
 clap_complete.workspace = true

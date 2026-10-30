@@ -3,18 +3,18 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use chrono::{Datelike, Local, NaiveDate};
+use pactole_app::{ComparisonRequest, ExpensesQuery, ValuationRequest};
 use pactole_config::{ReportOptions, ValidationOptions};
 use pactole_core::{
-    AccountGrouping, AccountName, DiffDirection, DiffMode, ExpenseGrouping, ExpenseOptions, Period,
-    ReportError, compare_reports, expense_breakdown_with_options, periods_have_same_length,
-    previous_period,
+    AccountGrouping, AccountName, DiffDirection, ExpenseGrouping, ExpenseOptions, Period,
+    ReportError, previous_period,
 };
-use pactole_storage_fs::FsSourceLoader;
 
 use crate::classification::classification;
 use crate::commands::{CompareArg, DiffArg, ExpensesByArg, FormatArg};
 
 #[allow(clippy::too_many_arguments)]
+/// Runs the expense-breakdown command and optional period comparison.
 pub(crate) fn run(
     file: PathBuf,
     from: Option<NaiveDate>,
@@ -66,22 +66,6 @@ pub(crate) fn run(
         Err(error) => return failure(error),
     };
 
-    let project = match pactole_storage_fs::analyze_file_with_loader_with_options(
-        &file,
-        &FsSourceLoader,
-        validation,
-    ) {
-        Ok(project) => project,
-        Err(err) => return failure(err),
-    };
-
-    let diagnostics = project.diagnostics();
-    crate::diagnostics::print(&diagnostics);
-    let journal = match project.validated_journal() {
-        Ok(journal) => journal,
-        Err(_) => return ExitCode::FAILURE,
-    };
-
     let grouping = match by {
         ExpensesByArg::Account => ExpenseGrouping::Account(match depth {
             Some(depth) => AccountGrouping::Depth(depth),
@@ -128,43 +112,19 @@ pub(crate) fn run(
         include_uncategorized: uncategorized,
         include_inactive: inactive,
     };
-    let mut report = expense_breakdown_with_options(
-        &journal,
-        period,
-        &classification(reports),
-        grouping,
-        &options,
-    );
-    let valuation_date = at.unwrap_or(period.end());
-    let mut current_valuator =
-        match crate::valuation::valuator(&journal, convert_to.as_deref(), at, period.end()) {
-            Ok(valuator) => valuator,
-            Err(error) => return failure(error),
-        };
-    if let Err(error) = crate::valuation::value_report(&mut report, &mut current_valuator) {
-        return failure(error);
-    }
-
-    if comparison_requested {
-        if matches!(by, ExpensesByArg::Month) {
-            eprintln!("error: --compare cannot be combined with --by month");
-            return ExitCode::FAILURE;
-        }
-        if uncategorized || inactive {
-            eprintln!("error: --compare cannot be combined with --uncategorized or --inactive");
-            return ExitCode::FAILURE;
-        }
-        let previous = if matches!(compare, Some(CompareArg::Previous)) {
-            match previous_period(period) {
+    let comparison = if comparison_requested {
+        if matches!(compare, Some(CompareArg::Previous)) {
+            let previous = match previous_period(period) {
                 Some(previous) => previous,
                 None => {
                     eprintln!("error: cannot calculate the previous period at this date");
                     return ExitCode::FAILURE;
                 }
-            }
+            };
+            Some(previous)
         } else if let (Some(cf), Some(ct)) = (compare_from, compare_to) {
             match Period::new(cf, ct) {
-                Ok(p) => p,
+                Ok(previous) => Some(previous),
                 Err(_) => {
                     eprintln!("error: invalid comparison period");
                     return ExitCode::FAILURE;
@@ -173,52 +133,56 @@ pub(crate) fn run(
         } else {
             eprintln!("error: use --compare previous or provide --compare-from and --compare-to");
             return ExitCode::FAILURE;
-        };
-        if !periods_have_same_length(period, previous) {
-            eprintln!("error: comparison periods must have the same length");
-            return ExitCode::FAILURE;
         }
-        let mut previous_report = expense_breakdown_with_options(
-            &journal,
-            previous,
-            &classification(reports),
-            grouping,
-            &options,
-        );
-        let mut previous_valuator = match crate::valuation::valuator(
-            &journal,
-            convert_to.as_deref(),
-            if convert_to.is_some() {
-                Some(valuation_date)
-            } else {
-                at
-            },
-            previous.end(),
-        ) {
-            Ok(valuator) => valuator,
-            Err(error) => return failure(error),
-        };
-        if let Err(error) =
-            crate::valuation::value_report(&mut previous_report, &mut previous_valuator)
-        {
-            return failure(error);
-        }
-        let direction = if reverse_diff {
+    } else {
+        None
+    };
+    let comparison = comparison.map(|period| ComparisonRequest {
+        period,
+        direction: if reverse_diff {
             DiffDirection::PreviousMinusCurrent
         } else {
             DiffDirection::CurrentMinusPrevious
-        };
-        let mode: DiffMode = diff.into();
-        let comp = compare_reports(&report, &previous_report, direction, mode);
-        print!("{}", comp.render(format.into()));
-        return ExitCode::SUCCESS;
+        },
+        mode: diff.into(),
+    });
+    let valuation = match convert_to {
+        Some(target) => Some(ValuationRequest {
+            target: match pactole_core::CommodityName::new(target) {
+                Ok(target) => target,
+                Err(error) => return failure(error),
+            },
+            at: at.unwrap_or(period.end()),
+        }),
+        None => {
+            if at.is_some() {
+                return failure("--at requires --convert-to");
+            }
+            None
+        }
+    };
+    let result = match crate::application::service(&file, validation).expenses(ExpensesQuery {
+        period,
+        grouping,
+        options,
+        classification: classification(reports),
+        comparison,
+        valuation,
+    }) {
+        Ok(result) => result,
+        Err(error) => return crate::application::report_failure(error),
+    };
+    crate::diagnostics::print_application(&result.diagnostics);
+    if let Some(comparison) = result.comparison {
+        print!("{}", comparison.render(format.into()));
+    } else {
+        print!("{}", result.current.render(format.into()));
     }
-
-    print!("{}", report.render(format.into()));
 
     ExitCode::SUCCESS
 }
 
+/// Prints an expense-command error and returns the failure exit code.
 fn failure(error: impl std::fmt::Display) -> ExitCode {
     eprintln!("error: {error}");
     ExitCode::FAILURE

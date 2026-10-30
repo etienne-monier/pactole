@@ -30,10 +30,12 @@ use crate::config::Config;
 use crate::conversion::text_at_range;
 use crate::documents::Documents;
 
+/// Returns whether a byte is valid in a Pactole date token.
 fn is_date_character(byte: u8) -> bool {
     byte.is_ascii_digit() || byte == b'-'
 }
 
+/// Detects a complete date prefix at the start of a source line.
 fn starts_with_date(line: &str) -> bool {
     let bytes = line.as_bytes();
     bytes.len() >= 10
@@ -45,6 +47,7 @@ fn starts_with_date(line: &str) -> bool {
             .is_none_or(|byte| *byte == b'=' || byte.is_ascii_whitespace())
 }
 
+/// Returns whether a directive line needs the automatic date action.
 fn needs_date(line: &str) -> bool {
     if line.starts_with(char::is_whitespace) {
         return false;
@@ -60,6 +63,7 @@ fn needs_date(line: &str) -> bool {
         || matches!(first_word, "*" | "!" | "?")
 }
 
+/// Returns a source line by its zero-based line number.
 fn line_at(source: &str, line: u32) -> Option<&str> {
     source.lines().nth(line as usize)
 }
@@ -67,8 +71,11 @@ fn line_at(source: &str, line: u32) -> Option<&str> {
 /// The kind of declaration a business diagnostic is asking for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeclarationKind {
+    /// A missing payee declaration.
     Payee,
+    /// A missing account declaration.
     Account,
+    /// A missing commodity declaration.
     Commodity,
 }
 
@@ -257,6 +264,7 @@ fn workspace_edit(current: &Url, target: &Target, edit: TextEdit) -> Option<Work
     }
 }
 
+/// Builds quick fixes for missing account, commodity and payee declarations.
 fn declaration_actions(
     documents: &Documents,
     uri: &Url,

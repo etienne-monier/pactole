@@ -564,6 +564,7 @@ pub fn unused_declarations_with(journal: &Journal, missing: &MissingData) -> Vec
         .collect()
 }
 
+/// Validates payee, account, commodity and balancing invariants of a transaction.
 fn validate_transaction(
     transaction: &mut Transaction,
     open_accounts: &HashMap<AccountName, Vec<CommodityName>>,
@@ -822,11 +823,15 @@ pub(crate) fn checked_exact_decimal_product(left: Decimal, right: Decimal) -> Op
 /// overflow or round a sum whose final result is representable.
 #[derive(Default)]
 struct ExactDecimalSum {
+    /// Base-2^32 magnitude limbs, least significant first.
     magnitude: Vec<u32>,
+    /// Sign of the represented sum.
     negative: bool,
+    /// Decimal scale shared by the magnitude.
     scale: u32,
 }
 
+/// Adds two decimals without rounding intermediate values.
 pub(crate) fn checked_exact_decimal_sum(left: Decimal, right: Decimal) -> Option<Decimal> {
     let mut sum = ExactDecimalSum::default();
     sum.add(left);
@@ -835,6 +840,7 @@ pub(crate) fn checked_exact_decimal_sum(left: Decimal, right: Decimal) -> Option
 }
 
 impl ExactDecimalSum {
+    /// Adds one decimal to the exact accumulator.
     fn add(&mut self, value: Decimal) {
         if value.is_zero() {
             return;
@@ -869,6 +875,7 @@ impl ExactDecimalSum {
         }
     }
 
+    /// Converts the accumulator to a Decimal when its precision fits.
     fn into_decimal(mut self) -> Option<Decimal> {
         while self.magnitude.len() > 3 && self.scale > 0 {
             if divide_magnitude(&mut self.magnitude, 10) != 0 {
@@ -892,6 +899,7 @@ impl ExactDecimalSum {
     }
 }
 
+/// Splits an unsigned integer into base-2^32 magnitude limbs.
 fn magnitude_from_u128(mut value: u128) -> Vec<u32> {
     let mut magnitude = Vec::new();
     while value != 0 {
@@ -901,6 +909,7 @@ fn magnitude_from_u128(mut value: u128) -> Vec<u32> {
     magnitude
 }
 
+/// Multiplies a limb magnitude by a power of ten.
 fn multiply_magnitude_by_power_of_ten(magnitude: &mut Vec<u32>, power: u32) {
     for _ in 0..power {
         let mut carry = 0u64;
@@ -915,6 +924,7 @@ fn multiply_magnitude_by_power_of_ten(magnitude: &mut Vec<u32>, power: u32) {
     }
 }
 
+/// Adds two base-2^32 magnitudes in place.
 fn add_magnitudes(left: &mut Vec<u32>, right: &[u32]) {
     left.resize(left.len().max(right.len()), 0);
     let mut carry = 0u64;
@@ -928,6 +938,7 @@ fn add_magnitudes(left: &mut Vec<u32>, right: &[u32]) {
     }
 }
 
+/// Compares two base-2^32 magnitudes.
 fn compare_magnitudes(left: &[u32], right: &[u32]) -> std::cmp::Ordering {
     left.len()
         .cmp(&right.len())

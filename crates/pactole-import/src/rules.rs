@@ -334,10 +334,12 @@ fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
     haystack.to_lowercase().contains(&needle.to_lowercase())
 }
 
+/// Tests two rule values using case-insensitive equality.
 fn equals_ignore_case(left: &str, right: &str) -> bool {
     left.eq_ignore_ascii_case(right)
 }
 
+/// Compiles an optional case-insensitive import-rule regular expression.
 fn compile_regex(pattern: Option<&str>) -> Result<Option<Regex>, ImportError> {
     pattern
         .map(|pattern| {

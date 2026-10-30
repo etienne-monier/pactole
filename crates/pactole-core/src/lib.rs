@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 //! Pure domain models, validation and reporting for Pactole journals.
 //!
 //! This crate performs no I/O and has no dependency on the parser or storage
@@ -6,12 +9,19 @@
 //! report with [`register`] or a render-agnostic [`Report`]. Monetary values
 //! use [`rust_decimal::Decimal`].
 
+/// Stable diagnostic codes shared by frontends.
 mod diagnostics;
+/// Domain and validation error types.
 mod errors;
+/// Journal and accounting domain models.
 mod models;
+/// Register report computation.
 mod register;
+/// Render-agnostic financial reports.
 mod report;
+/// Storage traits independent of concrete backends.
 mod traits;
+/// Journal invariant validation.
 mod validation;
 
 pub use crate::diagnostics::DiagnosticCode;

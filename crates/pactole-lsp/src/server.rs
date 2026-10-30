@@ -26,22 +26,36 @@ use crate::config::{Config, workspace_root_from_initialize_params};
 use crate::diagnostics::{project_diagnostics, standalone_diagnostics};
 use crate::documents::{Documents, DocumentsSourceLoader, SnapshotSourceLoader};
 
+/// Delay used to coalesce bursts of document edits before analysis.
 const ANALYSIS_DEBOUNCE: Duration = Duration::from_millis(150);
 
+/// Input snapshot sent to the background analysis worker.
 struct AnalysisJob {
+    /// Document generation represented by this job.
     generation: u64,
+    /// Document URI that initiated the analysis.
     uri: Url,
+    /// Journal entry point to analyze.
     entry: PathBuf,
+    /// Validation options for the analysis.
     validation: pactole_config::ValidationOptions,
+    /// Loader snapshot containing open buffers.
     loader: SnapshotSourceLoader,
 }
 
+/// Result returned by the background analysis worker.
 struct AnalysisResult {
+    /// Generation represented by the result.
     generation: u64,
+    /// Document URI that initiated the analysis.
     uri: Url,
+    /// Journal entry point that was analyzed.
     entry: PathBuf,
+    /// Validation options used for the result.
     validation: pactole_config::ValidationOptions,
+    /// Analyzed project, when the entry point loaded successfully.
     project: Option<pactole_storage_fs::AnalyzedProject>,
+    /// Analysis duration in milliseconds, used for logging.
     elapsed_ms: f64,
 }
 
@@ -89,6 +103,7 @@ fn initialize_result(capabilities: serde_json::Value) -> serde_json::Value {
     })
 }
 
+/// Builds the capabilities advertised during LSP initialization.
 fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
@@ -129,6 +144,7 @@ fn server_capabilities() -> ServerCapabilities {
     }
 }
 
+/// Starts the debounced background worker used for project analysis.
 fn start_analysis_worker() -> (Sender<AnalysisJob>, Receiver<AnalysisResult>) {
     let (job_sender, job_receiver) = unbounded::<AnalysisJob>();
     let (result_sender, result_receiver) = unbounded::<AnalysisResult>();
@@ -175,6 +191,7 @@ fn start_analysis_worker() -> (Sender<AnalysisJob>, Receiver<AnalysisResult>) {
     (job_sender, result_receiver)
 }
 
+/// Schedules analysis for the configured journal or current document.
 fn schedule_analysis(
     config: &Config,
     documents: &Documents,
@@ -201,6 +218,7 @@ fn schedule_analysis(
     true
 }
 
+/// Processes LSP messages and publishes analysis results until shutdown.
 fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error + Sync + Send>> {
     let mut documents = Documents::new();
     // URIs published with non-empty diagnostics by the last `publish_for`
@@ -289,6 +307,7 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+/// Dispatches one LSP request and sends its response.
 fn handle_request(
     request: LspRequest,
     connection: &Connection,
@@ -487,6 +506,7 @@ fn handle_request(
     Ok(())
 }
 
+/// Applies one LSP notification to document state or server lifecycle.
 fn handle_notification(
     connection: &Connection,
     config: &Config,
@@ -686,6 +706,7 @@ fn clear_stale(
     Ok(())
 }
 
+/// Publishes diagnostics for one document URI.
 fn publish_diagnostics(
     connection: &Connection,
     uri: &Url,
@@ -706,6 +727,7 @@ fn publish_diagnostics(
     Ok(())
 }
 
+/// Converts a filesystem path into a file URI for LSP publication.
 fn path_to_url(path: &PathBuf) -> Option<Url> {
     Url::from_file_path(path).ok()
 }

@@ -23,20 +23,29 @@ use crate::config::Config;
 /// The in-memory state of every currently-open document, keyed by URI.
 #[derive(Default)]
 pub struct Documents {
+    /// Full text of open documents keyed by URI.
     open: HashMap<Url, String>,
+    /// Most recently analyzed project scope, when available.
     cached_scope: RefCell<Option<CachedScope>>,
+    /// Monotonic generation used to invalidate stale analyses.
     generation: u64,
 }
 
+/// Cached project analysis and the inputs that produced it.
 struct CachedScope {
+    /// Journal entry point used for the cached analysis.
     entry: PathBuf,
+    /// Validation options used to produce the cached project.
     validation: pactole_config::ValidationOptions,
+    /// Last successfully analyzed project.
     project: AnalyzedProject,
 }
 
 /// A loader snapshot used by the background project-analysis worker.
 pub(crate) struct SnapshotSourceLoader {
+    /// Open document buffers keyed by filesystem path.
     open: HashMap<PathBuf, String>,
+    /// Filesystem fallback for paths without an open buffer.
     fs: FsSourceLoader,
 }
 
@@ -88,10 +97,12 @@ impl Documents {
         self.get(&uri)
     }
 
+    /// Returns the generation used to invalidate cached project analyses.
     pub(crate) fn generation(&self) -> u64 {
         self.generation
     }
 
+    /// Creates a loader snapshot containing open buffers and filesystem fallback.
     pub(crate) fn snapshot_loader(&self) -> SnapshotSourceLoader {
         let open = self
             .open
@@ -104,6 +115,7 @@ impl Documents {
         }
     }
 
+    /// Stores the latest successfully analyzed project for editor features.
     pub(crate) fn store_analyzed_scope(
         &mut self,
         entry: PathBuf,
@@ -157,7 +169,9 @@ impl SourceLoader for SnapshotSourceLoader {
 /// content that [`FsSourceLoader`] would otherwise read. Falls back to
 /// [`FsSourceLoader`] for any path that is not currently open.
 pub struct DocumentsSourceLoader<'a> {
+    /// Open documents whose buffers take precedence over disk.
     documents: &'a Documents,
+    /// Filesystem fallback loader.
     fs: FsSourceLoader,
 }
 

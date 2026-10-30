@@ -241,6 +241,7 @@ pub enum ValidationError {
     },
 }
 
+/// Formats per-commodity imbalance totals for a validation error message.
 fn format_imbalances(imbalances: &[(CommodityName, Decimal)]) -> String {
     imbalances
         .iter()

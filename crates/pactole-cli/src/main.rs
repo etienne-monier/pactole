@@ -1,18 +1,41 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
+//! Command-line interface for Pactole ledger operations.
+
+/// Shared application-service construction and error handling.
+mod application;
+/// Balance-sheet command implementation.
 mod balance;
+/// Ledger validation command implementation.
 mod check;
+/// Report account classification helpers.
 mod classification;
+/// Clap command-line argument definitions.
 mod commands;
+/// Layered configuration loading for CLI commands.
 mod config;
+/// Diagnostic rendering for terminal output.
 mod diagnostics;
+/// Expense-report command implementation.
 mod expenses;
+/// Canonical ledger formatting command implementation.
 mod format;
+/// Include-graph command implementation.
 mod graph;
+/// Actual Budget migration command implementation.
 mod import_actual;
+/// OFX import command implementation.
 mod import_ofx;
+/// Income-report command implementation.
 mod income;
+/// Starter-ledger initialization command implementation.
 mod init;
+/// Debug parsing command implementation.
 mod parse;
+/// Register-report command implementation.
 mod register;
+/// Report valuation rendering helpers.
 mod valuation;
 
 use std::path::{Path, PathBuf};

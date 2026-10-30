@@ -13,8 +13,11 @@ use crate::span::Span;
 /// invalid input. Errors are surfaced as [`SyntaxDiagnostic`]s rather than
 /// as a `Result::Err`.
 pub struct ParsedDocument {
+    /// Original source text.
     source: String,
+    /// Tolerant tree-sitter syntax tree.
     tree: Tree,
+    /// Diagnostics collected from error and missing nodes.
     diagnostics: Vec<SyntaxDiagnostic>,
 }
 
@@ -121,6 +124,7 @@ pub fn collect_error_nodes_with_source(tree: &Tree, source: &str) -> Vec<SyntaxD
     collect_diagnostics(tree, Some(source))
 }
 
+/// Walks the syntax tree and collects each top-level missing or error node.
 fn collect_diagnostics(tree: &Tree, source: Option<&str>) -> Vec<SyntaxDiagnostic> {
     let mut diagnostics = Vec::new();
     let mut cursor = tree.walk();
@@ -151,6 +155,7 @@ fn collect_diagnostics(tree: &Tree, source: Option<&str>) -> Vec<SyntaxDiagnosti
     diagnostics
 }
 
+/// Adds a diagnostic for `node` unless it is nested inside another error node.
 fn push_diagnostic(node: &Node, source: Option<&str>, diagnostics: &mut Vec<SyntaxDiagnostic>) {
     if node.is_missing() {
         diagnostics.push(SyntaxDiagnostic::new(

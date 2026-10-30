@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 use pactole_storage_fs::{FsSourceLoader, SourceLoadError};
 
+/// Parses a project and prints its lowered journal entries.
 pub(crate) fn run(file: PathBuf) -> ExitCode {
     let project = match pactole_storage_fs::analyze_file_with_loader(&file, &FsSourceLoader) {
         Ok(project) => project,
@@ -23,6 +24,7 @@ pub(crate) fn run(file: PathBuf) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Prints a source-loading error and returns the failure exit code.
 fn failure(error: SourceLoadError) -> ExitCode {
     eprintln!("error: {error}");
     ExitCode::FAILURE

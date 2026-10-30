@@ -2,13 +2,14 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use chrono::NaiveDate;
+use pactole_app::{RegisterQuery, ValuationRequest};
 use pactole_config::ValidationOptions;
-use pactole_core::{Amounts, RegisterFilter, TransactionStatus};
-use pactole_storage_fs::FsSourceLoader;
+use pactole_core::{AccountName, RegisterFilter, TransactionStatus};
 
 use crate::commands::{RegisterFormatArg, StatusArg};
 
 #[allow(clippy::too_many_arguments)]
+/// Runs the register command with its account and transaction filters.
 pub(crate) fn run(
     file: PathBuf,
     account: Option<String>,
@@ -23,24 +24,8 @@ pub(crate) fn run(
     at: Option<NaiveDate>,
     validation: &ValidationOptions,
 ) -> ExitCode {
-    let project = match pactole_storage_fs::analyze_file_with_loader_with_options(
-        &file,
-        &FsSourceLoader,
-        validation,
-    ) {
-        Ok(project) => project,
-        Err(err) => return failure(err),
-    };
-
-    let diagnostics = project.diagnostics();
-    crate::diagnostics::print(&diagnostics);
-    let journal = match project.validated_journal() {
-        Ok(journal) => journal,
-        Err(_) => return ExitCode::FAILURE,
-    };
-
     let account = match account {
-        Some(account) => match pactole_core::AccountName::new(account) {
+        Some(account) => match AccountName::new(account) {
             Ok(account) => Some(account),
             Err(err) => return failure(err),
         },
@@ -57,44 +42,33 @@ pub(crate) fn run(
         status: status.map(TransactionStatus::from),
     };
 
-    let mut entries = pactole_core::register(&journal, &filter);
     let default_at = filter
         .to
         .unwrap_or_else(|| chrono::Local::now().date_naive());
-    let mut valuator =
-        match crate::valuation::valuator(&journal, convert_to.as_deref(), at, default_at) {
-            Ok(valuator) => valuator,
-            Err(error) => return failure(error),
-        };
-    if let Some(valuator) = &mut valuator {
-        for entry in &mut entries {
-            if let Some(amount) = &entry.amount {
-                let mut amounts = Amounts::new();
-                amounts.add(amount);
-                let converted = match valuator.convert_amounts(&amounts) {
-                    Ok(converted) => converted.to_vec().into_iter().next(),
-                    Err(error) => return failure(error),
-                };
-                entry.amount = converted;
-            }
-            let mut balance = Amounts::new();
-            for (commodity, number) in &entry.balance {
-                balance.add(&pactole_core::Amount {
-                    number: *number,
-                    commodity: commodity.clone(),
-                });
-            }
-            entry.balance = match valuator.convert_amounts(&balance) {
-                Ok(converted) => converted
-                    .to_vec()
-                    .into_iter()
-                    .map(|a| (a.commodity, a.number))
-                    .collect(),
+    let valuation = match convert_to {
+        Some(target) => Some(ValuationRequest {
+            target: match pactole_core::CommodityName::new(target) {
+                Ok(target) => target,
                 Err(error) => return failure(error),
-            };
+            },
+            at: at.unwrap_or(default_at),
+        }),
+        None => {
+            if at.is_some() {
+                return failure("--at requires --convert-to");
+            }
+            None
         }
-    }
-    let valuation = valuator.as_ref().map(|valuator| valuator.valuation());
+    };
+    let result = match crate::application::service(&file, validation)
+        .register(RegisterQuery { filter, valuation })
+    {
+        Ok(result) => result,
+        Err(error) => return crate::application::report_failure(error),
+    };
+    crate::diagnostics::print_application(&result.diagnostics);
+    let entries = result.entries;
+    let valuation = result.valuation;
     match format {
         RegisterFormatArg::Text => {
             if let Some(valuation) = &valuation {
@@ -184,6 +158,7 @@ pub(crate) fn run(
     ExitCode::SUCCESS
 }
 
+/// Prints a register-command error and returns the failure exit code.
 fn failure(error: impl std::fmt::Display) -> ExitCode {
     eprintln!("error: {error}");
     ExitCode::FAILURE

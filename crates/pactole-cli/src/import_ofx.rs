@@ -9,15 +9,23 @@ use pactole_storage_fs::FsSourceLoader;
 
 use pactole_config::Config;
 
+/// Options controlling one OFX import invocation.
 pub(crate) struct Options {
+    /// Import transactions on or after this date.
     pub(crate) from: Option<NaiveDate>,
+    /// Existing ledger to inspect and optionally append to.
     pub(crate) into: Option<PathBuf>,
+    /// Overrides the configured bank account.
     pub(crate) account: Option<String>,
+    /// Appends generated transactions to the target ledger.
     pub(crate) write: bool,
+    /// Suppresses source-payee metadata.
     pub(crate) no_imported_payee: bool,
+    /// Omits negative posting amounts in generated output.
     pub(crate) omit_negative_amount: bool,
 }
 
+/// Imports an OFX statement and prints or appends canonical Pactole transactions.
 pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode {
     let Options {
         from,
@@ -127,6 +135,7 @@ pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode 
     ExitCode::SUCCESS
 }
 
+/// Collects FITIDs from the complete include graph of an existing ledger.
 fn collect_fitids(path: &Path) -> Result<HashSet<String>, pactole_storage_fs::SourceLoadError> {
     // Analyze `path` as the entry point of a project so `include` directives
     // are followed: FITIDs recorded in any reachable file are recognized and
@@ -145,6 +154,7 @@ fn collect_fitids(path: &Path) -> Result<HashSet<String>, pactole_storage_fs::So
         .collect())
 }
 
+/// Formats an import warning with the configured fallback account.
 fn describe_warning(
     warning: &pactole_import::ImportWarning,
     config: &pactole_import::ImportConfig,

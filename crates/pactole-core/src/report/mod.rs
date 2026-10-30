@@ -12,16 +12,27 @@
 //! builds an [`AccountBalances`], groups it with [`AccountGrouping`], and
 //! wraps the result in a [`Report`] carrying an inclusive [`ReportScope`].
 
+/// Account-level balance aggregation and grouping.
 mod accounts;
+/// Exact per-commodity amount collections.
 mod amounts;
+/// Balance-sheet construction.
 mod balance_sheet;
+/// Period-to-period report comparison.
 mod comparison;
+/// Report-specific errors.
 mod error;
+/// Expense breakdown construction.
 mod expenses;
+/// Grouping strategies for report lines.
 mod grouping;
+/// Income-statement construction.
 mod income_statement;
+/// Inclusive reporting periods and scopes.
 mod period;
+/// Text, JSON and CSV rendering.
 mod render;
+/// Market-price report valuation.
 mod valuation;
 
 pub use accounts::{AccountBalances, AccountGrouping};

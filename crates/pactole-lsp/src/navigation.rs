@@ -54,6 +54,7 @@ pub(crate) enum SymbolKind {
 /// The symbol found under the cursor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Symbol {
+    /// Kind of symbol under the cursor.
     pub(crate) kind: SymbolKind,
     /// The name as written in the source, without the surrounding quotes of
     /// a payee string or include path.
@@ -65,6 +66,7 @@ pub(crate) struct Symbol {
 /// allocates no per-occurrence strings.
 #[derive(Debug, Clone)]
 struct Occurrence<'a> {
+    /// Kind of the indexed token.
     kind: SymbolKind,
     /// The name as written in the source (payees and include paths without
     /// their surrounding quotes).
@@ -86,8 +88,11 @@ pub(crate) struct ScopedOccurrence<'a> {
     pub(crate) location: Option<Location>,
     /// The filesystem path of the containing file, when known.
     pub(crate) path: Option<PathBuf>,
+    /// Kind of the indexed token.
     pub(crate) kind: SymbolKind,
+    /// Borrowed symbol name.
     pub(crate) name: &'a str,
+    /// Whether this token declares the symbol.
     pub(crate) is_definition: bool,
 }
 
@@ -99,6 +104,7 @@ struct ScopeEntry<'a> {
     /// document this is the request's own URI, echoed back so the editor
     /// matches the buffer it already has open.
     uri: Option<Url>,
+    /// Parsed file backing this scope entry.
     file: &'a ParsedFile,
 }
 
@@ -107,6 +113,7 @@ struct ScopeEntry<'a> {
 /// of that project. Shared with rename ([`crate::rename`]), whose scope is
 /// exactly the same.
 pub(crate) struct Scope<'a> {
+    /// Files included in the navigation scope.
     entries: Vec<ScopeEntry<'a>>,
 }
 
@@ -419,6 +426,7 @@ fn occurrences_in(file: &ParsedFile) -> Vec<Occurrence<'_>> {
     occurrences
 }
 
+/// Adds one CST token to the symbol occurrence index.
 fn push_occurrence<'a>(
     occurrences: &mut Vec<Occurrence<'a>>,
     source: &'a str,
@@ -440,6 +448,7 @@ fn push_occurrence<'a>(
     });
 }
 
+/// Finds a named CST child by grammar kind.
 fn named_child<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor)

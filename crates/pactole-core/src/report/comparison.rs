@@ -75,7 +75,9 @@ pub struct ComparisonReport {
     pub valuation: Option<ComparisonValuation>,
 }
 
+/// Key used to keep equal labels in different report sections distinct.
 type ComparisonKey = (Option<String>, String);
+/// Accumulated depth, current amounts and previous amounts for a comparison key.
 type ComparisonValues = (usize, Amounts, Amounts);
 
 impl ComparisonReport {
@@ -108,6 +110,7 @@ pub fn previous_period(period: Period) -> Option<Period> {
     Period::new(previous_start, previous_end).ok()
 }
 
+/// Returns whether a period covers complete calendar months.
 fn is_full_month_period(period: Period) -> bool {
     let start = period.start();
     let end = period.end();
@@ -211,6 +214,7 @@ pub fn compare_reports(
     }
 }
 
+/// Combines valuation provenance from the two compared reports.
 fn comparison_valuation(
     current: Option<&Valuation>,
     previous: Option<&Valuation>,
@@ -221,6 +225,7 @@ fn comparison_valuation(
     })
 }
 
+/// Computes an absolute or percentage difference between two values.
 fn compute_diff(
     cur: Decimal,
     prev: Decimal,
@@ -249,6 +254,7 @@ fn compute_diff(
     }
 }
 
+/// Renders a comparison report as an aligned text table.
 fn render_text(report: &ComparisonReport) -> String {
     let difference_header = match report.direction {
         DiffDirection::CurrentMinusPrevious => "Difference (current − previous)",
@@ -360,6 +366,7 @@ fn render_text(report: &ComparisonReport) -> String {
     output
 }
 
+/// Returns the union of commodities present in both compared amounts.
 fn commodities(current: &Amounts, previous: &Amounts) -> BTreeSet<CommodityName> {
     current
         .iter()
@@ -368,6 +375,7 @@ fn commodities(current: &Amounts, previous: &Amounts) -> BTreeSet<CommodityName>
         .collect()
 }
 
+/// Formats one absolute or percentage difference for display.
 fn format_difference(
     current: Decimal,
     previous: Decimal,
@@ -384,6 +392,7 @@ fn format_difference(
     }
 }
 
+/// Renders a comparison report as structured JSON.
 fn render_json(report: &ComparisonReport) -> String {
     use serde_json::json;
     let dir_str = match report.direction {
@@ -483,6 +492,7 @@ fn render_json(report: &ComparisonReport) -> String {
     output
 }
 
+/// Renders a comparison report as CSV rows.
 fn render_csv(report: &ComparisonReport) -> String {
     let dir_str = match report.direction {
         DiffDirection::CurrentMinusPrevious => "current_minus_previous",
@@ -771,6 +781,7 @@ fn render_csv(report: &ComparisonReport) -> String {
     output
 }
 
+/// Serializes valuation provenance for both comparison periods.
 fn comparison_valuation_json(valuation: &ComparisonValuation) -> serde_json::Value {
     serde_json::json!({
         "current": valuation.current.as_ref().map(valuation_json),
@@ -778,6 +789,7 @@ fn comparison_valuation_json(valuation: &ComparisonValuation) -> serde_json::Val
     })
 }
 
+/// Serializes one report valuation into the comparison JSON shape.
 fn valuation_json(valuation: &Valuation) -> serde_json::Value {
     serde_json::json!({
         "currency": valuation.currency.as_str(),
@@ -792,6 +804,7 @@ fn valuation_json(valuation: &Valuation) -> serde_json::Value {
     })
 }
 
+/// Formats valuation provenance for both comparison periods.
 fn comparison_valuation_text(valuation: &ComparisonValuation) -> String {
     let mut output = String::new();
     for (label, valuation) in [
@@ -821,6 +834,7 @@ fn comparison_valuation_text(valuation: &ComparisonValuation) -> String {
     output
 }
 
+/// Quotes a comparison CSV field when it contains special characters.
 fn csv_escape(field: &str) -> String {
     if field
         .chars()

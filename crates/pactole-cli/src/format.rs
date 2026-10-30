@@ -4,6 +4,7 @@ use std::process::ExitCode;
 
 use pactole_config::FormatOptions;
 
+/// Formats a ledger from a file or stdin and optionally writes it back.
 pub(crate) fn run(file: String, write: bool, options: &FormatOptions) -> ExitCode {
     let source = if file == "-" {
         let mut buf = String::new();
@@ -34,6 +35,7 @@ pub(crate) fn run(file: String, write: bool, options: &FormatOptions) -> ExitCod
     ExitCode::SUCCESS
 }
 
+/// Prints a formatting error and returns the failure exit code.
 fn failure(error: impl std::fmt::Display) -> ExitCode {
     eprintln!("error: {error}");
     ExitCode::FAILURE

@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 //! `pactole-lsp` binary entry point: runs a minimal Language Server Protocol
 //! server for `.pactole` files over stdio.
 

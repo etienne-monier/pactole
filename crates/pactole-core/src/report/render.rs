@@ -80,6 +80,7 @@ fn text(report: &Report) -> String {
     output
 }
 
+/// Converts a report line into its rendered label and amount columns.
 fn line_row(line: &ReportLine, indent: &str) -> (String, String) {
     (
         format!("{indent}{}{}", "  ".repeat(line.depth), line.label),
@@ -87,6 +88,7 @@ fn line_row(line: &ReportLine, indent: &str) -> (String, String) {
     )
 }
 
+/// Aligns rendered report rows into a plain-text table.
 fn rows_text(rows: Vec<(String, String)>) -> String {
     let label_width = rows
         .iter()
@@ -112,10 +114,12 @@ fn rows_text(rows: Vec<(String, String)>) -> String {
     output
 }
 
+/// Returns whether at least one amount is non-zero.
 fn has_amounts(amounts: &Amounts) -> bool {
     amounts.iter().any(|(_, number)| !number.is_zero())
 }
 
+/// Formats non-zero amounts as comma-separated commodity values.
 fn amounts_text(amounts: &Amounts) -> String {
     amounts
         .iter()
@@ -125,6 +129,7 @@ fn amounts_text(amounts: &Amounts) -> String {
         .join(", ")
 }
 
+/// Formats a report scope for the text renderer.
 fn scope_text(scope: ReportScope) -> String {
     match scope {
         ReportScope::AsOf(reference) => format!("as of {}", reference.date()),
@@ -164,6 +169,7 @@ fn json(report: &Report) -> String {
     output
 }
 
+/// Serializes a report line into the JSON representation.
 fn line_json(line: &ReportLine) -> Value {
     json!({
         "label": &line.label,
@@ -172,6 +178,7 @@ fn line_json(line: &ReportLine) -> Value {
     })
 }
 
+/// Serializes non-zero amounts as exact decimal strings.
 fn amounts_json(amounts: &Amounts) -> Vec<Value> {
     amounts
         .iter()
@@ -185,6 +192,7 @@ fn amounts_json(amounts: &Amounts) -> Vec<Value> {
         .collect()
 }
 
+/// Serializes valuation provenance and missing conversions.
 fn valuation_json(valuation: &Valuation) -> Value {
     json!({
         "currency": valuation.currency.as_str(),
@@ -199,6 +207,7 @@ fn valuation_json(valuation: &Valuation) -> Value {
     })
 }
 
+/// Formats valuation provenance for the text renderer.
 fn valuation_text(valuation: &Valuation) -> String {
     let mut output = format!("Valuation: {} at {}\n", valuation.currency, valuation.date);
     for price in &valuation.prices {
@@ -216,6 +225,7 @@ fn valuation_text(valuation: &Valuation) -> String {
     output
 }
 
+/// Serializes a report scope into its JSON object representation.
 fn scope_json(scope: ReportScope) -> Value {
     match scope {
         ReportScope::AsOf(reference) => json!({
@@ -376,6 +386,7 @@ fn csv(report: &Report) -> String {
     output
 }
 
+/// Splits a report scope into CSV kind, start and end fields.
 fn scope_fields(scope: ReportScope) -> (&'static str, String, String) {
     match scope {
         ReportScope::AsOf(reference) => ("as_of", String::new(), reference.date().to_string()),
@@ -387,6 +398,7 @@ fn scope_fields(scope: ReportScope) -> (&'static str, String, String) {
     }
 }
 
+/// Escapes and joins one CSV row.
 fn csv_row(fields: impl IntoIterator<Item = String>) -> String {
     fields
         .into_iter()
@@ -395,6 +407,7 @@ fn csv_row(fields: impl IntoIterator<Item = String>) -> String {
         .join(",")
 }
 
+/// Quotes a CSV field when it contains delimiters or line breaks.
 fn csv_escape(field: &str) -> String {
     if field
         .chars()

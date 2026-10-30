@@ -19,10 +19,12 @@ pub(crate) struct Cli {
     pub(crate) config: Option<PathBuf>,
 
     #[command(subcommand)]
+    /// Command to execute.
     pub(crate) command: Command,
 }
 
 #[derive(Debug, Subcommand)]
+/// Subcommands supported by the Pactole CLI.
 pub(crate) enum Command {
     /// Parse a `.pactole` file and print the resulting journal entries.
     Parse {
@@ -349,29 +351,38 @@ pub(crate) enum Command {
 /// Output format for validation results.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum CheckFormatArg {
+    /// Human-readable validation output.
     Text,
+    /// JSON validation output.
     Json,
 }
 
 /// Output format for the register listing.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum RegisterFormatArg {
+    /// Human-readable register output.
     Text,
+    /// JSON register output.
     Json,
 }
 
 /// Output format for the include graph.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum GraphFormatArg {
+    /// Human-readable include-graph output.
     Text,
+    /// JSON include-graph output.
     Json,
 }
 
 /// CLI-facing mirror of [`pactole_core::TransactionStatus`].
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum StatusArg {
+    /// Uncleared transaction status.
     Uncleared,
+    /// Pending transaction status.
     Pending,
+    /// Cleared transaction status.
     Cleared,
 }
 
@@ -388,8 +399,11 @@ impl From<StatusArg> for pactole_core::TransactionStatus {
 /// Output format of the reporting commands.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum FormatArg {
+    /// Human-readable report output.
     Text,
+    /// JSON report output.
     Json,
+    /// CSV report output.
     Csv,
 }
 
@@ -406,30 +420,40 @@ impl From<FormatArg> for pactole_core::ReportFormat {
 /// Grouping for reports that can break down income and expenses.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum ByArg {
+    /// Group by account.
     Account,
+    /// Group by payee.
     Payee,
+    /// Group by tag.
     Tag,
 }
 
 /// Grouping for the expenses breakdown.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum ExpensesByArg {
+    /// Group by account.
     Account,
+    /// Group by payee.
     Payee,
+    /// Group by tag.
     Tag,
+    /// Group by calendar month.
     Month,
 }
 
 /// Difference mode for comparison.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum DiffArg {
+    /// Show an absolute difference.
     Absolute,
+    /// Show a percentage difference.
     Percent,
 }
 
 /// Named comparison period.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum CompareArg {
+    /// Compare with the immediately preceding period.
     Previous,
 }
 

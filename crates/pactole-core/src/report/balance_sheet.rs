@@ -79,6 +79,7 @@ impl AccountClassification {
         self
     }
 
+    /// Classifies an account root using the configured category lists.
     pub(super) fn category(&self, root: &str) -> Category {
         let matches = |roots: &[String]| roots.iter().any(|candidate| candidate == root);
 
@@ -99,12 +100,19 @@ impl AccountClassification {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Balance-sheet category assigned to an account root.
 pub(super) enum Category {
+    /// Assets held by the ledger.
     Assets,
+    /// Liabilities owed by the ledger.
     Liabilities,
+    /// Owner equity.
     Equity,
+    /// Income accounts closed into equity.
     Income,
+    /// Expense accounts closed into equity.
     Expenses,
+    /// Account roots not present in configured classifications.
     Unclassified,
 }
 
@@ -198,6 +206,7 @@ pub fn balance_sheet(
     )
 }
 
+/// Creates a report section from grouped account balances.
 fn section(
     title: &str,
     balances: &AccountBalances,
@@ -211,6 +220,7 @@ fn section(
     )
 }
 
+/// Creates the equity section and appends the unclosed result when non-zero.
 fn equity_section(
     balances: &AccountBalances,
     result: &Amounts,
@@ -227,6 +237,7 @@ fn equity_section(
     ReportSection::new("Equity", lines, subtotal)
 }
 
+/// Applies the section-specific grouping and hides the duplicated root line.
 pub(super) fn section_lines(
     balances: &AccountBalances,
     grouping: AccountGrouping,

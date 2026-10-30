@@ -29,6 +29,7 @@ pub fn standalone_diagnostics(file: &ParsedFile, path: &std::path::Path) -> Vec<
         .collect()
 }
 
+/// Converts a positioned project diagnostic into an LSP diagnostic.
 fn to_lsp_diagnostic(diagnostic: &ProjectDiagnostic, source: &str) -> Diagnostic {
     Diagnostic {
         range: span_to_range(source, &diagnostic.span),

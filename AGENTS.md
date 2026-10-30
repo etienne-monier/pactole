@@ -18,7 +18,7 @@ Users record financial transactions in human-readable, git-friendly `.pactole` f
 
 ## 2. Workspace & Architecture
 
-Pactole is structured as a Cargo workspace, currently with eight crates. A future
+Pactole is structured as a Cargo workspace, currently with nine crates. A future
 database-backed storage crate is anticipated but not yet created; see "Planned Crates" below.
 
 ```text
@@ -28,6 +28,7 @@ pactole/
 │   ├── pactole-config/        # Layered pactole.toml schema and resolution (leaf crate)
 │   ├── pactole-core/          # Pure domain models, validation, and reports
 │   ├── pactole-syntax/        # Tolerant CST analysis, spans, and syntax diagnostics
+│   ├── pactole-app/           # Transport-independent application use cases and backend ports
 │   ├── pactole-storage-fs/    # Tree-sitter-based parser, includes, and canonical formatter
 │   ├── pactole-import/        # Import external formats (OFX) into domain models
 │   ├── pactole-lsp/           # Minimal stdio Language Server Protocol server
@@ -93,6 +94,9 @@ pactole/
 
 4. **`pactole-storage-fs`**:
    - Implements `ReadableStorage` for local files (`PactoleFileStorage`).
+   - `application.rs`: `FsLedgerReader` implements `pactole_app::LedgerReader`
+     for read-only filesystem projects, converting positioned storage
+     diagnostics into the application-layer diagnostic types.
     - `analysis.rs`: Converts tree-sitter CST nodes into positioned domain
       entries, resolves includes through `SourceLoader`, and exposes
       source-order and validated journals with unified diagnostics.
@@ -213,6 +217,25 @@ pactole/
          `pactole-lsp` is expected to build that on top of this contract rather than this crate
          growing it prematurely.
 
+5. **`pactole-app`**:
+   - **Transport- and presentation-independent application layer**: owns the
+     `LedgerReader` port, backend capabilities, validated ledger snapshots,
+     application diagnostics, typed report queries/results and structured
+     application errors. It orchestrates the reporting functions from
+     `pactole-core` but does not parse source files, perform I/O, render output,
+     or depend on a concrete storage backend. `LedgerSnapshot::Ready` contains
+     a complete validated `Journal` and warnings; `Unavailable` contains the
+     diagnostics explaining why a report cannot be built. Capabilities are
+     validated so transaction and budget support cannot be advertised without
+     write support. The crate is the shared boundary for the CLI, web and
+     future storage adapters. `LedgerWriter`, `WritableApplication`,
+     `WriteTransactionRequest`, `WriteTarget`, `Revision`, `EntryId`,
+     `ValidationPolicy`, `ConflictPolicy` and `WriteResult` define the future
+     write contract, but no concrete backend implements it yet. Writes must be
+     validated before persistence, use an expected revision for conflict
+     detection, and provide atomic-commit guarantees; filesystem formatting
+     and include-target rules remain backend responsibilities.
+
 6. **`pactole-cli`**:
    - Command-line application binary named `pactole` (using `clap` derive).
    - **Root flags** (before the subcommand):
@@ -262,7 +285,7 @@ pactole/
      `pactole.toml` next to the journal (or `--into` for `import-ofx`), then the root flags.
    - Integration tests in `crates/pactole-cli/tests/cli.rs`.
 
-5. **`pactole-lsp`**:
+7. **`pactole-lsp`**:
    - A minimal stdio Language Server Protocol server for `.pactole` files, built on `lsp-server` +
      `lsp-types`. Binary name: `pactole-lsp`.
    - **Command line**: `clap` derive, like `pactole`. `--version` and `--help` are handled by
@@ -375,7 +398,7 @@ pactole/
      struct, and errors are otherwise propagated via `Box<dyn Error + Sync + Send>` in
      `server.rs`.
 
-7. **`pactole-import`**:
+8. **`pactole-import`**:
    - **Edge adapter, zero I/O, depends only on `pactole-core` and `pactole-config`** (plus
      `chrono`, `encoding_rs`, `rust_decimal`, `thiserror` and `ofx-rs`): translates a foreign
      input format into pure domain models. It knows nothing about tree-sitter,
@@ -423,7 +446,7 @@ pactole/
    - **Serialization stays out of this crate**: turning the produced `Transaction`s into
      `.pactole` text is `pactole_storage_fs::format_transactions_with_options`, called by the CLI.
 
-8. **`pactole-config`**:
+9. **`pactole-config`**:
    - **Leaf crate**: depends on no other Pactole crate (only `serde`, `toml`, `thiserror`), and
      owns the whole `pactole.toml` schema plus its layering rules. Every other crate that needs
      configuration depends on it.

@@ -6,18 +6,29 @@ use std::process::ExitCode;
 use chrono::{Local, NaiveDate};
 use pactole_core::{AccountName, CommodityName};
 
+/// Options controlling starter-ledger initialization.
 pub(crate) struct Options {
+    /// Ledger path to create.
     pub(crate) ledger: PathBuf,
+    /// Initial bank account.
     pub(crate) account: String,
+    /// Initial commodity.
     pub(crate) currency: String,
+    /// Counter-account used by the generated configuration.
     pub(crate) counter_account: String,
+    /// Date used for generated declarations.
     pub(crate) date: Option<NaiveDate>,
+    /// Print the ledger instead of creating it.
     pub(crate) stdout: bool,
+    /// Write configuration to the global configuration directory.
     pub(crate) global: bool,
+    /// Skip configuration creation.
     pub(crate) no_config: bool,
+    /// Skip ledger creation.
     pub(crate) no_ledger: bool,
 }
 
+/// Creates the starter ledger and optional configuration file.
 pub(crate) fn run(options: Options) -> ExitCode {
     let Options {
         ledger,
@@ -103,6 +114,7 @@ pub(crate) fn run(options: Options) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Renders the initial commodity and account declarations.
 fn render_ledger(date: &NaiveDate, account: &str, currency: &str, counter_account: &str) -> String {
     format!(
         "; Pactole ledger\n\
@@ -114,6 +126,7 @@ fn render_ledger(date: &NaiveDate, account: &str, currency: &str, counter_accoun
     )
 }
 
+/// Renders the starter `pactole.toml` configuration.
 fn render_config(account: &str, currency: &str, counter_account: &str) -> String {
     format!(
         "# Pactole configuration\n\
@@ -195,6 +208,7 @@ fn render_config(account: &str, currency: &str, counter_account: &str) -> String
     )
 }
 
+/// Creates a file without overwriting an existing file.
 fn create_file_if_missing(path: &Path, contents: &str) -> io::Result<bool> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
@@ -213,6 +227,7 @@ fn create_file_if_missing(path: &Path, contents: &str) -> io::Result<bool> {
     Ok(true)
 }
 
+/// Prints an initialization error and returns the failure exit code.
 fn failure(error: impl std::fmt::Display) -> ExitCode {
     eprintln!("error: {error}");
     ExitCode::FAILURE

@@ -9,7 +9,9 @@ use super::ReportError;
 /// or [`Period::single`] for a one-day period.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Period {
+    /// Inclusive first day of the period.
     start: NaiveDate,
+    /// Inclusive last day of the period.
     end: NaiveDate,
 }
 

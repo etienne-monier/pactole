@@ -12,6 +12,7 @@ keywords = ["accounting", "ledger", "parser", "filesystem"]
 categories = ["parser-implementations", "finance"]
 
 [dependencies]
+pactole-app.workspace = true
 chrono.workspace = true
 pactole-config.workspace = true
 pactole-core.workspace = true

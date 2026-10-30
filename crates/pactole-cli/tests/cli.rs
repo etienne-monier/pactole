@@ -53,6 +53,30 @@ fn parse_reports_error_on_missing_file() {
 }
 
 #[test]
+fn report_commands_keep_positioned_diagnostics_for_an_invalid_ledger() {
+    let directory =
+        std::env::temp_dir().join(format!("pactole-report-invalid-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let ledger = directory.join("ledger.pactole");
+    std::fs::write(&ledger, "not a pactole directive\n").unwrap();
+
+    let output = pactole_cmd()
+        .args(["balance", ledger.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("syntax-error"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("not a pactole directive"),
+        "stderr: {stderr}"
+    );
+
+    std::fs::remove_dir_all(directory).ok();
+}
+
+#[test]
 fn expenses_supports_optional_sections_and_calendar_month_comparisons() {
     let directory = std::env::temp_dir().join(format!("pactole-expenses-{}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();

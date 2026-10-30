@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 //! Layered `pactole.toml` configuration resolution for Pactole tools.
 //!
 //! Every Pactole front-end (the `pactole` CLI and the `pactole-lsp` language
@@ -48,11 +51,17 @@
 //! This crate is a leaf: it depends on no other Pactole crate. All other
 //! crates depend on it for their configuration needs.
 
+/// Declaration target path resolution.
 mod declaration;
+/// Formatter option resolution.
 mod format;
+/// OFX import configuration resolution.
 mod import;
+/// Raw, unmerged TOML structures.
 mod raw;
+/// Report classification resolution.
 mod reports;
+/// Validation-level resolution.
 mod validation;
 
 use std::path::{Path, PathBuf};
@@ -293,6 +302,7 @@ fn validate_layer(raw: &RawFile, path: &Path) -> Result<(), ConfigError> {
     Ok(())
 }
 
+/// Resolves validation levels, applying overrides over merged configuration.
 fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOptions {
     // Values are already validated layer by layer (`validate_layer`).
     let payee = merged
@@ -315,6 +325,7 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
     }
 }
 
+/// Resolves declaration target paths from the merged configuration.
 fn resolve_declaration(merged: &RawFile) -> DeclarationOptions {
     let Some(declaration) = &merged.declaration else {
         return DeclarationOptions::default();
@@ -327,6 +338,7 @@ fn resolve_declaration(merged: &RawFile) -> DeclarationOptions {
     }
 }
 
+/// Resolves formatter options and applies the default posting width.
 fn resolve_format(merged: &RawFile) -> FormatOptions {
     let mut options = FormatOptions::default();
 
@@ -341,6 +353,7 @@ fn resolve_format(merged: &RawFile) -> FormatOptions {
     options
 }
 
+/// Resolves report account classifications and uncategorized accounts.
 fn resolve_reports(merged: &RawFile) -> ReportOptions {
     let Some(reports) = &merged.reports else {
         return ReportOptions::default();
@@ -356,6 +369,7 @@ fn resolve_reports(merged: &RawFile) -> ReportOptions {
     }
 }
 
+/// Converts the merged raw import section into validated import settings.
 fn resolve_import(
     merged: &RawFile,
     path: Option<&Path>,
@@ -394,6 +408,7 @@ fn resolve_import(
     }))
 }
 
+/// Converts one raw TOML import rule into the public rule representation.
 fn rule_from_raw(rule: &RawRule) -> Rule {
     Rule {
         payee_contains: rule.payee_contains.clone(),
@@ -414,6 +429,7 @@ fn rule_from_raw(rule: &RawRule) -> Rule {
     }
 }
 
+/// Reads a required configuration file and preserves its path in errors.
 fn read_file(path: &Path) -> Result<String, ConfigError> {
     std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
         path: path.to_path_buf(),
@@ -421,6 +437,7 @@ fn read_file(path: &Path) -> Result<String, ConfigError> {
     })
 }
 
+/// Reads an optional configuration file, distinguishing absence from failure.
 fn read_file_if_exists(path: &Path) -> Result<Option<String>, ConfigError> {
     match std::fs::read_to_string(path) {
         Ok(contents) => Ok(Some(contents)),

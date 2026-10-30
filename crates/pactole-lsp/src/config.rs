@@ -69,8 +69,10 @@ enum RawValidation {
     /// Per-check levels.
     Table {
         #[serde(default)]
+        /// Level for undeclared-payee diagnostics.
         payee: Option<String>,
         #[serde(default)]
+        /// Level for unused-declaration diagnostics.
         unused: Option<String>,
     },
 }

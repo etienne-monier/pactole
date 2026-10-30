@@ -63,6 +63,7 @@ pub enum ImportError {
     #[error("invalid model value: {0}")]
     Model(#[from] ModelError),
 
+    /// An error occurred while reading or migrating an Actual Budget database.
     #[error("error with database: {0}")]
     ActualDatabaseError(#[from] rusqlite::Error),
 

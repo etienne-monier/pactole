@@ -365,28 +365,28 @@ making the web interface depend on `pactole-cli`.*
 
 ### 4.1 — Define the application boundary
 
-- [ ] Create `pactole-app` as a transport- and presentation-independent crate.
-- [ ] Define typed queries and results for balance, income, expenses, register
+- [x] Create `pactole-app` as a transport- and presentation-independent crate.
+- [x] Define typed queries and results for balance, income, expenses, register
   and diagnostics.
-- [ ] Define structured application errors without HTTP or terminal concerns.
-- [ ] Define backend capabilities (`read`, `write`, `transactions`, `budgets`)
+- [x] Define structured application errors without HTTP or terminal concerns.
+- [x] Define backend capabilities (`read`, `write`, `transactions`, `budgets`)
   so clients can adapt to read-only and read/write backends.
 
 ### 4.2 — Connect the file backend
 
-- [ ] Implement the file-backed service using the existing project analysis,
+- [x] Implement the file-backed service using the existing project analysis,
   configuration and reporting APIs.
-- [ ] Migrate CLI reports to the shared application layer without changing
+- [x] Migrate CLI reports to the shared application layer without changing
   their current text, JSON or CSV output.
-- [ ] Add regression tests comparing application results with existing CLI
+- [x] Add regression tests comparing application results with existing CLI
   report outputs.
 
 ### 4.3 — Specify writing without implementing it yet
 
-- [ ] Define the `LedgerWriter` boundary and the supported write operations.
-- [ ] Decide transaction identity, validation-before-write, atomicity,
+- [x] Define the `LedgerWriter` boundary and the supported write operations.
+- [x] Decide transaction identity, validation-before-write, atomicity,
   canonical formatting, include handling and conflict behaviour.
-- [ ] Keep writing unavailable until a storage backend can provide these
+- [x] Keep writing unavailable until a storage backend can provide these
   guarantees explicitly.
 
 *Placement: `pactole-app` owns use cases and contracts. `pactole-core` remains

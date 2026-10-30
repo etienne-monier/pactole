@@ -804,12 +804,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "pactole-app"
+version = "0.4.0"
+dependencies = [
+ "chrono",
+ "pactole-core",
+ "thiserror",
+]
+
+[[package]]
 name = "pactole-cli"
 version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "pactole-app",
  "pactole-config",
  "pactole-core",
  "pactole-import",
@@ -879,6 +889,7 @@ name = "pactole-storage-fs"
 version = "0.4.0"
 dependencies = [
  "chrono",
+ "pactole-app",
  "pactole-config",
  "pactole-core",
  "pactole-syntax",

@@ -35,6 +35,7 @@ pub struct ExpenseOptions {
     pub include_inactive: bool,
 }
 
+/// Returns whether an account is an exact uncategorized account or its child.
 fn is_uncategorized_account(account: &AccountName, uncategorized: &[AccountName]) -> bool {
     let account_str = account.as_str();
     for unc in uncategorized {
@@ -214,6 +215,7 @@ pub fn expense_breakdown_with_options(
     report
 }
 
+/// Appends transactions posted to configured uncategorized accounts.
 fn append_uncategorized_section(
     journal: &Journal,
     period: Period,
@@ -262,6 +264,7 @@ fn append_uncategorized_section(
         .push(ReportSection::new("Uncategorized", lines, subtotal));
 }
 
+/// Appends expense accounts that were opened but unused during the period.
 fn append_inactive_section(
     journal: &Journal,
     period: Period,

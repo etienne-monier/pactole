@@ -162,13 +162,18 @@ pub struct Diagnostic {
 /// A business validation error positioned in its originating source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BusinessDiagnostic {
+    /// File containing the invalid directive.
     path: PathBuf,
+    /// Span of the invalid directive or symbol.
     span: Span,
+    /// Stable validation diagnostic code.
     code: DiagnosticCode,
+    /// Human-readable validation message.
     message: String,
 }
 
 impl BusinessDiagnostic {
+    /// Converts a core validation error into a positioned business diagnostic.
     fn from_error(path: PathBuf, span: Span, error: &ValidationError) -> Self {
         Self {
             path,
@@ -217,12 +222,19 @@ fn business_severity(
 /// lower successfully plus [`ParsedFile::lowering_diagnostics`] for the ones
 /// that didn't.
 pub struct ParsedFile {
+    /// Tolerantly parsed source document.
     document: ParsedDocument,
+    /// Directives successfully lowered into domain entries.
     entries: Vec<ParsedEntry>,
+    /// Include directives found in the file.
     includes: Vec<ParsedInclude>,
+    /// Source-level tag directives.
     tag_directives: Vec<ParsedTagDirective>,
+    /// Diagnostics for directives that could not be lowered.
     lowering_diagnostics: Vec<LoweringDiagnostic>,
+    /// Names whose declarations or uses may be missing.
     missing: MissingData,
+    /// Number of directives lost during error recovery.
     lost_directives: usize,
 }
 
@@ -409,6 +421,7 @@ pub fn analyze_file(source: &str) -> ParsedFile {
     }
 }
 
+/// Extracts source spans for the symbols and postings in a directive.
 fn entry_spans(directive: Node<'_>) -> EntrySpans {
     let Some(header) = directive.named_child(0) else {
         return EntrySpans::default();
@@ -472,12 +485,14 @@ fn entry_spans(directive: Node<'_>) -> EntrySpans {
     spans
 }
 
+/// Finds the first named child of the requested tree-sitter kind.
 fn named_child<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor)
         .find(|child| child.kind() == kind)
 }
 
+/// Collects all named children of the requested tree-sitter kind.
 fn named_children<'a>(node: Node<'a>, kind: &str) -> Vec<Node<'a>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor)
@@ -573,12 +588,19 @@ pub struct FileLoss {
 /// reachable from includes is instead reported as include diagnostics so a
 /// single unreadable or cyclic include does not abort the whole analysis.
 pub struct AnalyzedProject {
+    /// Files reached from the entry point.
     files: Vec<AnalyzedFile>,
+    /// Include-resolution issues.
     include_issues: Vec<IncludeIssue>,
+    /// Business diagnostics with source locations.
     business_diagnostics: Vec<BusinessDiagnostic>,
+    /// Flattened source-order items across the include graph.
     source_order: Vec<SourceRef>,
+    /// Validated journal when no blocking diagnostics remain.
     validated_journal: Option<Journal>,
+    /// Validation options used for the analysis.
     validation: ValidationOptions,
+    /// Information about content lost during partial analysis.
     partial: Option<PartialAnalysis>,
 }
 
@@ -710,6 +732,7 @@ impl AnalyzedProject {
         diagnostics
     }
 
+    /// Builds a journal from entries in flattened source order.
     fn source_order_journal(&self) -> Journal {
         let (entries, _) = source_order_entries(&self.files, &self.source_order, false);
         Journal {
@@ -730,6 +753,7 @@ impl Diagnostic {
     }
 }
 
+/// Converts syntax and lowering diagnostics from one file into project diagnostics.
 fn file_diagnostics(path: &Path, file: &ParsedFile) -> Vec<Diagnostic> {
     let mut diagnostics = file
         .syntax_diagnostics()
@@ -882,13 +906,19 @@ pub fn analyze_file_with_loader_with_options(
     })
 }
 
+/// A lowered entry together with source information needed for diagnostics.
 struct LocatedEntry {
+    /// File containing the entry.
     path: PathBuf,
+    /// Span covering the complete entry.
     span: Span,
+    /// Symbol spans within the entry.
     spans: EntrySpans,
+    /// Lowered domain entry.
     entry: Entry,
 }
 
+/// Chooses the most precise source span for a validation error.
 fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
     match error {
         ValidationError::AccountAlreadyOpen { .. } | ValidationError::AccountNotOpen { .. } => {
@@ -1007,6 +1037,7 @@ fn diagnostic_span(entry: &LocatedEntry, error: &ValidationError) -> Span {
     }
 }
 
+/// Returns transaction postings or an empty slice for non-transaction entries.
 fn transaction_postings(entry: &Entry) -> &[pactole_core::Posting] {
     match entry {
         Entry::Transaction(transaction) => &transaction.postings,
@@ -1015,28 +1046,42 @@ fn transaction_postings(entry: &Entry) -> &[pactole_core::Posting] {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Index of a lowered entry in an analyzed file.
 struct EntryRef {
+    /// Position of the file in the project list.
     file_index: usize,
+    /// Position of the entry within that file.
     entry_index: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Index of a tag directive in an analyzed file.
 struct TagRef {
+    /// Position of the file in the project list.
     file_index: usize,
+    /// Position of the tag directive within that file.
     tag_index: usize,
 }
 
+/// A source-order reference into a project file.
 enum SourceRef {
+    /// A lowered domain entry.
     Entry(EntryRef),
+    /// A source-level tag directive.
     Tag(TagRef),
 }
 
+/// A top-level source item before include expansion.
 enum SourceItem {
+    /// Entry index in the current file.
     Entry(usize),
+    /// Include directive and its source span.
     Include(ParsedInclude),
+    /// Tag directive index in the current file.
     Tag(usize),
 }
 
+/// Validates the flattened project and retains source locations for failures.
 fn validate_project(
     files: &[AnalyzedFile],
     source_order: &[SourceRef],
@@ -1225,6 +1270,7 @@ fn build_partial_analysis(
 /// This is not expected to be hit in practice.
 const MAX_INCLUDE_DEPTH: usize = 256;
 
+/// Merges entries, includes and tag directives into source order.
 fn source_items(file: &ParsedFile) -> Vec<SourceItem> {
     let mut entries = file.entries().iter().enumerate().peekable();
     let mut includes = file.includes().iter().cloned().peekable();
@@ -1311,6 +1357,7 @@ pub fn normalize_lexically(path: &Path) -> PathBuf {
     ret
 }
 
+/// Recursively analyzes an included file while tracking cycles and provenance.
 fn visit(
     path: &Path,
     loader: &dyn SourceLoader,

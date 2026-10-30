@@ -116,6 +116,7 @@ pub fn register(journal: &Journal, filter: &RegisterFilter) -> Vec<RegisterEntry
     entries
 }
 
+/// Returns whether a transaction satisfies all non-account register filters.
 fn transaction_matches(transaction: &Transaction, filter: &RegisterFilter) -> bool {
     if let Some(from) = filter.from
         && transaction.date < from
@@ -151,6 +152,7 @@ fn transaction_matches(transaction: &Transaction, filter: &RegisterFilter) -> bo
     true
 }
 
+/// Tests a possibly absent text value using case-insensitive substring matching.
 fn contains_case_insensitive(haystack: Option<&str>, needle: &str) -> bool {
     match haystack {
         Some(haystack) => haystack.to_lowercase().contains(&needle.to_lowercase()),

@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Shared application boundary (roadmap 4.1):** added the
+  `pactole-app` crate with transport-independent report queries and results for
+  balance, income, expenses, register and diagnostics. It defines the
+  `LedgerReader` backend port, validated ledger snapshots, structured
+  application errors, backend capabilities and backend-independent
+  diagnostics. The existing CLI and filesystem backend are not migrated yet;
+  that work belongs to roadmap 4.2.
+
+- **Filesystem application adapter (roadmap 4.2):** added
+  `FsLedgerReader`, which adapts the include-aware filesystem analysis and its
+  positioned diagnostics to `pactole-app`. The balance, income, expenses,
+  register and check commands now use the shared application service while
+  preserving their existing output formats and exit behavior.
+
+- **Writing contract (roadmap 4.3):** defined the future `LedgerWriter` and
+  `WritableApplication` boundaries, transaction write requests, opaque entry
+  identities and revisions, validation/conflict policies, atomic-write errors
+  and write results. No concrete backend or CLI writing operation is enabled;
+  writes remain unavailable until a backend can provide the required
+  validation, conflict and atomicity guarantees.
+
 - **Source-order tag contexts (roadmap 3.4):** added the non-dated `pushtag`
   and `poptag` directives. Active tags are inherited across the flattened
   include graph, combined with explicit transaction tags, and kept out of the

@@ -12,11 +12,15 @@ use crate::conversion::position_to_offset;
 use crate::documents::{Documents, analyze_scope};
 
 #[derive(Clone, Debug)]
+/// Hover content prepared for the editor.
 struct SymbolInfo {
+    /// Symbol category displayed in the hover heading.
     kind: &'static str,
+    /// Markdown details displayed to the editor.
     detail: String,
 }
 
+/// Computes the latest known balance for an account.
 fn account_balance_detail(account: &str, project: Option<&AnalyzedProject>) -> Option<String> {
     let project = project?;
     let journal = project.validated_journal().ok()?;
@@ -41,6 +45,7 @@ fn account_balance_detail(account: &str, project: Option<&AnalyzedProject>) -> O
     }
 }
 
+/// Extracts the account, tag, link or quoted symbol at a byte offset.
 fn find_word_at(text: &str, offset: usize) -> String {
     let offset = offset.min(text.len());
     if offset > 0 && !text.is_char_boundary(offset) {
@@ -89,6 +94,7 @@ fn find_word_at(text: &str, offset: usize) -> String {
     text[start..end].to_string()
 }
 
+/// Builds hover information for declarations and symbol references.
 fn build_hover_for_word_combined(
     word: &str,
     project: Option<&AnalyzedProject>,
@@ -198,6 +204,7 @@ fn build_hover_for_word_combined(
     None
 }
 
+/// Builds hover information when the cursor is over a market-price rate.
 fn build_hover_for_price_at_offset(file: &ParsedFile, offset: usize) -> Option<SymbolInfo> {
     file.entries().iter().find_map(|entry| {
         let Entry::Price(price) = &entry.entry else {
@@ -232,6 +239,7 @@ fn build_hover_for_price_at_offset(file: &ParsedFile, offset: usize) -> Option<S
     })
 }
 
+/// Combines symbol and market-price hover lookup strategies.
 fn build_hover_at_offset(
     word: &str,
     project: Option<&AnalyzedProject>,

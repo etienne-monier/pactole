@@ -13,6 +13,7 @@ use crate::models::{Amount, CommodityName};
 /// builders use that to hide empty commodities from their output.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Amounts {
+    /// Decimal values keyed by commodity.
     values: BTreeMap<CommodityName, Decimal>,
 }
 
@@ -28,6 +29,7 @@ impl Amounts {
         *self.values.entry(amount.commodity.clone()).or_default() += amount.number;
     }
 
+    /// Adds an amount while rejecting a non-representable decimal sum.
     pub(super) fn add_checked(&mut self, amount: &Amount) -> bool {
         let value = self.values.entry(amount.commodity.clone()).or_default();
         let Some(sum) = crate::validation::checked_exact_decimal_sum(*value, amount.number) else {

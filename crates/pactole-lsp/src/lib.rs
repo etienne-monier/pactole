@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 //! A minimal Language Server Protocol (LSP) server for `.pactole` files.
 //!
 //! Scope of this first implementation: `initialize`/`shutdown`/`exit`

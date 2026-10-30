@@ -8,7 +8,9 @@ use super::{AccountClassification, Period, ReportLine};
 /// Transaction metadata key used to break reports down.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TransactionGrouping {
+    /// Use the transaction payee as the report label.
     Payee,
+    /// Use transaction tags as report labels.
     Tag,
 }
 

@@ -19,51 +19,82 @@ use crate::documents::{Documents, uri_to_path};
 use std::error::Error;
 
 #[derive(Clone, Debug, Default)]
+/// Symbols available to completion in the current analysis scope.
 struct SymbolIndex {
+    /// Known payee names.
     payees: BTreeSet<String>,
+    /// Known commodity names.
     commodities: BTreeSet<String>,
+    /// Accounts declared with `open`.
     accounts_open: BTreeSet<String>,
+    /// Accounts observed in declarations or postings.
     accounts_all: BTreeSet<String>,
+    /// Known transaction tags.
     tags: BTreeSet<String>,
+    /// Known transaction links.
     links: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Syntactic context used to select completion candidates.
 enum CompletionContext {
+    /// Completing a directive keyword, optionally after a date.
     DirectiveKeyword {
+        /// Range occupied by the incomplete date.
         date_range: Option<Range>,
     },
+    /// Completing an include path.
     IncludePath {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// Completing a transaction payee.
     Payee {
+        /// Text already typed by the user.
         prefix: String,
+        /// Whether the payee string already has its closing quote.
         has_closing_quote: bool,
     },
+    /// Completing an account in a directive header.
     Account {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// Completing an account in a posting.
     PostingAccount {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// Completing a commodity in an amount.
     Commodity {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// Completing the base commodity of a price.
     PriceBase {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// Completing the quote commodity of a price.
     PriceQuote {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// Completing a transaction tag.
     Tag {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// Completing a transaction link.
     Link {
+        /// Text already typed by the user.
         prefix: String,
     },
+    /// No supported completion context was detected.
     Unknown,
 }
 
+/// Indexes symbols declared or used by one parsed file.
 fn build_index_from_file(file: &ParsedFile) -> SymbolIndex {
     let mut index = SymbolIndex::default();
     for entry in file.entries() {
@@ -107,6 +138,7 @@ fn build_index_from_file(file: &ParsedFile) -> SymbolIndex {
     index
 }
 
+/// Merges symbol indexes from every file in an analyzed project.
 fn build_index_from_project(project: &AnalyzedProject) -> SymbolIndex {
     let mut merged = SymbolIndex::default();
     for file in project.files() {
@@ -121,10 +153,12 @@ fn build_index_from_project(project: &AnalyzedProject) -> SymbolIndex {
     merged
 }
 
+/// Returns whether a source line starts in an indented context.
 fn is_indented(line_text: &str) -> bool {
     line_text.starts_with(' ') || line_text.starts_with('\t')
 }
 
+/// Recognizes Pactole's complete date or effective-date token syntax.
 fn is_complete_date_token(token: &str) -> bool {
     let date = token.split_once('=').map_or(
         token,
@@ -141,11 +175,13 @@ fn is_complete_date_token(token: &str) -> bool {
             .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
 }
 
+/// Detects a transaction header whose payee has not been entered yet.
 fn transaction_header_before_payee(text: &str) -> bool {
     let words: Vec<&str> = text.split_whitespace().collect();
     words.len() == 2 && is_complete_date_token(words[0]) && matches!(words[1], "*" | "!" | "?")
 }
 
+/// Returns directive keywords and their completion descriptions.
 fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
     vec![
         ("open", "Open an account"),
@@ -160,10 +196,12 @@ fn directive_keywords_list() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+/// Tests a completion label using case-insensitive substring matching.
 fn contains_case_insensitive(value: &str, query: &str) -> bool {
     value.to_lowercase().contains(&query.to_lowercase())
 }
 
+/// Determines the completion context at a UTF-16 editor position.
 fn context_at(text: &str, offset: usize, position: &Position) -> CompletionContext {
     // `offset` is a byte offset. Find the line start using byte slices rather
     // than taking `offset` characters, which would overshoot when the source
@@ -379,6 +417,7 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
+/// Builds completion items without an explicit replacement range.
 fn completions_for_context(
     ctx: &CompletionContext,
     index: &SymbolIndex,
@@ -387,6 +426,7 @@ fn completions_for_context(
     completions_for_context_with_range(ctx, index, current_doc_path, None)
 }
 
+/// Builds completion items and applies an optional editor replacement range.
 fn completions_for_context_with_range(
     ctx: &CompletionContext,
     index: &SymbolIndex,
@@ -598,6 +638,7 @@ fn completions_for_context_with_range(
     items
 }
 
+/// Computes the range occupied by the currently typed completion prefix.
 fn replacement_range(ctx: &CompletionContext, position: &Position) -> Option<Range> {
     let prefix = match ctx {
         CompletionContext::Account { prefix }
@@ -622,6 +663,7 @@ fn replacement_range(ctx: &CompletionContext, position: &Position) -> Option<Ran
     ))
 }
 
+/// Returns whether a completion value has a valid numeric shape.
 fn number_looks_valid(value: &str) -> bool {
     let value = value.strip_prefix('-').unwrap_or(value);
     !value.is_empty()

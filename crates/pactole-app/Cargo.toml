@@ -1,0 +1,17 @@
+[package]
+name = "pactole-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Transport-independent application use cases for Pactole."
+keywords = ["accounting", "ledger", "application"]
+categories = ["finance"]
+
+[dependencies]
+chrono.workspace = true
+pactole-core.workspace = true
+thiserror.workspace = true
