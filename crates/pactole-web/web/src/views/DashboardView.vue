@@ -26,6 +26,7 @@ import {
   rowsToChartData,
 } from '@/utils/charts'
 import { monthEnds, monthRange, monthStartIso, todayIso } from '@/utils/dates'
+import { sectionAmounts } from '@/utils/report'
 
 const { t, locale } = useI18n()
 const { refreshKey } = useRefresh()
@@ -33,11 +34,6 @@ const { refreshKey } = useRefresh()
 const today = todayIso()
 const monthStart = monthStartIso()
 const trendPeriod = monthRange(12)
-
-function sectionAmounts(report: Report, title: string, fallbackIndex: number) {
-  const section = report.sections.find((candidate) => candidate.title === title)
-  return section?.subtotal ?? report.sections[fallbackIndex]?.subtotal ?? []
-}
 
 const summary = useAsync(async (signal) => {
   const [balance, income, trend] = await Promise.all([
@@ -93,16 +89,17 @@ const balanceCards = computed(() => {
 
 const incomeReport = computed(() => summary.data.value?.income.data ?? null)
 const monthIncome = computed(() =>
-  incomeReport.value ? sectionAmounts(incomeReport.value, 'Income', 0) : [],
+  incomeReport.value ? sectionAmounts(incomeReport.value, 0) : [],
 )
 const monthExpenses = computed(() =>
-  incomeReport.value ? sectionAmounts(incomeReport.value, 'Expenses', 1) : [],
+  incomeReport.value ? sectionAmounts(incomeReport.value, 1) : [],
 )
 const monthNet = computed(() => incomeReport.value?.totals ?? [])
 
 const historyData = computed(() =>
   historyChartData(
     historyPoints.value.map((point) => ({ date: point.date, report: point.response.data })),
+    (date) => formatMonth(date.slice(0, 7), locale.value, false),
     (date) => formatMonth(date.slice(0, 7), locale.value),
   ),
 )

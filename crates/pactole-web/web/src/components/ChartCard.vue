@@ -72,9 +72,9 @@ const rows = computed(() =>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, index) in rows" :key="index">
+            <tr v-for="row in rows" :key="row.category">
               <td>{{ row.category }}</td>
-              <td v-for="(value, column) in row.values" :key="column" class="text-right">
+                <td v-for="(value, column) in row.values" :key="`${row.category}-${data?.series[column]?.name ?? column}`" class="text-right">
                 {{ value === '' ? t('charts.noValue') : formatDecimal(value, locale) }}
               </td>
             </tr>

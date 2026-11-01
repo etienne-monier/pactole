@@ -51,6 +51,7 @@ const fr: typeof en = {
     theme: 'Thème',
     light: 'Clair',
     dark: 'Sombre',
+    invalidDateRange: 'Saisissez une période valide.',
   },
   nav: {
     dashboard: 'Tableau de bord',

@@ -24,7 +24,7 @@ fn main() {
     }
 
     let mut assets = Vec::new();
-    collect_assets(&dist.join("assets"), &dist, &mut assets);
+    collect_assets(&dist, &dist, &mut assets);
     assets.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut generated = String::new();
@@ -66,7 +66,7 @@ fn collect_assets(directory: &Path, dist: &Path, assets: &mut Vec<(String, PathB
             .path();
         if path.is_dir() {
             collect_assets(&path, dist, assets);
-        } else if path.is_file() {
+        } else if path.is_file() && path.file_name().is_some_and(|name| name != "index.html") {
             let relative = path
                 .strip_prefix(dist)
                 .expect("a frontend asset must live under web/dist");

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { fetchRegister } from '@/api/client'
+import { fetchBalance, fetchRegister } from '@/api/client'
 import type { RegisterParams } from '@/api/types'
 import AmountText from '@/components/AmountText.vue'
 import ChartCard from '@/components/ChartCard.vue'
@@ -16,6 +16,7 @@ import { useAsync } from '@/composables/useAsync'
 import { useFilters } from '@/composables/useFilters'
 import { useRefresh } from '@/composables/useRefresh'
 import { formatDate, formatDecimal } from '@/i18n/format'
+import { todayIso } from '@/utils/dates'
 import { buildLineOption, rowsToChartData } from '@/utils/charts'
 import { isTrue, optional } from '@/utils/params'
 
@@ -82,13 +83,22 @@ const params = computed<RegisterParams>(() => {
 const { data, error, loading, run } = useAsync((signal) =>
   fetchRegister(params.value, { signal }),
 )
+const accountSuggestions = useAsync((signal) => fetchBalance({ as_of: todayIso() }, { signal }))
 
 watch([params, refreshKey], () => void run(), { immediate: true })
+watch(refreshKey, () => void accountSuggestions.run(), { immediate: true })
 
 const entries = computed(() => data.value?.data.entries ?? [])
 const diagnostics = computed(() => data.value?.diagnostics ?? [])
 const valuation = computed(() => data.value?.data.valuation ?? null)
 const accountFilter = computed(() => optional(applied.value.account) ?? '')
+const accountOptions = computed(() => {
+  const labels = new Set<string>()
+  for (const section of accountSuggestions.data.value?.data.sections ?? []) {
+    for (const line of section.lines) labels.add(line.label)
+  }
+  return [...labels].sort()
+})
 
 const page = ref(1)
 const pageCount = computed(() => Math.max(1, Math.ceil(entries.value.length / PAGE_SIZE)))
@@ -124,7 +134,13 @@ const balanceOption = computed(() =>
     <PageHeader :title="t('register.title')" :subtitle="t('register.subtitle')" />
 
     <FilterCard @apply="apply" @reset="reset">
-      <VTextField v-model="filters.account" :label="t('common.account')" />
+      <VAutocomplete
+        v-model="filters.account"
+        :items="accountOptions"
+        :label="t('common.account')"
+        clearable
+        hide-no-data
+      />
       <VTextField v-model="filters.from" type="date" :label="t('common.from')" />
       <VTextField v-model="filters.to" type="date" :label="t('common.to')" />
       <VTextField v-model="filters.payee" :label="t('common.payee')" />

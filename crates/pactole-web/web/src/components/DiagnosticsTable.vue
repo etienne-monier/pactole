@@ -16,6 +16,13 @@ function location(diagnostic: Diagnostic): string {
   }
   return `${diagnostic.source}:${diagnostic.span.start.line}:${diagnostic.span.start.column}`
 }
+
+async function copyLocation(diagnostic: Diagnostic): Promise<void> {
+  const value = location(diagnostic)
+  if (value !== '—') {
+    await navigator.clipboard?.writeText(value)
+  }
+}
 </script>
 
 <template>
@@ -31,7 +38,7 @@ function location(diagnostic: Diagnostic): string {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(diagnostic, index) in diagnostics" :key="index">
+        <tr v-for="diagnostic in diagnostics" :key="`${location(diagnostic)}:${diagnostic.code}:${diagnostic.message}`">
           <td>
             <VChip
               size="x-small"
@@ -44,7 +51,12 @@ function location(diagnostic: Diagnostic): string {
           <td>{{ t(`origins.${diagnostic.origin}`) }}</td>
           <td><code>{{ diagnostic.code }}</code></td>
           <td class="message">{{ diagnostic.message }}</td>
-          <td class="source">{{ location(diagnostic) }}</td>
+          <td class="source">
+            <VBtn v-if="diagnostic.source" size="small" variant="text" @click="copyLocation(diagnostic)">
+              {{ location(diagnostic) }}
+            </VBtn>
+            <span v-else>—</span>
+          </td>
         </tr>
       </tbody>
     </VTable>

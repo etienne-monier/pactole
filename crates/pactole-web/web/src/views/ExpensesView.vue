@@ -25,7 +25,7 @@ import {
   rowsToChartData,
   topRows,
 } from '@/utils/charts'
-import { todayIso, previousPeriod, yearStartIso } from '@/utils/dates'
+import { dateRangeError, todayIso, previousPeriod, yearStartIso } from '@/utils/dates'
 import {
   expensesGrouping,
   expensesParams,
@@ -146,12 +146,20 @@ const groupingLabel = computed(
 )
 
 const params = computed(() => expensesParams(applied.value))
+const dateError = computed(() => dateRangeError(filters.from, filters.to))
+const comparisonDateError = computed(() =>
+  filters.compare === 'absolute'
+    ? dateRangeError(filters.compare_from, filters.compare_to)
+    : null,
+)
 
 const { data, error, loading, run } = useAsync((signal) =>
   fetchExpenses(params.value, { signal }),
 )
 
-watch([params, refreshKey], () => void run(), { immediate: true })
+watch([params, refreshKey], () => {
+  if (!dateError.value && !comparisonDateError.value) void run()
+}, { immediate: true })
 
 const report = computed(() => data.value?.data.current ?? null)
 const comparison = computed(() => data.value?.data.comparison ?? null)
@@ -164,7 +172,7 @@ const chartData = computed(() => {
   }
   const by = expensesGrouping(applied.value.by)
   return rowsToChartData(chartRows.value, (label) =>
-    by === 'month' ? formatMonth(label, locale.value) : label,
+    by === 'month' ? formatMonth(label, locale.value, false) : label,
   )
 })
 const chartOption = computed(() =>
@@ -200,7 +208,7 @@ function periodText(period: ComparisonPeriod): string {
 
     <FilterCard @apply="apply" @reset="reset">
       <VTextField v-model="filters.from" type="date" :label="t('common.from')" />
-      <VTextField v-model="filters.to" type="date" :label="t('common.to')" />
+      <VTextField v-model="filters.to" type="date" :label="t('common.to')" :error="Boolean(dateError)" :error-messages="dateError ? t('common.invalidDateRange') : undefined" />
       <VSelect v-model="filters.by" :items="groupingItems" :label="t('common.groupedBy')" />
       <VTextField
         v-model="filters.depth"
@@ -230,12 +238,16 @@ function periodText(period: ComparisonPeriod): string {
         v-model="filters.compare_from"
         type="date"
         :label="t('expenses.previousPeriod') + ' — ' + t('common.from')"
+        :error="Boolean(comparisonDateError)"
+        :error-messages="comparisonDateError ? t('common.invalidDateRange') : undefined"
       />
       <VTextField
         v-if="absoluteDraft"
         v-model="filters.compare_to"
         type="date"
         :label="t('expenses.previousPeriod') + ' — ' + t('common.to')"
+        :error="Boolean(comparisonDateError)"
+        :error-messages="comparisonDateError ? t('common.invalidDateRange') : undefined"
       />
       <VSelect
         v-if="comparisonDraft"

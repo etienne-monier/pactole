@@ -130,16 +130,29 @@ impl<R: LedgerReader> Application<R> {
     /// Builds a balance sheet.
     pub fn balance(&self, query: BalanceQuery) -> Result<BalanceResult, ApplicationError> {
         let (journal, diagnostics) = self.ready_journal()?;
-        validate_valuation(&journal, query.valuation.as_ref())?;
+        build_balance(&journal, diagnostics, query)
+    }
 
-        let mut report =
-            balance_sheet(&journal, query.as_of, &query.classification, query.grouping);
-        value_report(&mut report, &journal, query.valuation.as_ref())?;
-
-        Ok(BalanceResult {
-            report,
-            diagnostics,
-        })
+    /// Builds several balance sheets from one validated journal snapshot.
+    pub fn balance_series(
+        &self,
+        dates: &[chrono::NaiveDate],
+        query: BalanceQuery,
+    ) -> Result<Vec<BalanceResult>, ApplicationError> {
+        let (journal, diagnostics) = self.ready_journal()?;
+        dates
+            .iter()
+            .map(|date| {
+                build_balance(
+                    &journal,
+                    diagnostics.clone(),
+                    BalanceQuery {
+                        as_of: pactole_core::ReferenceDate::new(*date),
+                        ..query.clone()
+                    },
+                )
+            })
+            .collect()
     }
 
     /// Builds an income statement.
@@ -243,6 +256,21 @@ impl<R: LedgerReader> Application<R> {
             }
         }
     }
+}
+
+/// Builds one balance report from an already loaded journal snapshot.
+fn build_balance(
+    journal: &pactole_core::Journal,
+    diagnostics: Vec<Diagnostic>,
+    query: BalanceQuery,
+) -> Result<BalanceResult, ApplicationError> {
+    validate_valuation(journal, query.valuation.as_ref())?;
+    let mut report = balance_sheet(journal, query.as_of, &query.classification, query.grouping);
+    value_report(&mut report, journal, query.valuation.as_ref())?;
+    Ok(BalanceResult {
+        report,
+        diagnostics,
+    })
 }
 
 /// Filters warnings from diagnostics when the query does not request them.

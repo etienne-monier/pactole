@@ -42,6 +42,24 @@ export function useFilters(defaults: Record<string, string>) {
     { deep: true },
   )
 
+  watch(
+    () => route.query,
+    (value) => {
+      const next: Record<string, string> = { ...defaults }
+      for (const key of Object.keys(defaults)) {
+        const queryValue = value[key]
+        if (typeof queryValue === 'string' && queryValue !== '') {
+          next[key] = queryValue
+        }
+      }
+      if (JSON.stringify(next) !== JSON.stringify(applied.value)) {
+        Object.assign(filters, next)
+        applied.value = next
+      }
+    },
+    { deep: true },
+  )
+
   function apply(): void {
     applied.value = { ...filters }
   }

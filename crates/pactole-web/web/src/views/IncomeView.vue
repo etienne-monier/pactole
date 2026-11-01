@@ -17,7 +17,7 @@ import { useFilters } from '@/composables/useFilters'
 import { useRefresh } from '@/composables/useRefresh'
 import { formatDecimal } from '@/i18n/format'
 import { buildBarOption, rowsToChartData, sectionRows } from '@/utils/charts'
-import { todayIso, yearStartIso } from '@/utils/dates'
+import { dateRangeError, todayIso, yearStartIso } from '@/utils/dates'
 import { isTrue, optional } from '@/utils/params'
 import { scopeText } from '@/utils/report'
 
@@ -72,12 +72,15 @@ const params = computed<IncomeParams>(() => {
   }
   return result
 })
+const dateError = computed(() => dateRangeError(filters.from, filters.to))
 
 const { data, error, loading, run } = useAsync((signal) =>
   fetchIncome(params.value, { signal }),
 )
 
-watch([params, refreshKey], () => void run(), { immediate: true })
+watch([params, refreshKey], () => {
+  if (!dateError.value) void run()
+}, { immediate: true })
 
 const report = computed(() => data.value?.data ?? null)
 const diagnostics = computed(() => data.value?.diagnostics ?? [])
@@ -97,7 +100,7 @@ const chartOption = computed(() =>
 
     <FilterCard @apply="apply" @reset="reset">
       <VTextField v-model="filters.from" type="date" :label="t('common.from')" />
-      <VTextField v-model="filters.to" type="date" :label="t('common.to')" />
+      <VTextField v-model="filters.to" type="date" :label="t('common.to')" :error="Boolean(dateError)" :error-messages="dateError ? t('common.invalidDateRange') : undefined" />
       <VSelect v-model="filters.by" :items="groupingItems" :label="t('common.groupedBy')" />
       <VTextField
         v-model="filters.depth"

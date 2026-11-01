@@ -13,6 +13,7 @@ export interface ChartSeries {
 /** Chart-ready data: categories on the x axis, one series per commodity. */
 export interface ChartData {
   categories: string[]
+  tooltipCategories?: string[]
   series: ChartSeries[]
 }
 
@@ -112,6 +113,7 @@ export function topRows(rows: readonly ChartRow[], limit: number): ChartRow[] {
 export function historyChartData(
   points: readonly HistoryPoint[],
   categoryLabel: (date: string) => string,
+  tooltipCategoryLabel: (date: string) => string = (date) => date,
 ): ChartData {
   const titles: string[] = []
   for (const point of points) {
@@ -158,6 +160,7 @@ export function historyChartData(
 
   return {
     categories: points.map((point) => categoryLabel(point.date)),
+    tooltipCategories: points.map((point) => tooltipCategoryLabel(point.date)),
     series,
   }
 }
@@ -231,16 +234,18 @@ function escapeHtml(value: string): string {
 
 interface TooltipItem {
   axisValueLabel?: string
+  dataIndex?: number
   name?: string
   seriesName?: string
   marker?: string
   data?: { value?: number | null; exact?: string }
 }
 
-function tooltipFormatter(options: ChartOptions) {
+function tooltipFormatter(options: ChartOptions, tooltipCategories?: readonly string[]) {
   return (params: unknown): string => {
     const items = (Array.isArray(params) ? params : [params]) as TooltipItem[]
-    const title = items[0]?.axisValueLabel ?? items[0]?.name ?? ''
+    const index = items[0]?.dataIndex
+    const title = (index !== undefined ? tooltipCategories?.[index] : undefined) ?? items[0]?.axisValueLabel ?? items[0]?.name ?? ''
     const lines = items.map((item) => {
       const exact = item.data?.exact
       const rendered =
@@ -296,7 +301,7 @@ export function buildBarOption(data: ChartData, options: ChartOptions): EChartsO
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
-      formatter: tooltipFormatter(options),
+      formatter: tooltipFormatter(options, data.tooltipCategories),
     },
     xAxis: categoryAxis(data),
     yAxis: valueAxis(options),
@@ -327,7 +332,7 @@ export function buildLineOption(data: ChartData, options: ChartOptions): ECharts
     legend: legend(data),
     tooltip: {
       trigger: 'axis',
-      formatter: tooltipFormatter(options),
+      formatter: tooltipFormatter(options, data.tooltipCategories),
     },
     xAxis: categoryAxis(data),
     yAxis: valueAxis(options),

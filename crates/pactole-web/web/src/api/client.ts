@@ -206,42 +206,13 @@ export async function fetchBalanceSeries(
     onPoint?: (point: BalanceSeriesPoint) => void
   } = {},
 ): Promise<BalanceSeriesResult> {
-  const concurrency = Math.max(1, options.concurrency ?? 4)
-  const points: BalanceSeriesPoint[] = []
-  const failures: { date: string; error: ApiError }[] = []
-  let next = 0
-
-  async function worker(): Promise<void> {
-    while (next < dates.length) {
-      const index = next
-      next += 1
-      const date = dates[index]
-      try {
-        const response = await fetchBalance(
-          {
-            ...params,
-            as_of: date,
-            ...(params.convert_to ? { at: date } : {}),
-          },
-          { signal: options.signal, cacheTtl: options.cacheTtl },
-        )
-        const point = { date, response }
-        points.push(point)
-        try {
-          options.onPoint?.(point)
-        } catch {
-          // Progressive rendering must not turn a UI callback into a failure.
-        }
-      } catch (error) {
-        if (isAbortError(error)) {
-          throw error
-        }
-        failures.push({ date, error: toApiError(error) })
-      }
-    }
+  const batch = await getJson<{ points: BalanceSeriesPoint[]; failures: { date: string; error: ApiError }[] }>(
+    '/balance-series',
+    { ...params, dates: dates.join(',') },
+    { signal: options.signal, cacheTtl: options.cacheTtl },
+  )
+  for (const point of batch.points) {
+    try { options.onPoint?.(point) } catch { /* progressive rendering is best effort */ }
   }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, dates.length) }, () => worker()))
-  points.sort((left, right) => left.date.localeCompare(right.date))
-  return { points, failures }
+  return batch
 }

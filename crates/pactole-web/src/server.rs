@@ -36,6 +36,7 @@ const IMMUTABLE_CACHE: &str = "public, max-age=31536000, immutable";
 
 /// Content Security Policy applied to the frontend shell.
 const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+const API_CACHE_POLICY: &str = "no-store";
 
 /// Options controlling the local HTTP server.
 #[derive(Debug, Clone)]
@@ -102,12 +103,15 @@ where
     Router::new()
         .route("/api/v1/capabilities", get(capabilities::<R>))
         .route("/api/v1/balance", get(balance::<R>))
+        .route("/api/v1/balance-series", get(balance_series::<R>))
         .route("/api/v1/income", get(income::<R>))
         .route("/api/v1/expenses", get(expenses::<R>))
         .route("/api/v1/register", get(register::<R>))
         .route("/api/v1/diagnostics", get(diagnostics::<R>))
         .route("/", get(index))
         .route("/assets/{*path}", get(asset))
+        .route("/favicon.ico", get(root_asset))
+        .route("/robots.txt", get(root_asset))
         .method_not_allowed_fallback(method_not_allowed)
         .fallback(frontend_fallback)
         .route_layer(middleware::from_fn_with_state(
@@ -180,16 +184,8 @@ where
             .get(header::HOST)
             .and_then(|value| value.to_str().ok())
     {
-        let allowed = [
-            format!("{}:{}", state.options.bind, state.options.port),
-            format!("{}", state.options.bind),
-            format!("localhost:{}", state.options.port),
-            "localhost".to_string(),
-        ];
-        if !allowed
-            .iter()
-            .any(|candidate| candidate.eq_ignore_ascii_case(host))
-        {
+        let allowed = host_allowed(host, state.options.bind, state.options.port);
+        if !allowed {
             return (
                 StatusCode::FORBIDDEN,
                 Json(json!({ "error": { "code": "host-not-allowed", "message": "host is not allowed", "details": null } })),
@@ -197,7 +193,15 @@ where
                 .into_response();
         }
     }
-    next.run(request).await
+    let is_api = request.uri().path().starts_with("/api/v1/");
+    let mut response = next.run(request).await;
+    if is_api {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static(API_CACHE_POLICY),
+        );
+    }
+    response
 }
 
 async fn capabilities<R>(State(state): State<AppState<R>>) -> Json<Value>
@@ -213,6 +217,20 @@ where
             "budgets": capabilities.supports(pactole_app::Capability::Budgets),
         }
     }))
+}
+
+fn host_allowed(host: &str, bind: IpAddr, port: u16) -> bool {
+    let normalized = host.trim_matches(['[', ']']);
+    if normalized.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    let parsed = host.parse::<std::net::SocketAddr>().ok().or_else(|| {
+        normalized
+            .parse::<IpAddr>()
+            .ok()
+            .map(|ip| SocketAddr::new(ip, port))
+    });
+    parsed.is_some_and(|address| address.port() == port && address.ip() == bind)
 }
 
 async fn balance<R>(
@@ -249,6 +267,57 @@ where
         &state.options,
         include_warnings,
     )))
+}
+
+async fn balance_series<R>(
+    State(state): State<AppState<R>>,
+    RawQuery(raw_query): RawQuery,
+) -> Result<Json<Value>, ApiError>
+where
+    R: pactole_app::LedgerReader + Send + Sync + 'static,
+{
+    let params = query_params(raw_query)?;
+    check_params(
+        &params,
+        &["dates", "depth", "convert_to", "at", "include_warnings"],
+    )?;
+    let dates = params
+        .get("dates")
+        .ok_or_else(|| ApiError::invalid("dates is required"))?
+        .split(',')
+        .map(|value| {
+            NaiveDate::parse_from_str(value, "%Y-%m-%d")
+                .map_err(|error| ApiError::invalid(format!("invalid date: {error}")))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if dates.is_empty() {
+        return Err(ApiError::invalid("dates cannot be empty"));
+    }
+    let grouping = account_grouping(&params)?;
+    let valuation = valuation(&params, *dates.last().unwrap_or(&Local::now().date_naive()))?;
+    let include_warnings = boolean(&params, "include_warnings")?;
+    let reports = state.options.reports.clone();
+    let application = Arc::clone(&state.application);
+    let query_dates = dates.clone();
+    let results = run_application(application, move |application| {
+        application.balance_series(
+            &query_dates,
+            BalanceQuery {
+                as_of: ReferenceDate::new(query_dates[0]),
+                grouping,
+                classification: classification(&reports),
+                valuation,
+            },
+        )
+    })
+    .await
+    .map_err(|error| ApiError::from_application(error, &state.options))?;
+    let points = results
+        .into_iter()
+        .zip(dates)
+        .map(|(result, date)| json!({ "date": date.to_string(), "response": report_response(&result.report, result.diagnostics, &state.options, include_warnings) }))
+        .collect::<Vec<_>>();
+    Ok(Json(json!({ "points": points, "failures": [] })))
 }
 
 async fn income<R>(
@@ -485,12 +554,26 @@ async fn asset(Path(path): Path<String>) -> Response {
     }
 }
 
+async fn root_asset(uri: Uri) -> Response {
+    let requested = uri.path().to_string();
+    match ASSETS.iter().find(|(path, _, _)| *path == requested) {
+        Some((_, content_type, bytes)) => static_response(bytes, content_type, None),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": { "code": "not-found", "message": "asset not found", "details": null } })),
+        ).into_response(),
+    }
+}
+
 async fn frontend_fallback(uri: Uri) -> Response {
     if uri.path().starts_with("/api/") {
         return (StatusCode::NOT_FOUND, Json(json!({ "error": { "code": "not-found", "message": "route not found", "details": null } }))).into_response();
     }
     if uri.path().starts_with("/assets/") {
         return (StatusCode::NOT_FOUND, Json(json!({ "error": { "code": "not-found", "message": "asset not found", "details": null } }))).into_response();
+    }
+    if let Some((_, content_type, bytes)) = ASSETS.iter().find(|(path, _, _)| *path == uri.path()) {
+        return static_response(bytes, content_type, None);
     }
     static_response(INDEX_HTML, "text/html; charset=utf-8", None)
 }
@@ -1100,6 +1183,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn serves_balance_series_in_one_response() {
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/balance-series?dates=2026-01-31,2026-02-28")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], API_CACHE_POLICY);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["points"].as_array().map(Vec::len), Some(2));
+        assert!(value["points"][0]["response"]["data"].is_object());
+    }
+
+    #[tokio::test]
     async fn rejects_unexpected_loopback_hosts() {
         let response = test_router()
             .oneshot(
@@ -1115,6 +1217,13 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let value: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["error"]["code"], "host-not-allowed");
+    }
+
+    #[test]
+    fn accepts_bracketed_ipv6_loopback_hosts() {
+        assert!(host_allowed("[::1]:3000", "::1".parse().unwrap(), 3000));
+        assert!(host_allowed("[::1]", "::1".parse().unwrap(), 3000));
+        assert!(!host_allowed("[::1]:4000", "::1".parse().unwrap(), 3000));
     }
 
     #[tokio::test]

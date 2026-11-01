@@ -98,7 +98,7 @@ export function formatDate(value: string, locale: string): string {
 }
 
 /** Formats an ISO month (`YYYY-MM`) for display, without timezone drift. */
-export function formatMonth(value: string, locale: string): string {
+export function formatMonth(value: string, locale: string, includeYear = true): string {
   const match = /^(\d{4})-(\d{2})$/.exec(value)
   if (!match) {
     return value
@@ -107,7 +107,7 @@ export function formatMonth(value: string, locale: string): string {
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1))
   return new Intl.DateTimeFormat(locale, {
     timeZone: 'UTC',
-    year: 'numeric',
+    ...(includeYear ? { year: 'numeric' as const } : {}),
     month: 'long',
   }).format(date)
 }

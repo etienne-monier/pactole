@@ -38,12 +38,15 @@ The navigation drawer gives access to:
 - **Expenses** — spending breakdown grouped by account, payee, tag or month,
   with optional comparison against another period.
 - **Register** — filtered postings with their running balance, and a balance
-  chart when the filter targets a single account.
+  chart when the filter targets a single account. The account filter offers
+  accounts discovered in the balance report.
 - **Diagnostics** — syntax, lowering, include, analysis and business
-  diagnostics, with their stable code and source location.
+  diagnostics, with their stable code and source location. A source location
+  can be copied for use in an editor.
 
 Filters are applied explicitly: edit the fields, then press **Apply**. The
 applied filters are kept in the URL, so a view can be bookmarked or shared.
+Browser back and forward navigation restores the filters and reloads the view.
 
 ## Charts and exact amounts
 

@@ -447,34 +447,34 @@ application layer.*
 None of these block the interface; they were recorded while reviewing the
 delivered implementation.
 
-- [ ] Dashboard: reuse the shared `sectionAmounts` helper instead of defining
+- [x] Dashboard: reuse the shared `sectionAmounts` helper instead of defining
   a local copy, and stop matching the income sections by the English titles
   `"Income"`/`"Expenses"`: a custom `[reports]` classification renames them, so
   the month cards could silently read the wrong section.
-- [ ] Balance history: replace the twelve per-month `balance` requests (each
+- [x] Balance history: replace the twelve per-month `balance` requests (each
   one reloading the whole project) with a dedicated series endpoint or a batch
   route.
-- [ ] `useFilters`: react to route-query changes, so browser back/forward
+- [x] `useFilters`: react to route-query changes, so browser back/forward
   updates the visible filters instead of only the URL.
-- [ ] Register: turn the account filter into an autocomplete fed by the balance
+- [x] Register: turn the account filter into an autocomplete fed by the balance
   accounts, so a typo cannot silently produce an empty register.
-- [ ] Diagnostics: make the source location actionable (copy it, or open it in
+- [x] Diagnostics: make the source location actionable (copy it, or open it in
   the editor) instead of displaying plain text.
-- [ ] Income and expenses: validate the date fields before sending, so an
+- [x] Income and expenses: validate the date fields before sending, so an
   invalid date is a field error rather than a raw API error.
-- [ ] `formatMonth`: keep the year in tooltips but use a month-only label on
+- [x] `formatMonth`: keep the year in tooltips but use a month-only label on
   the twelve-month axes, where the year is repeated on every tick.
-- [ ] `ChartCard` and `DiagnosticsTable`: use stable keys (category, series
+- [x] `ChartCard` and `DiagnosticsTable`: use stable keys (category, series
   name, diagnostic code) instead of array indices in the table rows.
-- [ ] Embed the files at the root of `web/dist` (favicon, `robots.txt`, ...) in
+- [x] Embed the files at the root of `web/dist` (favicon, `robots.txt`, ...) in
   addition to `dist/assets`, so adding one does not require a server change.
-- [ ] Send `Cache-Control: no-store` on `/api/v1` responses: the ledger is
+- [x] Send `Cache-Control: no-store` on `/api/v1` responses: the ledger is
   reloaded per request, so a cached report would be stale.
-- [ ] Fix the `Host` allow-list for IPv6 loopback: `IpAddr`'s display form
+- [x] Fix the `Host` allow-list for IPv6 loopback: `IpAddr`'s display form
   (`::1`) does not match the bracketed `Host` value (`[::1]:3000`).
-- [ ] Consider caching one `LedgerSnapshot` per request (or for a short TTL),
+- [x] Consider caching one `LedgerSnapshot` per request (or for a short TTL),
   now that a dashboard load issues several requests.
-- [ ] Re-read `how-to/use-the-web-interface.md` against the final UI (theme
+- [x] Re-read `how-to/use-the-web-interface.md` against the final UI (theme
   persistence and register chart wording) once these follow-ups land.
 
 ### 5.4 — Verify the boundary

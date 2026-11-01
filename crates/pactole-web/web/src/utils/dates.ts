@@ -11,6 +11,17 @@ export function todayIso(today: Date = new Date()): string {
   return isoDate(today)
 }
 
+/** Returns whether an inclusive date range is invalid. */
+export function dateRangeError(from: string, to: string): 'invalid' | 'order' | null {
+  if ((from && parseIsoDate(from) === null) || (to && parseIsoDate(to) === null)) {
+    return 'invalid'
+  }
+  if (from && to && from > to) {
+    return 'order'
+  }
+  return null
+}
+
 /** Returns the first day of the current month as `YYYY-MM-DD`. */
 export function monthStartIso(today: Date = new Date()): string {
   return isoDate(new Date(today.getFullYear(), today.getMonth(), 1))

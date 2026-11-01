@@ -49,6 +49,7 @@ const en = {
     theme: 'Theme',
     light: 'Light',
     dark: 'Dark',
+    invalidDateRange: 'Enter a valid date range.',
   },
   nav: {
     dashboard: 'Dashboard',
