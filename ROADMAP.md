@@ -479,10 +479,10 @@ delivered implementation.
 
 ### 5.4 — Verify the boundary
 
-- [ ] Add HTTP integration tests using `fixtures/journal`.
-- [ ] Check that web JSON results agree with the corresponding CLI JSON
+- [x] Add HTTP integration tests using `fixtures/journal`.
+- [x] Check that web JSON results agree with the corresponding CLI JSON
   reports.
-- [ ] Test malformed journals, missing includes, partial analysis and
+- [x] Test malformed journals, missing includes, partial analysis and
   multi-commodity reports through the API.
 
 ---

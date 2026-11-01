@@ -2126,7 +2126,6 @@ fn serve_exposes_the_reports_api_over_http() {
     std::fs::create_dir_all(&directory).unwrap();
     let config = directory.join("pactole.toml");
     std::fs::write(&config, "").unwrap();
-
     let port = TcpListener::bind(("127.0.0.1", 0))
         .unwrap()
         .local_addr()
@@ -2174,4 +2173,101 @@ fn serve_exposes_the_reports_api_over_http() {
 
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("\"read\":true"), "{response}");
+}
+
+#[test]
+fn web_balance_matches_cli_json_report() {
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::time::{Duration, Instant};
+
+    let directory = std::env::temp_dir().join(format!(
+        "pactole-web-parity-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let config = directory.join("pactole.toml");
+    std::fs::write(&config, "").unwrap();
+    std::fs::write(
+        &config,
+        "[reports]\nassets = [\"Actifs\"]\nliabilities = [\"Passif\"]\nequity = [\"Capitaux\"]\nincome = [\"Revenus\"]\nexpenses = [\"Depenses\", \"Impots\"]\n",
+    )
+    .unwrap();
+    let ledger =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/journal/ledger.pactole");
+    let port = TcpListener::bind(("127.0.0.1", 0))
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let mut child = pactole_cmd()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "serve",
+            ledger.to_str().unwrap(),
+            "--port",
+            &port.to_string(),
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let response = loop {
+        match TcpStream::connect(("127.0.0.1", port)) {
+            Ok(mut stream) => {
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                write!(
+                    stream,
+                    "GET /api/v1/balance?as_of=2026-03-31 HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).unwrap();
+                break response;
+            }
+            Err(_) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => panic!("server did not start: {error}"),
+        }
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    let web: serde_json::Value =
+        serde_json::from_str(response.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+    let cli = pactole_cmd()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "balance",
+            ledger.to_str().unwrap(),
+            "--date",
+            "2026-03-31",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        cli.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cli.stderr)
+    );
+    let cli: serde_json::Value = serde_json::from_slice(&cli.stdout).unwrap();
+
+    assert_eq!(web["data"]["scope"], cli["scope"]);
+    assert_eq!(web["data"]["sections"], cli["sections"]);
+    assert_eq!(web["data"]["totals"], cli["totals"]);
+    std::fs::remove_dir_all(&directory).ok();
 }

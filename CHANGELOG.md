@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Web boundary verification (roadmap 5.4):** added HTTP integration coverage
+  for the report API using the realistic journal fixtures, including clean,
+  partial, malformed and missing-include projects, structured API errors and
+  multi-commodity valuation. A CLI/API parity test verifies that web balance
+  results agree with the corresponding CLI JSON report.
+
 - **Web interface (roadmap 5.3):** replaced the bundled shell with a Vuetify
   interface written in Vue 3 and TypeScript. It provides a dashboard with
   current balances and month-to-date results, balance sheet, income statement,
