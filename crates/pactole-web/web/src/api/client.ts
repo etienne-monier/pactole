@@ -195,7 +195,7 @@ export interface BalanceSeriesPoint {
 
 export interface BalanceSeriesResult {
   points: BalanceSeriesPoint[]
-  failures: { date: string; error: ApiError }[]
+  failures: { date: string; error: { code: string; message: string; details: unknown } }[]
 }
 
 export async function fetchBalanceSeries(
@@ -206,7 +206,7 @@ export async function fetchBalanceSeries(
     onPoint?: (point: BalanceSeriesPoint) => void
   } = {},
 ): Promise<BalanceSeriesResult> {
-  const batch = await getJson<{ points: BalanceSeriesPoint[]; failures: { date: string; error: ApiError }[] }>(
+  const batch = await getJson<BalanceSeriesResult>(
     '/balance-series',
     { ...params, dates: dates.join(',') },
     { signal: options.signal, cacheTtl: options.cacheTtl },

@@ -129,6 +129,7 @@ const en = {
     balanceHistory: 'Running balance',
     balanceHistoryHint: 'Running balance of the filtered postings, per commodity.',
     accountRequired: 'Filter by a single account to see a meaningful running balance.',
+    unknownAccount: 'Select an account from the suggestions.',
     entries: 'Postings',
   },
   diagnostics: {

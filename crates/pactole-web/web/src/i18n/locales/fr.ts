@@ -131,6 +131,7 @@ const fr: typeof en = {
     balanceHistory: 'Solde courant',
     balanceHistoryHint: 'Solde courant des écritures filtrées, par devise.',
     accountRequired: 'Filtrez sur un compte unique pour obtenir un solde courant significatif.',
+    unknownAccount: 'Sélectionnez un compte parmi les suggestions.',
     entries: 'Écritures',
   },
   diagnostics: {

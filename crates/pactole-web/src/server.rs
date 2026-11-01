@@ -293,31 +293,55 @@ where
     if dates.is_empty() {
         return Err(ApiError::invalid("dates cannot be empty"));
     }
+    if dates.len() > 366 {
+        return Err(ApiError::invalid(
+            "dates cannot contain more than 366 values",
+        ));
+    }
+    if dates.windows(2).any(|window| window[0] >= window[1]) {
+        return Err(ApiError::invalid("dates must be sorted and unique"));
+    }
     let grouping = account_grouping(&params)?;
-    let valuation = valuation(&params, *dates.last().unwrap_or(&Local::now().date_naive()))?;
+    let target = params
+        .get("convert_to")
+        .map(|target| {
+            CommodityName::new(target.clone()).map_err(|error| ApiError::invalid(error.to_string()))
+        })
+        .transpose()?;
+    let fixed_at = optional_date(&params, "at")?;
     let include_warnings = boolean(&params, "include_warnings")?;
     let reports = state.options.reports.clone();
     let application = Arc::clone(&state.application);
     let query_dates = dates.clone();
+    let queries = dates
+        .iter()
+        .map(|date| BalanceQuery {
+            as_of: ReferenceDate::new(*date),
+            grouping,
+            classification: classification(&reports),
+            valuation: target.clone().map(|target| pactole_app::ValuationRequest {
+                target,
+                at: fixed_at.unwrap_or(*date),
+            }),
+        })
+        .collect::<Vec<_>>();
     let results = run_application(application, move |application| {
-        application.balance_series(
-            &query_dates,
-            BalanceQuery {
-                as_of: ReferenceDate::new(query_dates[0]),
-                grouping,
-                classification: classification(&reports),
-                valuation,
-            },
-        )
+        application.balance_series(&queries)
     })
     .await
     .map_err(|error| ApiError::from_application(error, &state.options))?;
-    let points = results
-        .into_iter()
-        .zip(dates)
-        .map(|(result, date)| json!({ "date": date.to_string(), "response": report_response(&result.report, result.diagnostics, &state.options, include_warnings) }))
-        .collect::<Vec<_>>();
-    Ok(Json(json!({ "points": points, "failures": [] })))
+    let mut points = Vec::new();
+    let mut failures = Vec::new();
+    for (result, date) in results.into_iter().zip(query_dates) {
+        match result {
+            Ok(result) => points.push(json!({ "date": date.to_string(), "response": report_response(&result.report, result.diagnostics, &state.options, include_warnings) })),
+            Err(error) => {
+                let error = ApiError::from_application(error, &state.options);
+                failures.push(json!({ "date": date.to_string(), "error": { "code": error.code, "message": error.message, "details": error.details } }));
+            }
+        }
+    }
+    Ok(Json(json!({ "points": points, "failures": failures })))
 }
 
 async fn income<R>(

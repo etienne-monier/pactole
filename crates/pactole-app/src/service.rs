@@ -136,22 +136,12 @@ impl<R: LedgerReader> Application<R> {
     /// Builds several balance sheets from one validated journal snapshot.
     pub fn balance_series(
         &self,
-        dates: &[chrono::NaiveDate],
-        query: BalanceQuery,
-    ) -> Result<Vec<BalanceResult>, ApplicationError> {
+        queries: &[BalanceQuery],
+    ) -> Result<Vec<Result<BalanceResult, ApplicationError>>, ApplicationError> {
         let (journal, diagnostics) = self.ready_journal()?;
-        dates
+        queries
             .iter()
-            .map(|date| {
-                build_balance(
-                    &journal,
-                    diagnostics.clone(),
-                    BalanceQuery {
-                        as_of: pactole_core::ReferenceDate::new(*date),
-                        ..query.clone()
-                    },
-                )
-            })
+            .map(|query| build_balance(&journal, diagnostics.clone(), query.clone()).map(Ok))
             .collect()
     }
 

@@ -33,12 +33,19 @@ const { t, locale } = useI18n()
 const mode = ref<'chart' | 'table'>('chart')
 
 const drawable = computed(() => hasChartData(props.data))
-const rows = computed(() =>
-  (props.data?.categories ?? []).map((category, index) => ({
-    category,
-    values: (props.data?.series ?? []).map((series) => series.exact[index] ?? ''),
-  })),
-)
+const rows = computed(() => {
+  const occurrences = new Map<string, number>()
+  return (props.data?.categories ?? []).map((category, index) => {
+    const base = `${category}:${props.data?.series.map((series) => series.name).join('|')}`
+    const occurrence = occurrences.get(base) ?? 0
+    occurrences.set(base, occurrence + 1)
+    return {
+      key: `${base}:${occurrence}`,
+      category,
+      values: (props.data?.series ?? []).map((series) => series.exact[index] ?? ''),
+    }
+  })
+})
 </script>
 
 <template>
@@ -72,7 +79,7 @@ const rows = computed(() =>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in rows" :key="row.category">
+            <tr v-for="row in rows" :key="row.key">
               <td>{{ row.category }}</td>
                 <td v-for="(value, column) in row.values" :key="`${row.category}-${data?.series[column]?.name ?? column}`" class="text-right">
                 {{ value === '' ? t('charts.noValue') : formatDecimal(value, locale) }}

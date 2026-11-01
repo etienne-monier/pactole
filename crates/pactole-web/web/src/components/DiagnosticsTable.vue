@@ -1,11 +1,22 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { Diagnostic } from '@/api/types'
 
-defineProps<{ diagnostics: readonly Diagnostic[] }>()
+const props = defineProps<{ diagnostics: readonly Diagnostic[] }>()
 
 const { t } = useI18n()
+
+const keyedDiagnostics = computed(() => {
+  const occurrences = new Map<string, number>()
+  return props.diagnostics.map((diagnostic) => {
+    const base = `${location(diagnostic)}:${diagnostic.code}:${diagnostic.message}`
+    const occurrence = occurrences.get(base) ?? 0
+    occurrences.set(base, occurrence + 1)
+    return { diagnostic, key: `${base}:${occurrence}` }
+  })
+})
 
 function location(diagnostic: Diagnostic): string {
   if (!diagnostic.source) {
@@ -20,7 +31,11 @@ function location(diagnostic: Diagnostic): string {
 async function copyLocation(diagnostic: Diagnostic): Promise<void> {
   const value = location(diagnostic)
   if (value !== '—') {
-    await navigator.clipboard?.writeText(value)
+    try {
+      await navigator.clipboard?.writeText(value)
+    } catch {
+      // Clipboard permissions are browser-controlled; the location remains visible.
+    }
   }
 }
 </script>
@@ -38,22 +53,22 @@ async function copyLocation(diagnostic: Diagnostic): Promise<void> {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="diagnostic in diagnostics" :key="`${location(diagnostic)}:${diagnostic.code}:${diagnostic.message}`">
+        <tr v-for="entry in keyedDiagnostics" :key="entry.key">
           <td>
             <VChip
               size="x-small"
-              :color="diagnostic.severity === 'error' ? 'error' : 'warning'"
+              :color="entry.diagnostic.severity === 'error' ? 'error' : 'warning'"
               variant="tonal"
             >
-              {{ t(`severities.${diagnostic.severity}`) }}
+              {{ t(`severities.${entry.diagnostic.severity}`) }}
             </VChip>
           </td>
-          <td>{{ t(`origins.${diagnostic.origin}`) }}</td>
-          <td><code>{{ diagnostic.code }}</code></td>
-          <td class="message">{{ diagnostic.message }}</td>
+          <td>{{ t(`origins.${entry.diagnostic.origin}`) }}</td>
+          <td><code>{{ entry.diagnostic.code }}</code></td>
+          <td class="message">{{ entry.diagnostic.message }}</td>
           <td class="source">
-            <VBtn v-if="diagnostic.source" size="small" variant="text" @click="copyLocation(diagnostic)">
-              {{ location(diagnostic) }}
+            <VBtn v-if="entry.diagnostic.source" size="small" variant="text" @click="copyLocation(entry.diagnostic)">
+              {{ location(entry.diagnostic) }}
             </VBtn>
             <span v-else>—</span>
           </td>

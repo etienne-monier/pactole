@@ -99,6 +99,15 @@ const accountOptions = computed(() => {
   }
   return [...labels].sort()
 })
+const accountError = computed(() =>
+  filters.account && accountOptions.value.length > 0 && !accountOptions.value.includes(filters.account)
+    ? t('register.unknownAccount')
+    : undefined,
+)
+
+function applyFilters(): void {
+  if (!accountError.value) apply()
+}
 
 const page = ref(1)
 const pageCount = computed(() => Math.max(1, Math.ceil(entries.value.length / PAGE_SIZE)))
@@ -133,11 +142,12 @@ const balanceOption = computed(() =>
   <div class="page-stack">
     <PageHeader :title="t('register.title')" :subtitle="t('register.subtitle')" />
 
-    <FilterCard @apply="apply" @reset="reset">
+    <FilterCard @apply="applyFilters" @reset="reset">
       <VAutocomplete
         v-model="filters.account"
         :items="accountOptions"
         :label="t('common.account')"
+        :error-messages="accountError"
         clearable
         hide-no-data
       />
