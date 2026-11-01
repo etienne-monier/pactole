@@ -94,6 +94,31 @@ jobs:
           git diff --exit-code
       - run: npx tree-sitter test
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/pactole-web/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: crates/pactole-web/web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Committed bundle is up to date
+        run: |
+          status="$(git status --porcelain -- dist)"
+          if [ -n "$status" ]; then
+            printf '%s\n' "$status"
+            echo "The committed web/dist bundle is stale; run npm run build and commit the result." >&2
+            exit 1
+          fi
+
   docs:
     runs-on: ubuntu-latest
     defaults:

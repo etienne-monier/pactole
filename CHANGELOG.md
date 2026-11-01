@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Web interface (roadmap 5.3):** replaced the bundled shell with a Vuetify
+  interface written in Vue 3 and TypeScript. It provides a dashboard with
+  current balances and month-to-date results, balance sheet, income statement,
+  expenses (including period comparison), register and diagnostics views,
+  balance-history and comparison charts with exact-value table fallbacks, URL-
+  preserved filters, English/French locales and light/dark themes. The built
+  bundle is embedded in `pactole-web`, so Node.js is not required at runtime;
+  a CI job type-checks, tests and rebuilds it to keep the committed assets in
+  sync.
+
 - **Web reports MVP server (roadmap 5.2):** added the generic `pactole-web`
   HTTP adapter and `pactole serve`, exposing the versioned capabilities,
   balance, income, expenses, register and diagnostics endpoints. The local

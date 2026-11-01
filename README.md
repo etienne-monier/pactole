@@ -119,7 +119,12 @@ pactole serve path/to/file.pactole --port 8080
 ```
 
 The server serves the bundled frontend and the versioned JSON API. It reloads
-the journal for every request and stops with `Ctrl-C`.
+the journal for every request and stops with `Ctrl-C`. The interface includes a
+dashboard, the balance sheet, income statement, expenses, register and
+diagnostics views, with balance-history and comparison charts. It is available
+in English and French, and amounts remain exact decimal values from the API.
+Node.js is not required at runtime; see the
+[web interface guide](https://etienne-monier.github.io/pactole/how-to/use-the-web-interface/).
 
 Inspect which journal files are included, detect cycles and repeated includes,
 and find `.pactole` files in the root journal's directory that are not

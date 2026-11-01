@@ -112,8 +112,12 @@ pactole serve ledger.pactole --bind 127.0.0.1 --port 3000
 
 The project is reloaded for every API request, so changes written to the ledger
 are visible without restarting the server. The server does not expose write
-operations. See the [web API contract](/reference/web-api/) for the available
-routes, query parameters and error responses.
+operations. The bundled interface provides dashboard, balance sheet, income
+statement, expenses, register and diagnostics views, including balance-history
+and comparison charts, in English and French. See the
+[web API contract](/reference/web-api/) for the available routes, query
+parameters and error responses, and the
+[web interface guide](/how-to/use-the-web-interface/) for the views.
 
 The frontend assets are bundled with the web server; Node.js is not required at
 runtime. Press `Ctrl-C` to stop the server.

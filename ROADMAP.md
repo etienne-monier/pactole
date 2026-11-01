@@ -425,15 +425,57 @@ application layer.*
 
 ### 5.3 — Build the extensible interface
 
-- [ ] Replace the bundled shell with the full Vuetify interface without
+- [x] Replace the bundled shell with the full Vuetify interface without
   requiring Node.js at runtime.
-- [ ] Implement a dashboard with current balances and month-to-date income and
+- [x] Implement a dashboard with current balances and month-to-date income and
   expenses.
-- [ ] Implement balance sheet, income statement and spending breakdown views.
-- [ ] Support period, grouping, commodity and valuation-date parameters already
+- [x] Implement balance sheet, income statement and spending breakdown views.
+- [x] Support period, grouping, commodity and valuation-date parameters already
   supported by the reporting API.
-- [ ] Make the UI consume `/api/v1/capabilities`, so read-only and read/write
+- [x] Make the UI consume `/api/v1/capabilities`, so read-only and read/write
   backends can use the same interface.
+- [x] Add balance-history and period-comparison charts, with an exact-value
+  table fallback.
+- [x] Add the register and diagnostics views.
+- [x] Provide English and French locales, light and dark themes, and keep
+  filters in the URL.
+- [x] Embed the built frontend in `pactole-web` and verify the committed bundle
+  in CI.
+
+#### 5.3.1 — Follow-ups from the interface review
+
+None of these block the interface; they were recorded while reviewing the
+delivered implementation.
+
+- [ ] Dashboard: reuse the shared `sectionAmounts` helper instead of defining
+  a local copy, and stop matching the income sections by the English titles
+  `"Income"`/`"Expenses"`: a custom `[reports]` classification renames them, so
+  the month cards could silently read the wrong section.
+- [ ] Balance history: replace the twelve per-month `balance` requests (each
+  one reloading the whole project) with a dedicated series endpoint or a batch
+  route.
+- [ ] `useFilters`: react to route-query changes, so browser back/forward
+  updates the visible filters instead of only the URL.
+- [ ] Register: turn the account filter into an autocomplete fed by the balance
+  accounts, so a typo cannot silently produce an empty register.
+- [ ] Diagnostics: make the source location actionable (copy it, or open it in
+  the editor) instead of displaying plain text.
+- [ ] Income and expenses: validate the date fields before sending, so an
+  invalid date is a field error rather than a raw API error.
+- [ ] `formatMonth`: keep the year in tooltips but use a month-only label on
+  the twelve-month axes, where the year is repeated on every tick.
+- [ ] `ChartCard` and `DiagnosticsTable`: use stable keys (category, series
+  name, diagnostic code) instead of array indices in the table rows.
+- [ ] Embed the files at the root of `web/dist` (favicon, `robots.txt`, ...) in
+  addition to `dist/assets`, so adding one does not require a server change.
+- [ ] Send `Cache-Control: no-store` on `/api/v1` responses: the ledger is
+  reloaded per request, so a cached report would be stale.
+- [ ] Fix the `Host` allow-list for IPv6 loopback: `IpAddr`'s display form
+  (`::1`) does not match the bracketed `Host` value (`[::1]:3000`).
+- [ ] Consider caching one `LedgerSnapshot` per request (or for a short TTL),
+  now that a dashboard load issues several requests.
+- [ ] Re-read `how-to/use-the-web-interface.md` against the final UI (theme
+  persistence and register chart wording) once these follow-ups land.
 
 ### 5.4 — Verify the boundary
 
@@ -494,9 +536,10 @@ backend or adding accounting logic to the UI.*
 
 - [ ] Add file watching or server-sent events after measuring the MVP reload
   behaviour.
-- [ ] Add charts over time and period comparison.
+- [x] Add charts over time and period comparison.
 - [ ] Add the budget view once Phase 6 exists.
-- [ ] Ship the front-end as static assets, without a Node build chain.
+- [x] Ship the front-end as embedded static assets, without requiring Node.js
+  at runtime.
 
 ### 7.2 — Add writing and alternate backends
 

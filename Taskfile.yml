@@ -3,6 +3,21 @@ version: "3"
 tasks:
   doc: cargo doc --workspace --no-deps
 
+  web:
+    desc: "Build and verify the embedded web interface"
+    dir: crates/pactole-web/web
+    cmds:
+      - npm ci
+      - npm run typecheck
+      - npm test
+      - npm run build
+
+  web-dev:
+    desc: "Run the Vite development server (proxying /api to pactole serve)"
+    dir: crates/pactole-web/web
+    cmds:
+      - npm run dev
+
   version:
     desc: "Bump the workspace version: task version VERSION=X.Y.Z (or task version -- X.Y.Z)"
     cmds:
@@ -20,5 +35,12 @@ tasks:
         sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"$/version = \"$version\"/" Cargo.toml
         # [workspace.dependencies] { version = "X.Y.Z", path = "crates/..." }
         sed -i -E "s/(version = \")[0-9]+\.[0-9]+\.[0-9]+(\", path = \"crates\/)/\1$version\2/" Cargo.toml
+        # The frontend package is private, but keeping its version in lockstep
+        # avoids drift between the crate and the assets it embeds.
+        if command -v npm >/dev/null 2>&1; then
+          (cd crates/pactole-web/web && npm version "$version" --no-git-tag-version --allow-same-version >/dev/null)
+        else
+          echo "warning: npm not found; crates/pactole-web/web/package.json was not bumped" >&2
+        fi
         # Refreshes Cargo.lock and fails if the new versions do not resolve.
         cargo check --workspace

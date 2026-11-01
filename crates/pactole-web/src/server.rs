@@ -9,7 +9,7 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{RawQuery, Request, State},
+    extract::{Path, RawQuery, Request, State},
     http::{HeaderValue, StatusCode, Uri, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -29,9 +29,13 @@ use pactole_core::{
 use serde_json::{Value, json};
 use thiserror::Error;
 
-const INDEX_HTML: &[u8] = include_bytes!("../web/dist/index.html");
-const APP_JS: &[u8] = include_bytes!("../web/dist/assets/app.js");
-const APP_CSS: &[u8] = include_bytes!("../web/dist/assets/app.css");
+use crate::static_assets::{ASSETS, INDEX_HTML};
+
+/// Cache policy for content-hashed frontend assets.
+const IMMUTABLE_CACHE: &str = "public, max-age=31536000, immutable";
+
+/// Content Security Policy applied to the frontend shell.
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
 /// Options controlling the local HTTP server.
 #[derive(Debug, Clone)]
@@ -103,8 +107,7 @@ where
         .route("/api/v1/register", get(register::<R>))
         .route("/api/v1/diagnostics", get(diagnostics::<R>))
         .route("/", get(index))
-        .route("/assets/app.js", get(app_js))
-        .route("/assets/app.css", get(app_css))
+        .route("/assets/{*path}", get(asset))
         .method_not_allowed_fallback(method_not_allowed)
         .fallback(frontend_fallback)
         .route_layer(middleware::from_fn_with_state(
@@ -241,7 +244,7 @@ where
     .await
     .map_err(|error| ApiError::from_application(error, &state.options))?;
     Ok(Json(report_response(
-        result.report.render(ReportFormat::Json),
+        &result.report,
         result.diagnostics,
         &state.options,
         include_warnings,
@@ -285,7 +288,7 @@ where
     .await
     .map_err(|error| ApiError::from_application(error, &state.options))?;
     Ok(Json(report_response(
-        result.report.render(ReportFormat::Json),
+        &result.report,
         result.diagnostics,
         &state.options,
         include_warnings,
@@ -465,16 +468,21 @@ async fn index() -> Response {
     static_response(INDEX_HTML, "text/html; charset=utf-8", None)
 }
 
-async fn app_js() -> Response {
-    static_response(
-        APP_JS,
-        "application/javascript; charset=utf-8",
-        Some("no-cache"),
-    )
-}
-
-async fn app_css() -> Response {
-    static_response(APP_CSS, "text/css; charset=utf-8", Some("no-cache"))
+async fn asset(Path(path): Path<String>) -> Response {
+    let requested = format!("/assets/{path}");
+    match ASSETS
+        .iter()
+        .find(|(asset_path, _, _)| *asset_path == requested)
+    {
+        Some((_, content_type, bytes)) => {
+            static_response(bytes, content_type, Some(IMMUTABLE_CACHE))
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": { "code": "not-found", "message": "asset not found", "details": null } })),
+        )
+            .into_response(),
+    }
 }
 
 async fn frontend_fallback(uri: Uri) -> Response {
@@ -516,6 +524,12 @@ fn static_response(
         response
             .headers_mut()
             .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    }
+    if content_type.starts_with("text/html") {
+        response.headers_mut().insert(
+            "content-security-policy",
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        );
     }
     response
 }
@@ -617,16 +631,15 @@ impl IntoResponse for ApiError {
 }
 
 fn report_response(
-    rendered: String,
+    report: &pactole_core::Report,
     diagnostics: Vec<Diagnostic>,
     options: &ServerOptions,
     include_warnings: bool,
 ) -> Value {
-    let mut data = serde_json::from_str::<Value>(&rendered).unwrap_or_else(|_| json!({}));
-    if !data.get("valuation").is_some() {
-        data["valuation"] = Value::Null;
-    }
-    json!({ "data": data, "diagnostics": diagnostics_json(&diagnostics, options, include_warnings) })
+    json!({
+        "data": report_value(report),
+        "diagnostics": diagnostics_json(&diagnostics, options, include_warnings),
+    })
 }
 
 fn report_value(report: &pactole_core::Report) -> Value {
@@ -635,6 +648,7 @@ fn report_value(report: &pactole_core::Report) -> Value {
     if !value.get("valuation").is_some() {
         value["valuation"] = Value::Null;
     }
+    value["total_label"] = json!(report.total_label);
     value
 }
 
@@ -984,6 +998,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn serves_embedded_frontend_assets_with_cache_headers() {
+        let asset = ASSETS
+            .first()
+            .expect("the frontend bundle must contain at least one asset");
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .uri(asset.0)
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], asset.1);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], IMMUTABLE_CACHE);
+        assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(body.as_ref(), asset.2);
+    }
+
+    #[tokio::test]
+    async fn serves_the_frontend_shell_with_a_content_security_policy() {
+        let response = test_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["content-security-policy"],
+            CONTENT_SECURITY_POLICY
+        );
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("id=\"app\""));
+        assert!(html.contains("/assets/"));
+    }
+
+    #[tokio::test]
     async fn serves_frontend_routes_but_keeps_api_errors_as_json() {
         let response = test_router()
             .oneshot(
@@ -1105,6 +1163,10 @@ mod tests {
         let value: Value = serde_json::from_slice(&body).unwrap();
         assert!(value["data"]["current"].is_object());
         assert_eq!(value["data"]["comparison"], Value::Null);
+        assert_eq!(value["data"]["current"]["scope"]["kind"], "period");
+        assert!(value["data"]["current"]["scope"]["start"].is_string());
+        assert!(value["data"]["current"]["scope"]["end"].is_string());
+        assert_eq!(value["data"]["current"]["total_label"], "Total");
         assert_eq!(value["diagnostics"], json!([]));
 
         let response = test_router()
@@ -1214,5 +1276,6 @@ mod tests {
         let value: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["data"]["scope"]["kind"], "as_of");
         assert!(value["data"]["sections"].is_array());
+        assert!(value["data"]["total_label"].is_string());
     }
 }

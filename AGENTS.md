@@ -245,10 +245,24 @@ pactole/
    - `router` builds a reusable Axum router; `serve` binds to
      `127.0.0.1:3000` by default and reloads the supplied `LedgerReader` on
      every request.
-   - The server embeds and serves the frontend shell and static assets at `/`,
-     `/assets/app.js` and `/assets/app.css`; it does not require Node.js at
-     runtime. API routes remain JSON-only and frontend routes fall back to
-     `index.html`.
+   - The server embeds and serves the built frontend at `/`, `/assets/*` and
+     any non-API route (SPA fallback); it does not require Node.js at runtime.
+     `build.rs` generates a table of `web/dist` files (content types and
+     `include_bytes!` entries), and `src/static_assets.rs` includes it. Hashed
+     assets are served with an immutable cache policy; `index.html` is
+     `no-cache` and carries a Content Security Policy allowing inline styles
+     (needed by Vuetify). API routes remain JSON-only and unknown assets return
+     a JSON `not-found`.
+   - `web/` is a Vite + Vue 3 + TypeScript + Vuetify 4 application
+     (`npm`-managed, with `package-lock.json`). It uses `vue-router`,
+     `vue-i18n` (English reference locale plus French) and ECharts through
+     `vue-echarts`; there is no Pinia store. `npm run typecheck`, `npm test`
+     and `npm run build` are the frontend validation commands, and the built
+     `web/dist/` is committed. The UI is presentation-only: it keeps exact
+     decimal strings from the API for display, uses numbers only for chart
+     geometry, and never sums different commodities. Views: dashboard,
+     balance sheet, income statement, expenses (with comparison), register and
+     diagnostics.
 
 6. **`pactole-cli`**:
    - Command-line application binary named `pactole` (using `clap` derive).
@@ -613,6 +627,24 @@ cargo clippy --workspace --all-targets
 cargo fmt --check
 ```
 
+### Web Interface
+
+The frontend lives in `crates/pactole-web/web` and is managed with `npm`.
+Its build output (`web/dist/`) is committed and embedded by `pactole-web`'s
+`build.rs`; the CI job fails when it is stale.
+
+```sh
+cd crates/pactole-web/web
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run dev` starts Vite and proxies `/api` to a `pactole serve` instance on
+`127.0.0.1:3000`. Rebuild and commit `web/dist/` whenever the frontend changes;
+`task web` runs the whole frontend validation sequence.
+
 ### Git Hooks & CI
 
 A `prek` (pre-commit-compatible) configuration lives in
@@ -646,8 +678,9 @@ by pushing a `v*` tag (`.github/workflows/release.yml`).
   ```
 
   It rewrites the package version and the internal dependency requirements,
-  then refreshes `Cargo.lock`. Keep `Cargo.lock` committed and in sync: the CI
-  runs with `--locked`.
+  bumps the private `crates/pactole-web/web/package.json` version when npm is
+  available, then refreshes `Cargo.lock`. Keep `Cargo.lock` committed and in
+  sync: the CI runs with `--locked`.
 - **The crates are published in lockstep** (`0.3.0`, `0.4.0`, ...). Because a
   `0.x` caret requirement (`^0.3.0` means `>=0.3.0, <0.4.0`) makes the minor
   version the compatibility boundary, bumping a crate to a new minor requires

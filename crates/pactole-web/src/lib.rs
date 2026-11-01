@@ -10,4 +10,7 @@
 /// HTTP server, routing and transport conversion.
 mod server;
 
+/// Frontend files embedded at build time.
+mod static_assets;
+
 pub use server::{ServerError, ServerOptions, router, serve};

@@ -5,10 +5,11 @@ sidebar:
   order: 6
 ---
 
-This document defines the HTTP contract for the local web interface planned in
-roadmap phase 5. The web server is a presentation adapter over `pactole-app`;
+This document defines the HTTP contract for the local web interface introduced
+in roadmap phase 5. The web server is a presentation adapter over `pactole-app`;
 it must not implement accounting rules or expose the details of a particular
-storage backend.
+storage backend. See [Use the web interface](/how-to/use-the-web-interface/) for
+the user-facing views.
 
 The contract is read-only in the MVP. Write capabilities may be advertised by
 a future backend, but no write route is part of version 1 of this API.
@@ -122,8 +123,8 @@ Example:
 /api/v1/balance?as_of=2026-10-30&depth=2&convert_to=EUR
 ```
 
-The `data` value contains the report title, scope, sections, totals and
-optional valuation provenance:
+The `data` value contains the report title, scope, sections, subtotals, totals,
+the label of the total line and optional valuation provenance:
 
 ```json
 {
@@ -144,11 +145,20 @@ optional valuation provenance:
       }
     ],
     "totals": [{ "commodity": "EUR", "number": "1250.00" }],
+    "total_label": "Total",
     "valuation": null
   },
   "diagnostics": []
 }
 ```
+
+`total_label` is the label the text renderer uses for `totals` (`Total` for a
+balance sheet, `Net result` for an income statement). Clients display it as-is
+instead of hard-coding a label.
+
+`totals` is the algebraic sum of the exact ledger balances. For a balanced,
+fully classified journal it is often zero, so a dashboard should use the
+per-section `subtotal` values instead.
 
 ### `GET /api/v1/income`
 
@@ -168,11 +178,14 @@ The scope is represented as:
 
 ```json
 {
-  "kind": "over",
-  "from": "2026-10-01",
-  "to": "2026-10-30"
+  "kind": "period",
+  "start": "2026-10-01",
+  "end": "2026-10-30"
 }
 ```
+
+Period reports (`income` and `expenses`) use this shape. The balance sheet uses
+`{ "kind": "as_of", "date": "2026-10-30" }`.
 
 ### `GET /api/v1/expenses`
 
