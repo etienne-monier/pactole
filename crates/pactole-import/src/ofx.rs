@@ -144,6 +144,11 @@ fn collect(
 
     for transaction in list.transactions() {
         let date = to_naive_date(transaction.date_posted())?;
+        let date_user = transaction.date_user().map(to_naive_date).transpose()?;
+        let date_available = transaction
+            .date_available()
+            .map(to_naive_date)
+            .transpose()?;
         // `CURDEF` is the statement-wide fallback.  With CURRENCY, TRNAMT is
         // expressed in the transaction currency.  ORIGCURRENCY describes the
         // currency before the institution converted TRNAMT to CURDEF, so the
@@ -155,6 +160,8 @@ fn collect(
 
         out.push(ImportRecord {
             date,
+            date_user,
+            date_available,
             amount: transaction.amount().as_decimal(),
             currency: Some(transaction_currency.to_string()),
             payee: transaction.name().map(str::to_string),

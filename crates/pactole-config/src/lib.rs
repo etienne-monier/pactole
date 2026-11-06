@@ -41,6 +41,8 @@
 //! default_counter_account = "Expenses:To-Be-Classified"
 //! no_imported_payee = false
 //! omit_negative_amount = false
+//! date_field = ["posted"]
+//! # effective_date_field = ["user", "available"]
 //! # [import.accounts]
 //! # "00012345678" = "Assets:Checking"
 //! # [[import.rules]]
@@ -70,7 +72,7 @@ use crate::raw::{RawDirection, RawFile, RawRule};
 
 pub use crate::declaration::DeclarationOptions;
 pub use crate::format::FormatOptions;
-pub use crate::import::{Direction, ImportConfig, Rule};
+pub use crate::import::{Direction, ImportConfig, ImportDateField, Rule};
 pub use crate::reports::ReportOptions;
 pub use crate::validation::{ValidationLevel, ValidationOptions};
 
@@ -392,6 +394,35 @@ fn resolve_import(
         .clone()
         .ok_or_else(|| invalid("`[import]` requires `default_counter_account`".to_string()))?;
 
+    let configured_date_fields = import
+        .date_field
+        .clone()
+        .unwrap_or_else(|| vec!["posted".to_string()]);
+    let date_field = configured_date_fields
+        .iter()
+        .map(|field| parse_import_date_field(field).map_err(&invalid))
+        .collect::<Result<Vec<_>, _>>()?;
+    if date_field.is_empty() {
+        return Err(invalid(
+            "`[import].date_field` must not be empty".to_string(),
+        ));
+    }
+    let effective_date_field = import
+        .effective_date_field
+        .as_deref()
+        .map(|fields| {
+            if fields.is_empty() {
+                return Err(invalid(
+                    "`[import].effective_date_field` must not be empty".to_string(),
+                ));
+            }
+            fields
+                .iter()
+                .map(|field| parse_import_date_field(field).map_err(&invalid))
+                .collect()
+        })
+        .transpose()?;
+
     Ok(Some(ImportConfig {
         bank_account,
         accounts: import.accounts.clone().unwrap_or_default(),
@@ -400,12 +431,26 @@ fn resolve_import(
         payee_metadata_key: import.payee_metadata_key.clone(),
         no_imported_payee: import.no_imported_payee.unwrap_or(false),
         omit_negative_amount: import.omit_negative_amount.unwrap_or(false),
+        date_field,
+        effective_date_field,
         rules: import
             .rules
             .as_ref()
             .map(|rules| rules.iter().map(rule_from_raw).collect())
             .unwrap_or_default(),
     }))
+}
+
+/// Parses one configured OFX date field name.
+fn parse_import_date_field(value: &str) -> Result<ImportDateField, String> {
+    match value {
+        "posted" => Ok(ImportDateField::Posted),
+        "user" => Ok(ImportDateField::User),
+        "available" => Ok(ImportDateField::Available),
+        other => Err(format!(
+            "invalid import date field `{other}`; expected `posted`, `user` or `available`"
+        )),
+    }
 }
 
 /// Converts one raw TOML import rule into the public rule representation.

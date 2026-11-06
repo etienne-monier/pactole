@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use pactole_config::{Config, ConfigError, Direction, Overrides, Source, ValidationLevel};
+use pactole_config::{
+    Config, ConfigError, Direction, ImportDateField, Overrides, Source, ValidationLevel,
+};
 
 fn source<'a>(contents: &'a str) -> Source<'a> {
     Source {
@@ -199,6 +201,36 @@ fn parses_omit_negative_amount_setting() {
     .unwrap();
 
     assert!(config.import.unwrap().omit_negative_amount);
+}
+
+#[test]
+fn parses_import_date_field_priorities() {
+    let config = resolve(
+        "[import]\nbank_account = \"Assets:Bank\"\ndefault_counter_account = \"Expenses:Other\"\ndate_field = [\"user\", \"posted\"]\neffective_date_field = [\"available\", \"user\"]\n",
+    )
+    .unwrap();
+
+    let import = config.import.unwrap();
+    assert_eq!(
+        import.date_field,
+        vec![ImportDateField::User, ImportDateField::Posted]
+    );
+    assert_eq!(
+        import.effective_date_field,
+        Some(vec![ImportDateField::Available, ImportDateField::User])
+    );
+}
+
+#[test]
+fn defaults_import_date_field_to_posted_and_leaves_effective_date_disabled() {
+    let config = resolve(
+        "[import]\nbank_account = \"Assets:Bank\"\ndefault_counter_account = \"Expenses:Other\"\n",
+    )
+    .unwrap();
+
+    let import = config.import.unwrap();
+    assert_eq!(import.date_field, vec![ImportDateField::Posted]);
+    assert_eq!(import.effective_date_field, None);
 }
 
 #[test]

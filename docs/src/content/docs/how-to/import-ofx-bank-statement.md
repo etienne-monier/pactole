@@ -25,6 +25,9 @@ Start with a minimal configuration:
 bank_account = "Assets:Checking"
 currency = "EUR"
 default_counter_account = "Expenses:ToReview"
+date_field = ["posted"]
+# Optional: enable effective dates from OFX DTUSER or DTAVAIL.
+# effective_date_field = ["user", "available"]
 ```
 
 - `bank_account` is the Pactole account represented by the bank statement.
@@ -34,6 +37,12 @@ default_counter_account = "Expenses:ToReview"
 - `currency` is used when an OFX transaction does not provide its own currency.
 - `default_counter_account` receives transactions that match no rule. It is a
   useful holding account for transactions that need to be categorized later.
+- `date_field` selects the primary date from `posted` (`DTPOSTED`), `user`
+  (`DTUSER`) and `available` (`DTAVAIL`), in the order listed. It defaults to
+  `posted`.
+- `effective_date_field` is optional. When configured, its fields are tried in
+  order for the date after `=` in the generated transaction. If none is
+  present, the effective date is omitted.
 
 OFX currency handling follows the source semantics. `CURDEF` is the statement
 default. A transaction-level `CURRENCY` makes the transaction amount use the

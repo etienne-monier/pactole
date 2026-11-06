@@ -12,8 +12,14 @@ use rust_decimal::Decimal;
 /// reuse the same rule evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportRecord {
-    /// Date the transaction was posted.
+    /// Date the transaction was posted (`DTPOSTED`).
     pub date: NaiveDate,
+
+    /// Date the user initiated the transaction (`DTUSER`), if supplied.
+    pub date_user: Option<NaiveDate>,
+
+    /// Date the funds became available (`DTAVAIL`), if supplied.
+    pub date_available: Option<NaiveDate>,
 
     /// Signed amount, relative to the imported (bank/credit card) account: a
     /// negative amount is money leaving that account.

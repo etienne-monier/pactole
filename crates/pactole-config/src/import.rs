@@ -47,10 +47,27 @@ pub struct ImportConfig {
     /// positive posting.
     pub omit_negative_amount: bool,
 
+    /// OFX date fields, in priority order, used as the primary transaction date.
+    pub date_field: Vec<ImportDateField>,
+
+    /// OFX date fields, in priority order, used as the optional effective date.
+    pub effective_date_field: Option<Vec<ImportDateField>>,
+
     /// Rules evaluated in order, first match wins, used to determine the
     /// counter account and optionally the canonical payee of each
     /// transaction.
     pub rules: Vec<Rule>,
+}
+
+/// A date field available on an OFX statement transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportDateField {
+    /// The date the institution posted the transaction (`DTPOSTED`).
+    Posted,
+    /// The date the user initiated the transaction (`DTUSER`).
+    User,
+    /// The date the funds became available (`DTAVAIL`).
+    Available,
 }
 
 /// A single import rule: a set of optional, conjunctive match criteria over

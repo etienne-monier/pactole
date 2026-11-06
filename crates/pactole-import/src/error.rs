@@ -58,6 +58,13 @@ pub enum ImportError {
     )]
     MissingCurrency,
 
+    /// None of the configured primary OFX date fields was present.
+    #[error("missing transaction date; none of the configured fields was present: {fields:?}")]
+    MissingDate {
+        /// Configured date fields, in priority order.
+        fields: Vec<&'static str>,
+    },
+
     /// A core model value (currently only the `fitid` metadata key) could not
     /// be built.
     #[error("invalid model value: {0}")]

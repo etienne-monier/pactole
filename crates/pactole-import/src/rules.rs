@@ -9,7 +9,7 @@ use crate::ImportWarning;
 use crate::error::ImportError;
 use crate::qualified_fitid;
 use crate::record::ImportRecord;
-use pactole_config::{Direction, ImportConfig, Rule};
+use pactole_config::{Direction, ImportConfig, ImportDateField, Rule};
 use regex::Regex;
 use rust_decimal::Decimal;
 
@@ -103,6 +103,14 @@ pub(crate) fn lower(
     let mut warned_accounts = HashSet::new();
 
     for record in records {
+        let date =
+            select_date(&record, &config.date_field).ok_or_else(|| ImportError::MissingDate {
+                fields: config.date_field.iter().map(date_field_name).collect(),
+            })?;
+        let effective_date = config
+            .effective_date_field
+            .as_deref()
+            .and_then(|fields| select_date(&record, fields));
         // Resolve the bank-side account for this record: the mapping
         // configured for its source account, else the `bank_account`
         // fallback (with a single warning per distinct source account).
@@ -224,8 +232,8 @@ pub(crate) fn lower(
         };
 
         transactions.push(Transaction {
-            date: record.date,
-            effective_date: None,
+            date,
+            effective_date,
             status: TransactionStatus::Cleared,
             payee: Some(payee),
             narration: record.memo.clone(),
@@ -238,6 +246,27 @@ pub(crate) fn lower(
     }
 
     Ok((transactions, warnings))
+}
+
+/// Selects the first date present among the configured fields.
+pub(crate) fn select_date(
+    record: &ImportRecord,
+    fields: &[ImportDateField],
+) -> Option<chrono::NaiveDate> {
+    fields.iter().find_map(|field| match field {
+        ImportDateField::Posted => Some(record.date),
+        ImportDateField::User => record.date_user,
+        ImportDateField::Available => record.date_available,
+    })
+}
+
+/// Returns the configuration spelling of a date field.
+fn date_field_name(field: &ImportDateField) -> &'static str {
+    match field {
+        ImportDateField::Posted => "posted",
+        ImportDateField::User => "user",
+        ImportDateField::Available => "available",
+    }
 }
 
 /// Returns `true` when every criterion present in `rule` matches `record`.

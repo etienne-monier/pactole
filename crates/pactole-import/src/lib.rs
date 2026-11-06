@@ -44,7 +44,7 @@ use pactole_core::Transaction;
 pub use crate::actual::{ActualMigration, migrate_actual_database, parse_actual_database};
 pub use crate::error::ImportError;
 pub use crate::record::ImportRecord;
-pub use pactole_config::{Direction, ImportConfig, Rule};
+pub use pactole_config::{Direction, ImportConfig, ImportDateField, Rule};
 
 /// Builds the stored provenance identifier for an OFX transaction.
 pub fn qualified_fitid(account_id: &str, fitid: &str) -> String {
@@ -165,9 +165,22 @@ pub fn import_ofx_with_options(
     let mut skipped_transactions = Vec::new();
 
     for record in records {
-        if options.from.is_some_and(|from| record.date < from) {
+        let selected_date = rules::select_date(&record, &config.date_field).ok_or_else(|| {
+            ImportError::MissingDate {
+                fields: config
+                    .date_field
+                    .iter()
+                    .map(|field| match field {
+                        pactole_config::ImportDateField::Posted => "posted",
+                        pactole_config::ImportDateField::User => "user",
+                        pactole_config::ImportDateField::Available => "available",
+                    })
+                    .collect(),
+            }
+        })?;
+        if options.from.is_some_and(|from| selected_date < from) {
             skipped_transactions.push(SkippedTransaction {
-                date: record.date,
+                date: selected_date,
                 amount: record.amount,
                 currency: record.currency.clone(),
                 payee: record.payee.clone(),
@@ -186,7 +199,7 @@ pub fn import_ofx_with_options(
         {
             skipped += 1;
             skipped_transactions.push(SkippedTransaction {
-                date: record.date,
+                date: selected_date,
                 amount: record.amount,
                 currency: record.currency.clone(),
                 payee: record.payee.clone(),
@@ -200,7 +213,7 @@ pub fn import_ofx_with_options(
         kept.push(record);
     }
 
-    kept.sort_by_key(|record| record.date);
+    kept.sort_by_key(|record| rules::select_date(record, &config.date_field));
 
     let no_imported_payee = options
         .no_imported_payee

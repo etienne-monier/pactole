@@ -94,6 +94,10 @@ pub(crate) struct RawImport {
     #[serde(default)]
     /// Whether negative posting amounts are omitted from output.
     pub(crate) omit_negative_amount: Option<bool>,
+    /// Primary OFX date fields, in priority order.
+    pub(crate) date_field: Option<Vec<String>>,
+    /// Effective OFX date fields, in priority order.
+    pub(crate) effective_date_field: Option<Vec<String>>,
     /// Rules are replaced in block by the highest-precedence layer that
     /// defines them, never merged element-wise.
     pub(crate) rules: Option<Vec<RawRule>>,
@@ -234,6 +238,12 @@ impl RawFile {
             }
             if let Some(omit_negative_amount) = import.omit_negative_amount {
                 target.omit_negative_amount = Some(omit_negative_amount);
+            }
+            if let Some(date_field) = import.date_field {
+                target.date_field = Some(date_field);
+            }
+            if let Some(effective_date_field) = import.effective_date_field {
+                target.effective_date_field = Some(effective_date_field);
             }
             if let Some(rules) = import.rules {
                 target.rules = Some(rules);

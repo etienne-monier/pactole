@@ -445,7 +445,7 @@ pactole/
       - Raw OFX decoding is delegated to `ofx-kit`'s byte-oriented parser. The import API accepts
         `&[u8]`, so declared encodings, BOMs, legacy code pages and tolerant fallback behavior
         are handled in one upstream implementation rather than duplicated in Pactole.
-      - `ImportConfig`, `Rule`, `Direction` are **defined in `pactole-config`** (the `[import]`
+      - `ImportConfig`, `Rule`, `Direction` and `ImportDateField` are **defined in `pactole-config`** (the `[import]`
         section of `pactole.toml`) and re-exported here for convenience. Import configuration
         can disable source-payee metadata (`no_imported_payee`) and omit negative posting
         amounts (`omit_negative_amount`).
@@ -460,7 +460,7 @@ pactole/
        ImportError>`, `migrate_actual_database(path, currency, opening_equity, opening_date,
        payee_metadata_key) -> Result<ActualMigration, ImportError>`, `parse_actual_database`,
        `import_ofx(&[u8], ...)`, plus `ActualMigration`, `ImportConfig`, `Rule`,
-        `Direction`, `ImportRecord`, `ImportOutcome`, `ImportOptions`, `ImportWarning`,
+        `Direction`, `ImportDateField`, `ImportRecord`, `ImportOutcome`, `ImportOptions`, `ImportWarning`,
         `SkippedTransaction`, `SkipReason`,
         `ImportError`, `qualified_fitid`, and `import_ofx_with_options`. `import_ofx`
      skips any source transaction whose FITID is
@@ -509,7 +509,7 @@ pactole/
    - **Public API**: `Config` (resolved), `Config::resolve(&[Source], &Overrides)` (pure, no I/O),
      `Config::load(explicit, project, &Overrides)` (I/O), `ConfigError`, `Overrides`, `Source`,
      `ValidationLevel`/`ValidationOptions`, `FormatOptions`, `DeclarationOptions`,
-     `ReportOptions`, `ImportConfig`/`Rule`/`Direction`, `config_dir()`, `default_config_path()`.
+      `ReportOptions`, `ImportConfig`/`Rule`/`Direction`/`ImportDateField`, `config_dir()`, `default_config_path()`.
 
 ### Planned Crates (not yet created)
 

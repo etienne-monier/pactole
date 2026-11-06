@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use chrono::NaiveDate;
 use pactole_core::{Transaction, TransactionStatus};
 use pactole_import::{
-    Direction, ImportConfig, ImportError, ImportOptions, ImportWarning, Rule, SkipReason,
+    Direction, ImportConfig, ImportDateField, ImportError, ImportOptions, ImportWarning, Rule,
+    SkipReason,
 };
 use rust_decimal::Decimal;
 
@@ -23,6 +24,8 @@ fn base_config() -> ImportConfig {
         payee_metadata_key: None,
         no_imported_payee: false,
         omit_negative_amount: false,
+        date_field: vec![ImportDateField::Posted],
+        effective_date_field: None,
         rules: Vec::new(),
     }
 }
@@ -85,6 +88,36 @@ fn imports_an_xml_bank_statement() {
         credit.postings[0].amount.as_ref().unwrap().number,
         dec("2000.00")
     );
+}
+
+#[test]
+fn selects_configured_primary_and_effective_ofx_dates() {
+    let source = String::from_utf8_lossy(XML).replace(
+        "<TRNAMT>",
+        "<DTUSER>20260902</DTUSER><DTAVAIL>20260904</DTAVAIL><TRNAMT>",
+    );
+    let mut config = base_config();
+    config.date_field = vec![ImportDateField::User, ImportDateField::Posted];
+    config.effective_date_field = Some(vec![ImportDateField::Available, ImportDateField::User]);
+
+    let outcome = pactole_import::import_ofx(source.as_bytes(), &config, &HashSet::new()).unwrap();
+    assert_eq!(
+        outcome.transactions[0].date,
+        NaiveDate::from_ymd_opt(2026, 9, 2).unwrap()
+    );
+    assert_eq!(
+        outcome.transactions[0].effective_date,
+        Some(NaiveDate::from_ymd_opt(2026, 9, 4).unwrap())
+    );
+}
+
+#[test]
+fn missing_primary_configured_date_is_an_error() {
+    let mut config = base_config();
+    config.date_field = vec![ImportDateField::User];
+
+    let error = pactole_import::import_ofx(XML, &config, &HashSet::new()).unwrap_err();
+    assert!(matches!(error, ImportError::MissingDate { .. }));
 }
 
 #[test]

@@ -170,12 +170,16 @@ fails with a clear message when no layer defines this section.
 | `payee_metadata_key` | Optional metadata key under which the original source payee is preserved, even when a rule replaces the displayed payee. |
 | `no_imported_payee` | When `true`, do not preserve the source payee in transaction metadata. The `import-ofx --no-imported-payee` flag overrides this setting for one run. |
 | `omit_negative_amount` | When `true`, omit the negative posting amount and let Pactole infer it from the positive posting. The `import-ofx --omit-negative-amount` flag overrides this setting for one run. |
+| `date_field` | Ordered OFX fields used as the primary transaction date: `posted` (`DTPOSTED`), `user` (`DTUSER`) or `available` (`DTAVAIL`). Defaults to `["posted"]`; the first field present is used. |
+| `effective_date_field` | Optional ordered OFX fields used as the transaction's effective date. If omitted, no effective date is imported. If none of the configured fields is present, the effective date is left empty. |
 
 ```toml
 [import]
 bank_account = "Assets:Checking"
 currency = "EUR"
 default_counter_account = "Expenses:ToBeClassified"
+date_field = ["user", "posted"]
+effective_date_field = ["available", "user"]
 
 [import.accounts]
 "00012345678" = "Assets:Checking"
@@ -183,6 +187,11 @@ default_counter_account = "Expenses:ToBeClassified"
 
 A transaction whose source account is absent from `accounts` is posted to
 `bank_account`, with a warning when the table exists but does not cover it.
+
+The date fields are tried from left to right. `date_field` controls the date
+before the optional `=` in the generated transaction, while
+`effective_date_field` controls the date after it. A missing primary date is an
+import error; a missing effective date is ignored.
 
 ### `[[import.rules]]`
 
