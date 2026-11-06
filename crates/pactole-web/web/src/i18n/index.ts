@@ -15,6 +15,26 @@ export const LOCALE_LABELS: Record<AppLocale, string> = {
 
 export type MessageSchema = typeof en
 
+/** Translates stable labels produced by the reporting API for presentation. */
+export function translateReportLabel(translate: (key: string) => string, label: string): string {
+  const keys: Record<string, string> = {
+    'Balance sheet': 'reports.balanceSheet',
+    'Income statement': 'reports.incomeStatement',
+    Expenses: 'reports.expenses',
+    Assets: 'reports.assets',
+    Liabilities: 'reports.liabilities',
+    Equity: 'reports.equity',
+    Income: 'reports.income',
+    Unclassified: 'reports.unclassified',
+    Uncategorized: 'reports.uncategorized',
+    'Unclosed result': 'reports.unclosedResult',
+    'Net result': 'reports.netResult',
+    Total: 'reports.total',
+  }
+  const key = keys[label]
+  return key ? translate(key) : label
+}
+
 const STORAGE_KEY = 'pactole.locale'
 
 /** Minimal storage surface, so the detection logic stays testable. */

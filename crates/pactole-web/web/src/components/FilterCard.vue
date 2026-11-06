@@ -12,7 +12,7 @@ defineEmits<{ apply: []; reset: [] }>()
       <div class="filter-grid">
         <slot />
       </div>
-      <div v-if="$slots.actions" class="filter-actions">
+      <div class="filter-actions">
         <slot name="actions">
           <VBtn variant="text" prepend-icon="mdi-filter-remove-outline" @click="$emit('reset')">
             {{ t('common.reset') }}

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { Report } from '@/api/types'
 import AmountText from '@/components/AmountText.vue'
+import { translateReportLabel } from '@/i18n'
 
 defineProps<{ report: Report; showTotal?: boolean }>()
 
@@ -20,7 +21,7 @@ const { t } = useI18n()
     <tbody>
       <template v-for="(section, sectionIndex) in report.sections" :key="sectionIndex">
         <tr v-if="section.title" class="section-row">
-          <td colspan="2"><strong>{{ section.title }}</strong></td>
+          <td colspan="2"><strong>{{ translateReportLabel(t, section.title) }}</strong></td>
         </tr>
         <tr v-for="(line, lineIndex) in section.lines" :key="`${sectionIndex}-${lineIndex}`">
           <td :style="{ paddingLeft: `${16 + line.depth * 16}px` }">{{ line.label }}</td>
@@ -34,7 +35,7 @@ const { t } = useI18n()
     </tbody>
     <tfoot v-if="showTotal !== false && report.totals.length > 0">
       <tr class="total-row">
-        <td class="text-right">{{ report.total_label }}</td>
+         <td class="text-right">{{ translateReportLabel(t, report.total_label) }}</td>
         <td class="text-right"><AmountText :amounts="report.totals" /></td>
       </tr>
     </tfoot>

@@ -70,9 +70,12 @@ export function rowsToChartData(
 }
 
 /** Builds the section-subtotal rows of a report. */
-export function sectionRows(report: Report): ChartRow[] {
+export function sectionRows(
+  report: Report,
+  sectionLabel: (label: string) => string = (label) => label,
+): ChartRow[] {
   return report.sections.map((section) => ({
-    label: section.title ?? report.title,
+    label: sectionLabel(section.title ?? report.title),
     amounts: section.subtotal,
   }))
 }
@@ -114,11 +117,12 @@ export function historyChartData(
   points: readonly HistoryPoint[],
   categoryLabel: (date: string) => string,
   tooltipCategoryLabel: (date: string) => string = (date) => date,
+  sectionLabel: (label: string) => string = (label) => label,
 ): ChartData {
   const titles: string[] = []
   for (const point of points) {
     for (const section of point.report.sections) {
-      const title = section.title ?? point.report.title
+      const title = sectionLabel(section.title ?? point.report.title)
       if (!titles.includes(title)) {
         titles.push(title)
       }
@@ -130,7 +134,7 @@ export function historyChartData(
     const commodities: string[] = []
     for (const point of points) {
       const section = point.report.sections.find(
-        (candidate) => (candidate.title ?? point.report.title) === title,
+        (candidate) => sectionLabel(candidate.title ?? point.report.title) === title,
       )
       for (const amount of section?.subtotal ?? []) {
         if (!commodities.includes(amount.commodity)) {
@@ -143,14 +147,14 @@ export function historyChartData(
         name: `${title} · ${commodity}`,
         values: points.map((point) => {
           const section = point.report.sections.find(
-            (candidate) => (candidate.title ?? point.report.title) === title,
+            (candidate) => sectionLabel(candidate.title ?? point.report.title) === title,
           )
           const amount = amountFor(section?.subtotal ?? [], commodity)
           return amount ? chartNumber(amount.number) : null
         }),
         exact: points.map((point) => {
           const section = point.report.sections.find(
-            (candidate) => (candidate.title ?? point.report.title) === title,
+            (candidate) => sectionLabel(candidate.title ?? point.report.title) === title,
           )
           return amountFor(section?.subtotal ?? [], commodity)?.number ?? ''
         }),
@@ -172,13 +176,14 @@ export function historyChartData(
 export function comparisonChartData(
   comparison: ComparisonReport,
   labels: { current: string; previous: string },
+  sectionLabel: (label: string) => string = (label) => label,
 ): ChartData {
   const categories: string[] = []
   const commodities: string[] = []
   const values = new Map<string, Map<string, { current: string; previous: string }>>()
 
   for (const line of comparison.lines) {
-    const category = line.section ? `${line.section} · ${line.label}` : line.label
+    const category = line.section ? `${sectionLabel(line.section)} · ${line.label}` : line.label
     if (!categories.includes(category)) {
       categories.push(category)
     }

@@ -17,6 +17,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import StatCard from '@/components/StatCard.vue'
 import { useAsync } from '@/composables/useAsync'
 import { useRefresh } from '@/composables/useRefresh'
+import { translateReportLabel } from '@/i18n'
 import { formatDate, formatDecimal, formatMonth } from '@/i18n/format'
 import {
   buildBarOption,
@@ -82,7 +83,7 @@ const balanceCards = computed(() => {
     return []
   }
   return report.sections.map((section) => ({
-    label: section.title ?? report.title,
+    label: translateReportLabel(t, section.title ?? report.title),
     amounts: section.subtotal,
   }))
 })
@@ -101,6 +102,7 @@ const historyData = computed(() =>
     historyPoints.value.map((point) => ({ date: point.date, report: point.response.data })),
     (date) => formatMonth(date.slice(0, 7), locale.value, false),
     (date) => formatMonth(date.slice(0, 7), locale.value),
+    (label) => translateReportLabel(t, label),
   ),
 )
 const historyOption = computed(() =>

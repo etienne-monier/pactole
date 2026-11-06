@@ -15,6 +15,7 @@ import ValuationDetails from '@/components/ValuationDetails.vue'
 import { useAsync } from '@/composables/useAsync'
 import { useFilters } from '@/composables/useFilters'
 import { useRefresh } from '@/composables/useRefresh'
+import { translateReportLabel } from '@/i18n'
 import { formatDecimal } from '@/i18n/format'
 import { buildBarOption, rowsToChartData, sectionRows } from '@/utils/charts'
 import { todayIso } from '@/utils/dates'
@@ -100,7 +101,7 @@ const chartOption = computed(() =>
     <template v-if="report">
       <VCard>
         <VCardItem>
-          <VCardTitle>{{ report.title }}</VCardTitle>
+          <VCardTitle>{{ translateReportLabel(t, report.title) }}</VCardTitle>
           <VCardSubtitle>{{ scopeText(report.scope, locale, t('common.asOf')) }}</VCardSubtitle>
         </VCardItem>
         <VCardText>

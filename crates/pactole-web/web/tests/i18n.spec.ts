@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { detectLocale, isSupportedLocale, LOCALE_LABELS, SUPPORTED_LOCALES } from '@/i18n'
+import {
+  detectLocale,
+  isSupportedLocale,
+  LOCALE_LABELS,
+  SUPPORTED_LOCALES,
+  translateReportLabel,
+} from '@/i18n'
 import en from '@/i18n/locales/en'
 import fr from '@/i18n/locales/fr'
 
@@ -28,6 +34,13 @@ describe('locale messages', () => {
     for (const locale of SUPPORTED_LOCALES) {
       expect(LOCALE_LABELS[locale]).not.toBe('')
     }
+  })
+
+  it('translates stable report labels without changing user labels', () => {
+    expect(
+      translateReportLabel((key) => (key === 'reports.assets' ? 'Actifs' : key), 'Assets'),
+    ).toBe('Actifs')
+    expect(translateReportLabel((key) => key, 'Assets:Checking')).toBe('Assets:Checking')
   })
 })
 

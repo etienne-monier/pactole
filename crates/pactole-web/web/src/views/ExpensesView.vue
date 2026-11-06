@@ -16,6 +16,7 @@ import ValuationDetails from '@/components/ValuationDetails.vue'
 import { useAsync } from '@/composables/useAsync'
 import { useFilters } from '@/composables/useFilters'
 import { useRefresh } from '@/composables/useRefresh'
+import { translateReportLabel } from '@/i18n'
 import { formatDate, formatDecimal, formatMonth } from '@/i18n/format'
 import {
   buildBarOption,
@@ -183,10 +184,14 @@ const chartOption = computed(() =>
 
 const comparisonData = computed(() =>
   comparison.value
-    ? comparisonChartData(comparison.value, {
-        current: t('expenses.current'),
-        previous: t('expenses.previous'),
-      })
+    ? comparisonChartData(
+        comparison.value,
+        {
+          current: t('expenses.current'),
+          previous: t('expenses.previous'),
+        },
+        (label) => translateReportLabel(t, label),
+      )
     : null,
 )
 const comparisonOption = computed(() =>
@@ -282,7 +287,7 @@ function periodText(period: ComparisonPeriod): string {
     <template v-if="report">
       <VCard>
         <VCardItem>
-          <VCardTitle>{{ report.title }}</VCardTitle>
+          <VCardTitle>{{ translateReportLabel(t, report.title) }}</VCardTitle>
           <VCardSubtitle>{{ scopeText(report.scope, locale, t('common.asOf')) }}</VCardSubtitle>
         </VCardItem>
         <VCardText>

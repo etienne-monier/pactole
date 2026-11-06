@@ -1,0 +1,1 @@
+import{v as e}from"./dates-ZqRW-BOc.js";function t(t,n,r){return t.kind===`as_of`?`${r} ${e(t.date,n)}`:`${e(t.start,n)} – ${e(t.end,n)}`}function n(e,t,n=0){return typeof t==`number`?e.sections[t]?.subtotal??[]:e.sections.find(e=>e.title===t)?.subtotal??e.sections[n]?.subtotal??[]}export{n,t};

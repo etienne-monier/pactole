@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { ComparisonReport } from '@/api/types'
 import { formatDecimal, formatPercent } from '@/i18n/format'
+import { translateReportLabel } from '@/i18n'
 
 const props = defineProps<{ comparison: ComparisonReport }>()
 
@@ -33,7 +34,7 @@ function renderDifference(value: string | null): string {
     <tbody>
       <tr v-for="(line, index) in comparison.lines" :key="index">
         <td :style="{ paddingLeft: `${16 + line.depth * 16}px` }">
-          <span v-if="line.section" class="section-label">{{ line.section }} · </span>{{ line.label }}
+          <span v-if="line.section" class="section-label">{{ translateReportLabel(t, line.section) }} · </span>{{ line.label }}
         </td>
         <td>{{ line.commodity }}</td>
         <td class="text-right">{{ formatDecimal(line.current, locale) }}</td>

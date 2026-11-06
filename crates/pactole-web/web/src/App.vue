@@ -92,7 +92,7 @@ onMounted(() => {
   <VApp>
     <VNavigationDrawer v-model="drawer" :permanent="mdAndUp" :temporary="!mdAndUp" width="260">
       <div class="drawer-brand">
-        <VIcon icon="mdi-wallet-outline" size="28" color="primary" />
+        <img class="brand-logo" src="/pactole-logo.svg" alt="" aria-hidden="true" />
         <div>
           <div class="brand-name">{{ t('common.appName') }}</div>
           <div class="brand-tagline">{{ t('common.readOnly') }}</div>
@@ -203,6 +203,12 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 20px 20px 16px;
+}
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 .brand-name {
   font-size: 1.15rem;

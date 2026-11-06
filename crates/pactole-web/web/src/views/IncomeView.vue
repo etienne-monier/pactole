@@ -15,6 +15,7 @@ import ValuationDetails from '@/components/ValuationDetails.vue'
 import { useAsync } from '@/composables/useAsync'
 import { useFilters } from '@/composables/useFilters'
 import { useRefresh } from '@/composables/useRefresh'
+import { translateReportLabel } from '@/i18n'
 import { formatDecimal } from '@/i18n/format'
 import { buildBarOption, rowsToChartData, sectionRows } from '@/utils/charts'
 import { dateRangeError, todayIso, yearStartIso } from '@/utils/dates'
@@ -85,7 +86,9 @@ watch([params, refreshKey], () => {
 const report = computed(() => data.value?.data ?? null)
 const diagnostics = computed(() => data.value?.diagnostics ?? [])
 const chartData = computed(() =>
-  report.value ? rowsToChartData(sectionRows(report.value)) : null,
+  report.value
+    ? rowsToChartData(sectionRows(report.value, (label) => translateReportLabel(t, label)))
+    : null,
 )
 const chartOption = computed(() =>
   chartData.value
@@ -126,7 +129,7 @@ const chartOption = computed(() =>
     <template v-if="report">
       <VCard>
         <VCardItem>
-          <VCardTitle>{{ report.title }}</VCardTitle>
+          <VCardTitle>{{ translateReportLabel(t, report.title) }}</VCardTitle>
           <VCardSubtitle>{{ scopeText(report.scope, locale, t('common.asOf')) }}</VCardSubtitle>
         </VCardItem>
         <VCardText>
