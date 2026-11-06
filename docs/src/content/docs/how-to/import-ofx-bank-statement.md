@@ -118,6 +118,10 @@ pactole import-ofx statement.ofx --into ledger.pactole
 
 Transactions whose `FITID` is already present in `ledger.pactole` are skipped.
 This makes it safe to import an overlapping statement more than once.
+If a transaction is unexpectedly absent, add `--verbose`: the command lists
+whether it was skipped because it predates `--from` or because its qualified
+FITID was already found in the target journal. For duplicate FITIDs, verbose
+output also shows the target file and source line that matched.
 
 To append the new transactions directly to the target file, add `--write`:
 

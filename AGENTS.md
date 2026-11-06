@@ -461,6 +461,7 @@ pactole/
        payee_metadata_key) -> Result<ActualMigration, ImportError>`, `parse_actual_database`,
        `import_ofx(&[u8], ...)`, plus `ActualMigration`, `ImportConfig`, `Rule`,
         `Direction`, `ImportRecord`, `ImportOutcome`, `ImportOptions`, `ImportWarning`,
+        `SkippedTransaction`, `SkipReason`,
         `ImportError`, `qualified_fitid`, and `import_ofx_with_options`. `import_ofx`
      skips any source transaction whose FITID is
      already in `known_fitids` (reported in `ImportOutcome::skipped`), and stores each produced

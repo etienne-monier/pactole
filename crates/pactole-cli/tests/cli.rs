@@ -1614,6 +1614,44 @@ fn import_ofx_skips_transactions_already_in_the_target_file() {
 }
 
 #[test]
+fn import_ofx_verbose_lists_skipped_transactions() {
+    let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
+    let rules = write_import_temp("rules.toml", IMPORT_RULES_FIXTURE);
+    let into = write_import_temp(
+        "journal.pactole",
+        "2026-09-03 * \"Carrefour\" \"Courses\"\n\
+          \u{20}\u{20}Depenses:Alimentation 45.30 EUR\n\
+          \u{20}\u{20}Actifs:Banque -45.30 EUR\n\
+          \u{20}\u{20}\u{20}\u{20}fitid: \"ofx:00012345678:2026090300001\"\n",
+    );
+
+    let output = pactole_cmd()
+        .args([
+            "--config",
+            rules.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
+            "--into",
+            into.to_str().unwrap(),
+            "--verbose",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&rules).ok();
+    std::fs::remove_file(&into).ok();
+
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(
+        "skipped: already-imported 2026-09-03 -45.30 EUR \"CARREFOUR\" fitid=ofx:00012345678:2026090300001"
+    ));
+    assert!(stderr.contains("target=") && stderr.contains(":1"));
+    assert!(stderr.contains("imported 1 transaction(s), skipped 1"));
+}
+
+#[test]
 fn import_ofx_skips_transactions_already_in_an_included_file() {
     // The target journal only holds an `include`: the FITID it must
     // recognize lives in the included file, so FITID collection has to

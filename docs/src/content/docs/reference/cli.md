@@ -481,7 +481,7 @@ render-agnostic formats used by the other reports.
 ```text
 pactole import-ofx <FILE> [--from <DATE>] [--into <PATH>] [--account <ACCOUNT>]
   [--write] [--no-imported-payee]
-  [--omit-negative-amount]
+  [--omit-negative-amount] [--verbose]
 ```
 
 Imports an OFX or QFX bank statement into canonical `.pactole` transaction
@@ -496,6 +496,7 @@ directives. Both OFX 1.x SGML and OFX 2.x XML are supported.
 | `--write` | Append new transactions to `--into` instead of printing them; requires `--into` |
 | `--no-imported-payee` | Do not preserve the source payee in transaction metadata; overrides `[import].no_imported_payee` |
 | `--omit-negative-amount` | Omit the negative posting amount and let Pactole infer it; overrides `[import].omit_negative_amount` |
+| `--verbose` | List every source transaction skipped by `--from` or duplicate FITID detection on stderr, including the target file and line for duplicate FITIDs |
 
 The bank account and categorization rules come from the `[import]` section of
 the resolved `pactole.toml` (see [Global options](#global-options)); use the

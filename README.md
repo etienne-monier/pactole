@@ -312,6 +312,9 @@ the new transactions to that file instead of printing them:
 pactole import-ofx statement.ofx --into ledger.pactole --write
 ```
 
+Use `--verbose` to list every omitted transaction and whether it was filtered
+by `--from` or skipped because its source identifier was already present.
+
 Generated transactions are a fragment (no `open`/`commodity`/`payee`
 declarations), so `pactole check` on them alone is expected to fail until
 they are merged into a full journal.

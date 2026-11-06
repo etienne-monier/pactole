@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -8,6 +8,14 @@ use pactole_core::Entry;
 use pactole_storage_fs::FsSourceLoader;
 
 use pactole_config::Config;
+
+/// Location of a FITID found while analyzing the target journal.
+struct FitidLocation {
+    /// File containing the metadata.
+    path: PathBuf,
+    /// One-based line number of the containing transaction.
+    line: usize,
+}
 
 /// Options controlling one OFX import invocation.
 pub(crate) struct Options {
@@ -23,6 +31,8 @@ pub(crate) struct Options {
     pub(crate) no_imported_payee: bool,
     /// Omits negative posting amounts in generated output.
     pub(crate) omit_negative_amount: bool,
+    /// Lists omitted source transactions.
+    pub(crate) verbose: bool,
 }
 
 /// Imports an OFX statement and prints or appends canonical Pactole transactions.
@@ -34,6 +44,7 @@ pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode 
         write,
         no_imported_payee,
         omit_negative_amount,
+        verbose,
     } = options;
     let Some(mut import_config) = config.import.clone() else {
         eprintln!(
@@ -52,17 +63,19 @@ pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode 
     }
 
     let mut known_fitids = HashSet::new();
+    let mut known_fitid_locations = HashMap::new();
     let mut existing = None;
     if let Some(path) = &into {
         match fs::read_to_string(path) {
             Ok(source) => {
-                known_fitids = match collect_fitids(path) {
-                    Ok(fitids) => fitids,
+                known_fitid_locations = match collect_fitid_locations(path) {
+                    Ok(locations) => locations,
                     Err(err) => {
                         eprintln!("error: cannot analyze {}: {err}", path.display());
                         return ExitCode::FAILURE;
                     }
                 };
+                known_fitids = known_fitid_locations.keys().cloned().collect();
                 existing = Some(source);
             }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
@@ -104,6 +117,32 @@ pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode 
         eprintln!("warning: {}", describe_warning(warning, &import_config));
     }
 
+    if verbose {
+        for skipped in &outcome.skipped_transactions {
+            let reason = match skipped.reason {
+                pactole_import::SkipReason::AlreadyImported => "already-imported",
+                pactole_import::SkipReason::BeforeFrom => "before-from",
+            };
+            let currency = skipped.currency.as_deref().unwrap_or("?");
+            let payee = skipped.payee.as_deref().unwrap_or("");
+            let fitid = skipped.fitid.as_deref().unwrap_or("<none>");
+            if let Some(location) = known_fitid_locations.get(fitid) {
+                eprintln!(
+                    "skipped: {reason} {} {} {currency} \"{payee}\" fitid={fitid} target={}:{}",
+                    skipped.date,
+                    skipped.amount,
+                    location.path.display(),
+                    location.line
+                );
+            } else {
+                eprintln!(
+                    "skipped: {reason} {} {} {currency} \"{payee}\" fitid={fitid}",
+                    skipped.date, skipped.amount
+                );
+            }
+        }
+    }
+
     let generated =
         pactole_storage_fs::format_transactions_with_options(&outcome.transactions, &config.format);
 
@@ -135,27 +174,38 @@ pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode 
     ExitCode::SUCCESS
 }
 
-/// Collects FITIDs from the complete include graph of an existing ledger.
-fn collect_fitids(path: &Path) -> Result<HashSet<String>, pactole_storage_fs::SourceLoadError> {
+/// Collects FITIDs and their source locations from the complete include graph
+/// of an existing ledger.
+fn collect_fitid_locations(
+    path: &Path,
+) -> Result<HashMap<String, FitidLocation>, pactole_storage_fs::SourceLoadError> {
     // Analyze `path` as the entry point of a project so `include` directives
     // are followed: FITIDs recorded in any reachable file are recognized and
     // re-imports stay idempotent even when the target journal is split across
     // several files.
     let project = pactole_storage_fs::analyze_file_with_loader(path, &FsSourceLoader)?;
 
-    Ok(project
-        .files()
-        .iter()
-        .flat_map(|file| file.file.entries())
-        .flat_map(|parsed_entry| match &parsed_entry.entry {
-            Entry::Transaction(transaction) => transaction
+    let mut locations = HashMap::new();
+    for file in project.files() {
+        for parsed_entry in file.file.entries() {
+            let Entry::Transaction(transaction) = &parsed_entry.entry else {
+                continue;
+            };
+            for fitid in transaction
                 .postings
                 .iter()
-                .filter_map(|posting| posting.meta.get("fitid").cloned())
-                .collect::<Vec<_>>(),
-            _ => Vec::new(),
-        })
-        .collect())
+                .filter_map(|posting| posting.meta.get("fitid"))
+            {
+                locations
+                    .entry(fitid.clone())
+                    .or_insert_with(|| FitidLocation {
+                        path: file.path.clone(),
+                        line: parsed_entry.span.start.row + 1,
+                    });
+            }
+        }
+    }
+    Ok(locations)
 }
 
 /// Formats an import warning with the configured fallback account.

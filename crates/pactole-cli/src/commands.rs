@@ -294,6 +294,11 @@ pub(crate) enum Command {
         /// Omit the negative posting amount and let Pactole infer it.
         #[arg(long)]
         omit_negative_amount: bool,
+
+        /// List every source transaction omitted by date filtering or
+        /// duplicate FITID detection.
+        #[arg(long)]
+        verbose: bool,
     },
 
     /// Migrate an Actual Budget database into a new `.pactole` journal.

@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashSet};
 
 use chrono::NaiveDate;
 use pactole_core::{Transaction, TransactionStatus};
-use pactole_import::{Direction, ImportConfig, ImportError, ImportOptions, ImportWarning, Rule};
+use pactole_import::{
+    Direction, ImportConfig, ImportError, ImportOptions, ImportWarning, Rule, SkipReason,
+};
 use rust_decimal::Decimal;
 
 const XML: &[u8] = include_bytes!("fixtures/statement_xml.ofx");
@@ -103,6 +105,41 @@ fn filters_from_date_and_sorts_oldest_first() {
     assert_eq!(
         outcome.transactions[0].date,
         NaiveDate::from_ymd_opt(2026, 9, 5).unwrap()
+    );
+}
+
+#[test]
+fn reports_the_reason_and_identity_of_skipped_transactions() {
+    let known = HashSet::from([String::from("ofx:00012345678:2026090500002")]);
+    let outcome = pactole_import::import_ofx_with_options(
+        XML,
+        &base_config(),
+        &known,
+        ImportOptions {
+            from: Some(NaiveDate::from_ymd_opt(2026, 9, 4).unwrap()),
+            no_imported_payee: None,
+            omit_negative_amount: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(outcome.skipped, 1);
+    assert_eq!(outcome.skipped_transactions.len(), 2);
+    assert_eq!(
+        outcome.skipped_transactions[0].reason,
+        SkipReason::BeforeFrom
+    );
+    assert_eq!(
+        outcome.skipped_transactions[0].fitid.as_deref(),
+        Some("ofx:00012345678:2026090300001")
+    );
+    assert_eq!(
+        outcome.skipped_transactions[1].reason,
+        SkipReason::AlreadyImported
+    );
+    assert_eq!(
+        outcome.skipped_transactions[1].fitid.as_deref(),
+        Some("ofx:00012345678:2026090500002")
     );
 }
 

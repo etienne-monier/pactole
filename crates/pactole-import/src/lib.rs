@@ -74,6 +74,32 @@ pub enum ImportWarning {
     },
 }
 
+/// Why an imported source transaction was left out of the result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkipReason {
+    /// The qualified source identifier was already present in the target.
+    AlreadyImported,
+    /// The transaction date was earlier than the requested `--from` date.
+    BeforeFrom,
+}
+
+/// Details about a source transaction omitted during import.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedTransaction {
+    /// Date reported by the source.
+    pub date: NaiveDate,
+    /// Signed amount reported by the source.
+    pub amount: rust_decimal::Decimal,
+    /// Source currency, if available.
+    pub currency: Option<String>,
+    /// Source payee or name, if available.
+    pub payee: Option<String>,
+    /// Qualified source identifier, when the source provided a FITID.
+    pub fitid: Option<String>,
+    /// Reason the transaction was omitted.
+    pub reason: SkipReason,
+}
+
 /// The result of importing a source document.
 #[derive(Debug, Clone)]
 pub struct ImportOutcome {
@@ -83,6 +109,10 @@ pub struct ImportOutcome {
     /// Number of source transactions skipped because their identifier was
     /// already present in `known_fitids`.
     pub skipped: usize,
+
+    /// Details for every source transaction omitted by date filtering or
+    /// duplicate FITID detection.
+    pub skipped_transactions: Vec<SkippedTransaction>,
 
     /// Non-fatal issues encountered while lowering the kept transactions.
     pub warnings: Vec<ImportWarning>,
@@ -132,9 +162,20 @@ pub fn import_ofx_with_options(
 
     let mut kept = Vec::with_capacity(records.len());
     let mut skipped = 0usize;
+    let mut skipped_transactions = Vec::new();
 
     for record in records {
         if options.from.is_some_and(|from| record.date < from) {
+            skipped_transactions.push(SkippedTransaction {
+                date: record.date,
+                amount: record.amount,
+                currency: record.currency.clone(),
+                payee: record.payee.clone(),
+                fitid: record.fitid.as_deref().map(|fitid| {
+                    qualified_fitid(record.account_id.as_deref().unwrap_or("unknown"), fitid)
+                }),
+                reason: SkipReason::BeforeFrom,
+            });
             continue;
         }
         if let Some(fitid) = record.fitid.as_deref()
@@ -144,6 +185,16 @@ pub fn import_ofx_with_options(
             ))
         {
             skipped += 1;
+            skipped_transactions.push(SkippedTransaction {
+                date: record.date,
+                amount: record.amount,
+                currency: record.currency.clone(),
+                payee: record.payee.clone(),
+                fitid: record.fitid.as_deref().map(|fitid| {
+                    qualified_fitid(record.account_id.as_deref().unwrap_or("unknown"), fitid)
+                }),
+                reason: SkipReason::AlreadyImported,
+            });
             continue;
         }
         kept.push(record);
@@ -163,6 +214,7 @@ pub fn import_ofx_with_options(
     Ok(ImportOutcome {
         transactions,
         skipped,
+        skipped_transactions,
         warnings,
     })
 }

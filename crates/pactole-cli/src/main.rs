@@ -248,6 +248,7 @@ fn main() -> ExitCode {
             write,
             no_imported_payee,
             omit_negative_amount,
+            verbose,
         } => {
             let project_dir = into
                 .as_deref()
@@ -263,6 +264,7 @@ fn main() -> ExitCode {
                         write,
                         no_imported_payee,
                         omit_negative_amount,
+                        verbose,
                     },
                     &config,
                 ),

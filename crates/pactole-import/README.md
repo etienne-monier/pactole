@@ -42,7 +42,10 @@ Re-exported from `src/lib.rs`:
   representation, including the source account identifier (OFX `ACCTID`)
   when the format provides one.
 - **`ImportOutcome`**, **`ImportWarning`** (missing payee, unmapped source
-  account), **`ImportError`**.
+  account), **`SkippedTransaction`** and **`SkipReason`** (date-filtered or
+  already-imported source transactions), **`ImportError`**. The outcome keeps
+  the legacy `skipped` count for duplicate FITIDs and exposes details for all
+  omitted transactions through `skipped_transactions`.
 
 Produced transactions are `Cleared`, with two postings: the configured
 counter account (negated amount) and the bank account (the signed source

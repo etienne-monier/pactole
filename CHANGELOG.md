@@ -107,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allowed. The canonical formatter and LSP now support price directives,
   including commodity completion/navigation and quote hover. Prices do not
   affect transaction balancing or account balances.
+
 - **Posting transaction-cost annotations (roadmap 2.3):** postings now accept
   `@ UNIT_PRICE COMMODITY` and `@@ TOTAL_PRICE COMMODITY`. The domain model
   retains the exact written amount and form; `@@` is accepted even when its
@@ -114,6 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit non-zero amount and a positive cost. The canonical formatter, serializer
   and LSP commodity completion/navigation understand the annotations. Converted
   weights are applied to transaction balancing as described above.
+
+- **OFX import verbose info:** `pactole import-ofx` now has a `--verbose` flag to
+  return more information about skipped transactions (including source file path)
 
 ### Changed
 
