@@ -1,8 +1,8 @@
 use chrono::NaiveDate;
-use ofx_rs::aggregates::CurrencyInfo;
-use ofx_rs::aggregates::TransactionList;
-use ofx_rs::parse;
-use ofx_rs::types::OfxDateTime;
+use ofx_kit::aggregates::CurrencyInfo;
+use ofx_kit::aggregates::TransactionList;
+use ofx_kit::parse_bytes_with_warnings;
+use ofx_kit::types::OfxDateTime;
 
 use crate::error::ImportError;
 use crate::record::ImportRecord;
@@ -14,13 +14,15 @@ use crate::record::ImportRecord;
 /// statements) and `INVSTMTMSGSRSV1` (investment statements, banking
 /// transactions only) are supported; every statement response present in the
 /// document contributes its transactions.
-pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportError> {
-    let document = parse(source).map_err(|error| ImportError::Ofx(error.to_string()))?;
+pub(crate) fn parse_records(source: &[u8]) -> Result<Vec<ImportRecord>, ImportError> {
+    let parsed =
+        parse_bytes_with_warnings(source).map_err(|error| ImportError::Ofx(error.to_string()))?;
+    let document = parsed.document;
 
     let mut records = Vec::new();
     let mut found_statement = false;
 
-    if let Some(banking) = document.banking() {
+    for banking in document.bankings() {
         for wrapper in banking.statement_responses() {
             if let Some(statement) = wrapper.response() {
                 found_statement = true;
@@ -36,7 +38,7 @@ pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportErr
         }
     }
 
-    if let Some(credit_card) = document.credit_card() {
+    for credit_card in document.credit_cards() {
         for wrapper in credit_card.statement_responses() {
             if let Some(statement) = wrapper.response() {
                 found_statement = true;
@@ -53,9 +55,9 @@ pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportErr
     }
 
     // Investment statements carry their banking transactions (deposits,
-    // withdrawals) in an INVTRANLIST; ofx-rs already lowers those into plain
+    // withdrawals) in an INVTRANLIST; ofx-kit already lowers those into plain
     // transactions and skips the investment-specific ones.
-    if let Some(investment) = document.investment() {
+    for investment in document.investments() {
         for wrapper in investment.statement_responses() {
             if let Some(statement) = wrapper.response() {
                 found_statement = true;
@@ -78,7 +80,7 @@ pub(crate) fn parse_records(source: &str) -> Result<Vec<ImportRecord>, ImportErr
     // A document that visibly contains transactions but yielded none means
     // the parser dropped them (an OFX dialect it mishandles), not that the
     // statement is empty. Failing loudly beats importing nothing silently.
-    if records.is_empty() && contains_stmttrn_tag(source) {
+    if records.is_empty() && contains_stmttrn_tag(&ofx_kit::decode(source).text) {
         return Err(ImportError::TransactionsDropped);
     }
 

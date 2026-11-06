@@ -952,12 +952,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "ofx-rs"
-version = "0.2.0"
-source = "git+https://github.com/etienne-monier/ofx-rs.git?rev=ec8e9dc620ceb9d7e4aa56bcac19b03bba057dc2#ec8e9dc620ceb9d7e4aa56bcac19b03bba057dc2"
+name = "ofx-kit"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7791d70d46453cce61d3482c866ad5fc793ddd097a82ace43827dd3dd0d400ff"
 dependencies = [
+ "encoding_rs",
  "quick-xml",
  "rust_decimal",
+ "thiserror",
  "time",
 ]
 
@@ -1024,8 +1027,7 @@ name = "pactole-import"
 version = "0.4.0"
 dependencies = [
  "chrono",
- "encoding_rs",
- "ofx-rs",
+ "ofx-kit",
  "pactole-config",
  "pactole-core",
  "regex",

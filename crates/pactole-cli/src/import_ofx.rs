@@ -73,10 +73,10 @@ pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode 
         }
     }
 
-    // OFX sources are not necessarily UTF-8: decode the raw bytes according
-    // to the encoding the document declares.
+    // Let ofx-kit decode and parse the raw bytes. OFX sources are not
+    // necessarily UTF-8.
     let source = match fs::read(&file) {
-        Ok(bytes) => pactole_import::decode_ofx_source(&bytes),
+        Ok(bytes) => bytes,
         Err(err) => {
             eprintln!("error: cannot read {}: {err}", file.display());
             return ExitCode::FAILURE;

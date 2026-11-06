@@ -13,12 +13,7 @@ categories = ["finance", "parser-implementations"]
 
 [dependencies]
 chrono.workspace = true
-encoding_rs.workspace = true
-# Pending upstream release: ofx-rs 0.2.0 pins quick-xml below the RustSec-fixed
-# version, its SGML normalizer drops BANKTRANLIST when BANKACCTFROM carries
-# ACCTKEY, and it mangles non-ASCII text (all three fixed on this fork, upstream
-# PR pending).
-ofx-rs = { version = "0.2.0", git = "https://github.com/etienne-monier/ofx-rs.git", rev = "ec8e9dc620ceb9d7e4aa56bcac19b03bba057dc2" }
+ofx-kit.workspace = true
 pactole-config.workspace = true
 pactole-core.workspace = true
 regex.workspace = true

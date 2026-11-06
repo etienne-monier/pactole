@@ -5,12 +5,12 @@ use pactole_core::{Transaction, TransactionStatus};
 use pactole_import::{Direction, ImportConfig, ImportError, ImportOptions, ImportWarning, Rule};
 use rust_decimal::Decimal;
 
-const XML: &str = include_str!("fixtures/statement_xml.ofx");
-const TWO_ACCOUNTS: &str = include_str!("fixtures/statement_two_accounts.ofx");
-const SGML: &str = include_str!("fixtures/statement_sgml.ofx");
-const SGML_ACCTKEY: &str = include_str!("fixtures/statement_sgml_acctkey.ofx");
+const XML: &[u8] = include_bytes!("fixtures/statement_xml.ofx");
+const TWO_ACCOUNTS: &[u8] = include_bytes!("fixtures/statement_two_accounts.ofx");
+const SGML: &[u8] = include_bytes!("fixtures/statement_sgml.ofx");
+const SGML_ACCTKEY: &[u8] = include_bytes!("fixtures/statement_sgml_acctkey.ofx");
 const SGML_CP1252: &[u8] = include_bytes!("fixtures/statement_cp1252.ofx");
-const INVESTMENT: &str = include_str!("fixtures/statement_investment.ofx");
+const INVESTMENT: &[u8] = include_bytes!("fixtures/statement_investment.ofx");
 
 fn base_config() -> ImportConfig {
     ImportConfig {
@@ -155,13 +155,14 @@ fn omits_the_negative_posting_amount_when_requested() {
 
 #[test]
 fn keeps_the_statement_currency_for_a_transaction_with_original_currency() {
-    let source = XML.replacen(
+    let source = String::from_utf8_lossy(XML).replacen(
         "<TRNAMT>-45.30</TRNAMT>",
         "<TRNAMT>-45.30</TRNAMT><ORIGCURRENCY><CURRATE>1.0</CURRATE><CURSYM>USD</CURSYM></ORIGCURRENCY>",
         1,
     );
 
-    let outcome = pactole_import::import_ofx(&source, &base_config(), &no_fitids()).unwrap();
+    let outcome =
+        pactole_import::import_ofx(source.as_bytes(), &base_config(), &no_fitids()).unwrap();
     let transaction = &outcome.transactions[0];
 
     assert_eq!(
@@ -186,13 +187,14 @@ fn keeps_the_statement_currency_for_a_transaction_with_original_currency() {
 
 #[test]
 fn uses_the_transaction_currency_when_ofx_provides_currency() {
-    let source = XML.replacen(
+    let source = String::from_utf8_lossy(XML).replacen(
         "<TRNAMT>-45.30</TRNAMT>",
         "<TRNAMT>-45.30</TRNAMT><CURRENCY><CURRATE>1.0</CURRATE><CURSYM>USD</CURSYM></CURRENCY>",
         1,
     );
 
-    let outcome = pactole_import::import_ofx(&source, &base_config(), &no_fitids()).unwrap();
+    let outcome =
+        pactole_import::import_ofx(source.as_bytes(), &base_config(), &no_fitids()).unwrap();
     let transaction = &outcome.transactions[0];
 
     assert_eq!(
@@ -353,8 +355,7 @@ fn imports_a_sgml_bank_statement_carrying_acctkey() {
 fn decodes_and_imports_a_windows_1252_statement() {
     // The fixture is not valid UTF-8: its payee and narration carry raw
     // windows-1252 bytes, as declared by the header (`CHARSET:1252`).
-    let source = pactole_import::decode_ofx_source(SGML_CP1252);
-    let outcome = pactole_import::import_ofx(&source, &base_config(), &no_fitids()).unwrap();
+    let outcome = pactole_import::import_ofx(SGML_CP1252, &base_config(), &no_fitids()).unwrap();
 
     assert_eq!(outcome.transactions.len(), 1);
 
@@ -391,11 +392,10 @@ fn imports_the_banking_transactions_of_an_investment_statement() {
 }
 
 #[test]
-fn reports_an_error_when_statements_contain_transactions_that_are_dropped() {
-    // A field the SGML normalizer does not know inside `BANKACCTFROM` makes
-    // it close the account aggregate early and unwind the stack, dropping
-    // `BANKTRANLIST`: the parser then reports an empty statement even though
-    // the source plainly contains a transaction.
+fn imports_transactions_after_unknown_account_fields() {
+    // ofx-kit keeps the transaction list when an unknown leaf occurs inside
+    // BANKACCTFROM. This is the regression behavior that the old parser
+    // mishandled and that previously triggered TransactionsDropped.
     let source = "\
 OFXHEADER:100
 DATA:OFXSGML
@@ -413,9 +413,11 @@ NEWFILEUID:NONE
 </OFX>
 ";
 
-    let error = pactole_import::import_ofx(source, &base_config(), &no_fitids()).unwrap_err();
+    let outcome =
+        pactole_import::import_ofx(source.as_bytes(), &base_config(), &no_fitids()).unwrap();
 
-    assert!(matches!(error, ImportError::TransactionsDropped));
+    assert_eq!(outcome.transactions.len(), 1);
+    assert_eq!(fitid(&outcome.transactions[0]), Some("ofx:1231:DROPPED-1"));
 }
 
 #[test]
@@ -623,7 +625,8 @@ fn warns_and_falls_back_when_payee_is_missing() {
 </BANKMSGSRSV1>
 </OFX>"#;
 
-    let outcome = pactole_import::import_ofx(source, &base_config(), &no_fitids()).unwrap();
+    let outcome =
+        pactole_import::import_ofx(source.as_bytes(), &base_config(), &no_fitids()).unwrap();
 
     assert_eq!(outcome.transactions.len(), 1);
     assert_eq!(outcome.transactions[0].payee.as_deref(), Some("Unknown"));
@@ -648,7 +651,8 @@ fn reports_an_error_when_no_statement_is_present() {
 </SIGNONMSGSRSV1>
 </OFX>"#;
 
-    let error = pactole_import::import_ofx(source, &base_config(), &no_fitids()).unwrap_err();
+    let error =
+        pactole_import::import_ofx(source.as_bytes(), &base_config(), &no_fitids()).unwrap_err();
 
     assert!(matches!(error, ImportError::NoStatement));
 }
@@ -656,7 +660,7 @@ fn reports_an_error_when_no_statement_is_present() {
 #[test]
 fn reports_an_error_on_unparsable_input() {
     let error =
-        pactole_import::import_ofx("not an OFX file", &base_config(), &no_fitids()).unwrap_err();
+        pactole_import::import_ofx(b"not an OFX file", &base_config(), &no_fitids()).unwrap_err();
 
     assert!(matches!(error, ImportError::Ofx(_)));
 }

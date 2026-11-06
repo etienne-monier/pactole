@@ -8,8 +8,8 @@ domain models.
 `pactole-import` is the input-side counterpart to `pactole-storage-fs`:
 an edge adapter that translates a foreign format into the pure Pactole
 domain. It depends only on `pactole-core` and `pactole-config` and
-performs **no I/O** — the caller reads the source text and passes it in
-as a `&str`. It knows nothing about tree-sitter, the `.pactole` text
+ performs **no I/O** — the caller reads the raw source bytes and passes them in
+ as a `&[u8]`; `ofx-kit` handles OFX decoding and parsing. It knows nothing about tree-sitter, the `.pactole` text
 format, `pactole-storage-fs`, or where its configuration comes from,
 which keeps it reusable by any front-end (the `pactole` CLI today, a
 future database-backed storage crate, the language server tomorrow).
@@ -17,8 +17,8 @@ future database-backed storage crate, the language server tomorrow).
 The pipeline is deliberately split in two steps so future importers can
 reuse the rule engine:
 
-1. a format-specific parser turns the source text into format-neutral
-   `ImportRecord`s (`ofx.rs` does this for OFX, via the `ofx-rs` crate);
+1. a format-specific parser turns the source bytes into format-neutral
+   `ImportRecord`s (`ofx.rs` does this for OFX, via the `ofx-kit` crate);
 2. a shared rule engine (`rules.rs`) turns `ImportRecord`s into balanced
    `pactole_core::Transaction`s, resolving the counter account (and an
    optional canonical payee) from the configured rules.
@@ -27,7 +27,7 @@ reuse the rule engine:
 
 Re-exported from `src/lib.rs`:
 
-- **`import_ofx(source: &str, config: &ImportConfig, known_fitids: &HashSet<String>) -> Result<ImportOutcome, ImportError>`**:
+- **`import_ofx(source: &[u8], config: &ImportConfig, known_fitids: &HashSet<String>) -> Result<ImportOutcome, ImportError>`**:
   parses an OFX document (1.x SGML or 2.x XML), skips any transaction whose
   `FITID` is already in `known_fitids` (counted in `ImportOutcome::skipped`),
   and lowers the rest into transactions. Every produced transaction carries
@@ -53,7 +53,7 @@ identifier), falling back to `ImportConfig::bank_account`.
 ## Dependencies / boundaries
 
 - `pactole-core` (domain models), `pactole-config` (import settings),
-  `ofx-rs` (OFX parsing), `chrono`, `rust_decimal` (never `f32`/`f64` for
+  `ofx-kit` (OFX decoding and parsing), `chrono`, `rust_decimal` (never `f32`/`f64` for
   amounts), `thiserror` (structured errors).
 - No dependency on `pactole-storage-fs`, `pactole-syntax`, or tree-sitter.
 - Serializing the produced transactions to `.pactole` text is **not** done
