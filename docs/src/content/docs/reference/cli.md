@@ -529,6 +529,11 @@ source transactions whose OFX `FITID` is already stored as `fitid` metadata in
 the target file are skipped. The command reports the imported and skipped counts
 on stderr.
 
+When the OFX statement provides `LEDGERBAL`, the command also prints its raw
+expected closing balance on stderr. It uses the mapped Pactole account from
+`[import.accounts]`, or the source `ACCTID` when no mapping exists. This is
+informational; no `balance` directive is generated.
+
 Transactions are emitted from the oldest to the newest transaction date. The
 `--from` boundary is inclusive. With `--omit-negative-amount`, the positive
 posting is emitted first and the negative posting is left without an amount so

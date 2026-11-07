@@ -315,6 +315,11 @@ pactole import-ofx statement.ofx --into ledger.pactole --write
 Use `--verbose` to list every omitted transaction and whether it was filtered
 by `--from` or skipped because its source identifier was already present.
 
+When the OFX statement contains `LEDGERBAL`, the raw expected closing balance
+is printed on stderr. A configured `[import.accounts]` mapping supplies the
+displayed account name; otherwise the source `ACCTID` is displayed. No
+`balance` directive is generated automatically.
+
 Generated transactions are a fragment (no `open`/`commodity`/`payee`
 declarations), so `pactole check` on them alone is expected to fail until
 they are merged into a full journal.

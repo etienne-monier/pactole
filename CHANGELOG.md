@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OFX closing balance display:** `pactole import-ofx` now prints the raw
+  `LEDGERBAL` amount and date on stderr, using the configured account mapping
+  or the source account identifier when no mapping exists.
+
 - **Web boundary verification (roadmap 5.4):** added HTTP integration coverage
   for the report API using the realistic journal fixtures, including clean,
   partial, malformed and missing-include projects, structured API errors and

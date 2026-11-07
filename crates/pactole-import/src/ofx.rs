@@ -5,7 +5,7 @@ use ofx_kit::parse_bytes_with_warnings;
 use ofx_kit::types::OfxDateTime;
 
 use crate::error::ImportError;
-use crate::record::ImportRecord;
+use crate::record::{ImportRecord, StatementBalance};
 
 /// Parses an OFX document (1.x SGML or 2.x XML) into format-neutral
 /// [`ImportRecord`]s.
@@ -14,12 +14,15 @@ use crate::record::ImportRecord;
 /// statements) and `INVSTMTMSGSRSV1` (investment statements, banking
 /// transactions only) are supported; every statement response present in the
 /// document contributes its transactions.
-pub(crate) fn parse_records(source: &[u8]) -> Result<Vec<ImportRecord>, ImportError> {
+pub(crate) fn parse_records(
+    source: &[u8],
+) -> Result<(Vec<ImportRecord>, Vec<StatementBalance>), ImportError> {
     let parsed =
         parse_bytes_with_warnings(source).map_err(|error| ImportError::Ofx(error.to_string()))?;
     let document = parsed.document;
 
     let mut records = Vec::new();
+    let mut balances = Vec::new();
     let mut found_statement = false;
 
     for banking in document.bankings() {
@@ -33,6 +36,12 @@ pub(crate) fn parse_records(source: &[u8]) -> Result<Vec<ImportRecord>, ImportEr
                     currency,
                     account_id,
                     &mut records,
+                )?;
+                collect_balance(
+                    statement.ledger_balance(),
+                    currency,
+                    account_id,
+                    &mut balances,
                 )?;
             }
         }
@@ -49,6 +58,12 @@ pub(crate) fn parse_records(source: &[u8]) -> Result<Vec<ImportRecord>, ImportEr
                     currency,
                     account_id,
                     &mut records,
+                )?;
+                collect_balance(
+                    statement.ledger_balance(),
+                    currency,
+                    account_id,
+                    &mut balances,
                 )?;
             }
         }
@@ -84,7 +99,7 @@ pub(crate) fn parse_records(source: &[u8]) -> Result<Vec<ImportRecord>, ImportEr
         return Err(ImportError::TransactionsDropped);
     }
 
-    Ok(records)
+    Ok((records, balances))
 }
 
 /// Returns whether the source text contains an `<STMTTRN>` element outside of
@@ -176,6 +191,26 @@ fn collect(
         });
     }
 
+    Ok(())
+}
+
+/// Extracts the closing ledger balance of one statement, when present.
+fn collect_balance(
+    balance: Option<&ofx_kit::aggregates::LedgerBalance>,
+    currency: &str,
+    account_id: &str,
+    out: &mut Vec<StatementBalance>,
+) -> Result<(), ImportError> {
+    let Some(balance) = balance else {
+        return Ok(());
+    };
+
+    out.push(StatementBalance {
+        date: to_naive_date(balance.as_of())?,
+        amount: balance.amount().as_decimal(),
+        currency: currency.to_string(),
+        account_id: account_id.to_string(),
+    });
     Ok(())
 }
 

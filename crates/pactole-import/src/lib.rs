@@ -43,7 +43,7 @@ use pactole_core::Transaction;
 
 pub use crate::actual::{ActualMigration, migrate_actual_database, parse_actual_database};
 pub use crate::error::ImportError;
-pub use crate::record::ImportRecord;
+pub use crate::record::{ImportRecord, StatementBalance};
 pub use pactole_config::{Direction, ImportConfig, ImportDateField, Rule};
 
 /// Builds the stored provenance identifier for an OFX transaction.
@@ -116,6 +116,9 @@ pub struct ImportOutcome {
 
     /// Non-fatal issues encountered while lowering the kept transactions.
     pub warnings: Vec<ImportWarning>,
+
+    /// Closing balances reported by the source statement.
+    pub balances: Vec<StatementBalance>,
 }
 
 /// Optional controls for an OFX import.
@@ -158,7 +161,7 @@ pub fn import_ofx_with_options(
     known_fitids: &HashSet<String>,
     options: ImportOptions,
 ) -> Result<ImportOutcome, ImportError> {
-    let records = ofx::parse_records(source)?;
+    let (records, balances) = ofx::parse_records(source)?;
 
     let mut kept = Vec::with_capacity(records.len());
     let mut skipped = 0usize;
@@ -229,5 +232,6 @@ pub fn import_ofx_with_options(
         skipped,
         skipped_transactions,
         warnings,
+        balances,
     })
 }

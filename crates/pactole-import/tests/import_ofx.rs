@@ -419,6 +419,14 @@ fn imports_a_sgml_bank_statement_carrying_acctkey() {
         transaction.postings[0].amount.as_ref().unwrap().number,
         dec("10.00")
     );
+    assert_eq!(outcome.balances.len(), 1);
+    assert_eq!(outcome.balances[0].account_id, "1231");
+    assert_eq!(outcome.balances[0].amount, dec("100.00"));
+    assert_eq!(outcome.balances[0].currency, "EUR");
+    assert_eq!(
+        outcome.balances[0].date,
+        NaiveDate::from_ymd_opt(2026, 10, 16).unwrap()
+    );
 }
 
 #[test]

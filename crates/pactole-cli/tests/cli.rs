@@ -1400,6 +1400,52 @@ fn import_ofx_prints_transactions_to_stdout() {
 }
 
 #[test]
+fn import_ofx_prints_the_raw_statement_balance_on_stderr() {
+    let ofx_source = IMPORT_OFX_FIXTURE.replace(
+        "</STMTRS>",
+        "<LEDGERBAL><BALAMT>1954.70</BALAMT><DTASOF>20260930</DTASOF></LEDGERBAL></STMTRS>",
+    );
+    let ofx = write_import_temp("statement-with-balance.ofx", &ofx_source);
+    let config = write_import_temp("balance-rules.toml", IMPORT_RULES_FIXTURE);
+
+    let output = pactole_cmd()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&config).ok();
+
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("expected balance: 00012345678 1954.70 EUR (as of 2026-09-30)"));
+
+    let mapped_config = write_import_temp("mapped-balance-rules.toml", IMPORT_ACCOUNTS_FIXTURE);
+    let ofx = write_import_temp("statement-with-balance-mapped.ofx", &ofx_source);
+    let output = pactole_cmd()
+        .args([
+            "--config",
+            mapped_config.to_str().unwrap(),
+            "import-ofx",
+            ofx.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&ofx).ok();
+    std::fs::remove_file(&mapped_config).ok();
+
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("expected balance: Actifs:Courant 1954.70 EUR (as of 2026-09-30)"));
+}
+
+#[test]
 fn import_ofx_filters_by_date_and_can_omit_the_imported_payee() {
     let ofx = write_import_temp("statement.ofx", IMPORT_OFX_FIXTURE);
     let config = write_import_temp(

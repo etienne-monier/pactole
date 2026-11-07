@@ -55,3 +55,19 @@ pub struct ImportRecord {
     /// source carries several accounts.
     pub account_id: Option<String>,
 }
+
+/// A closing ledger balance reported by an external statement.
+///
+/// The amount is kept exactly as supplied by the source. It is informational
+/// only and is not turned into a Pactole balance assertion automatically.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatementBalance {
+    /// Date at which the source reports the balance (`DTASOF`).
+    pub date: NaiveDate,
+    /// Raw balance amount (`BALAMT`).
+    pub amount: Decimal,
+    /// Statement currency (`CURDEF`).
+    pub currency: String,
+    /// Source account identifier (`ACCTID`).
+    pub account_id: String,
+}

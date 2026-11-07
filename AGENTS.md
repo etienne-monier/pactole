@@ -462,7 +462,7 @@ pactole/
        `import_ofx(&[u8], ...)`, plus `ActualMigration`, `ImportConfig`, `Rule`,
         `Direction`, `ImportDateField`, `ImportRecord`, `ImportOutcome`, `ImportOptions`, `ImportWarning`,
         `SkippedTransaction`, `SkipReason`,
-        `ImportError`, `qualified_fitid`, and `import_ofx_with_options`. `import_ofx`
+        `ImportError`, `StatementBalance`, `qualified_fitid`, and `import_ofx_with_options`. `import_ofx`
      skips any source transaction whose FITID is
      already in `known_fitids` (reported in `ImportOutcome::skipped`), and stores each produced
       bank-side posting's qualified FITID as `fitid` metadata so a later run can rebuild

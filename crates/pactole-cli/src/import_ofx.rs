@@ -171,6 +171,18 @@ pub(crate) fn run(file: PathBuf, options: Options, config: &Config) -> ExitCode 
         outcome.skipped
     );
 
+    for balance in &outcome.balances {
+        let account = import_config
+            .accounts
+            .get(&balance.account_id)
+            .map(String::as_str)
+            .unwrap_or(&balance.account_id);
+        eprintln!(
+            "expected balance: {account} {} {} (as of {})",
+            balance.amount, balance.currency, balance.date
+        );
+    }
+
     ExitCode::SUCCESS
 }
 

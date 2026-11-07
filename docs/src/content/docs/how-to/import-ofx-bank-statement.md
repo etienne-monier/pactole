@@ -117,6 +117,19 @@ on stderr, for example:
 imported 2 transaction(s), skipped 0
 ```
 
+When the statement contains an OFX `LEDGERBAL`, the raw expected closing
+balance is also printed on stderr. The account name comes from
+`[import.accounts]` when the statement `ACCTID` is mapped; otherwise the raw
+`ACCTID` is shown:
+
+```text
+expected balance: Assets:Checking 1954.70 EUR (as of 2026-09-30)
+```
+
+This is informational only: the importer does not generate a `balance`
+directive, because transactions before or after the imported range may share
+the same date.
+
 ## 4. Append to an existing journal
 
 Use `--into` to compare source identifiers with an existing `.pactole` file:
