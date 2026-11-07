@@ -19,7 +19,7 @@
 //! `journal_file` or at the workspace root), overridden by the
 //! `initializationOptions` `validation` key (see [`config`]).
 //!
-//! Completion, code actions, hover, navigation (`textDocument/definition`,
+//! Completion for both `.pactole` and tracked `pactole.toml` files, code actions, hover, navigation (`textDocument/definition`,
 //! `textDocument/references`), rename (`textDocument/prepareRename`,
 //! `textDocument/rename`) and full-document formatting
 //! (`textDocument/formatting`) are supported for editor assistance.
@@ -28,6 +28,7 @@
 pub mod code_action;
 pub mod completion;
 pub mod config;
+pub(crate) mod config_completion;
 pub mod conversion;
 pub mod diagnostics;
 pub mod documents;

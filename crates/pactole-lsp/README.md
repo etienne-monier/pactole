@@ -72,7 +72,8 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   `journal_file` (path of the root `.pactole` file, resolved against the
   workspace root, or against the server's current working directory if no
   root is known), `validation` (a `"warn"`/`"error"` string applied to every
-  configurable check, or a `{ "payee": ..., "unused": ... }` table),
+  configurable check, or a `{ "payee": ..., "unused": ..., "config": ... }`
+  table),
   `format` (`posting_width`) and the `[declaration]` section of
   `pactole.toml` (see below). Validation settings follow the CLI layering:
   user-level `pactole.toml`, then project `pactole.toml` (next to
@@ -92,7 +93,12 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   never go stale.
 - `completion.rs`: completion for known accounts, payees, commodities, tags
   and links, plus a date-of-the-day item at the beginning of a directive. The
-  date item replaces a partially typed `YYYY-` prefix.
+  date item replaces a partially typed `YYYY-` prefix. Requests targeting a
+  tracked global or project `pactole.toml` are dispatched to the configuration
+  completion provider, which offers TOML sections and keys, validation levels,
+  and journal accounts, payees, commodities and account roots. The provider
+  uses the current open buffer and remains usable while a TOML value is
+  incomplete.
 - `code_action.rs`: a quick fix that inserts today's date at the beginning of
   an undated `open`, `close`, `commodity`, `balance` or transaction directive,
   plus declaration quick fixes for the `payee-not-declared`,

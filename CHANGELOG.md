@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Configuration completion (LSP):** added completion for tracked global and
+  project `pactole.toml` files. The server offers configuration sections and
+  keys, validation levels, journal accounts, payees, commodities and report
+  account roots, including incomplete TOML values and array elements.
+
 - **Configuration reference diagnostics:** `pactole check` and the LSP now
   cross-check account, payee, commodity and report-root references from
   `pactole.toml` against the journal. The checks default to warnings and can

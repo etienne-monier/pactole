@@ -342,7 +342,19 @@ fn handle_request(
     // -----------------------------
     if request.method == lsp_types::request::Completion::METHOD {
         let params: CompletionParams = serde_json::from_value(request.params)?;
-        match crate::completion::handle_completion(config, documents, params) {
+        let is_config = params
+            .text_document_position
+            .text_document
+            .uri
+            .to_file_path()
+            .ok()
+            .is_some_and(|path| config.is_config_file(&path));
+        let result = if is_config {
+            crate::config_completion::handle_completion(config, documents, params)
+        } else {
+            crate::completion::handle_completion(config, documents, params)
+        };
+        match result {
             Ok(result) => {
                 let resp = lsp_server::Response::new_ok(request.id, serde_json::to_value(result)?);
                 connection.sender.send(Message::Response(resp))?;

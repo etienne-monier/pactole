@@ -20,19 +20,19 @@ use std::error::Error;
 
 #[derive(Clone, Debug, Default)]
 /// Symbols available to completion in the current analysis scope.
-struct SymbolIndex {
+pub(crate) struct SymbolIndex {
     /// Known payee names.
-    payees: BTreeSet<String>,
+    pub(crate) payees: BTreeSet<String>,
     /// Known commodity names.
-    commodities: BTreeSet<String>,
+    pub(crate) commodities: BTreeSet<String>,
     /// Accounts declared with `open`.
-    accounts_open: BTreeSet<String>,
+    pub(crate) accounts_open: BTreeSet<String>,
     /// Accounts observed in declarations or postings.
-    accounts_all: BTreeSet<String>,
+    pub(crate) accounts_all: BTreeSet<String>,
     /// Known transaction tags.
-    tags: BTreeSet<String>,
+    pub(crate) tags: BTreeSet<String>,
     /// Known transaction links.
-    links: BTreeSet<String>,
+    pub(crate) links: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,7 +150,7 @@ fn build_index_from_file(file: &ParsedFile) -> SymbolIndex {
 }
 
 /// Merges symbol indexes from every file in an analyzed project.
-fn build_index_from_project(project: &AnalyzedProject) -> SymbolIndex {
+pub(crate) fn build_index_from_project(project: &AnalyzedProject) -> SymbolIndex {
     let mut merged = SymbolIndex::default();
     for file in project.files() {
         let idx = build_index_from_file(&file.file);
