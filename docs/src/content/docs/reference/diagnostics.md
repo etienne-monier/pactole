@@ -20,6 +20,9 @@ requires the same context.
   declarations, balancing, balance assertions and unused declarations.
 - **Analysis** diagnostics report that part of the project could not be
   analyzed, and that some of the checks depending on it were skipped.
+- **Configuration** diagnostics cross-check names referenced by `pactole.toml`
+  against the journal. They are reported on the configuration value and are
+  controlled by `[validation] config` (warning by default).
 
 Every project diagnostic has a source file, a half-open source span, a severity,
 an origin, a stable code and a human-readable message. Syntax and
@@ -181,6 +184,20 @@ reported), `warn` (reported as a warning) or `error` (blocking).
 | `commodity-unused` | `unused` | warn | A commodity is declared but no amount, price directive, transaction-cost annotation or `open` restriction uses it. |
 | `payee-unused` | `unused` | warn | A payee is declared but no transaction uses it. |
 | `tag-not-active` | — | warn | A `poptag` directive tries to remove a tag that is not active. `--strict` treats the warning as a failure. |
+
+### Configuration references
+
+These checks use the `config` level from `[validation]` (`warn` by default).
+They are suppressed when partial analysis cannot determine whether the missing
+content declared or used the referenced name.
+
+| Code | Meaning |
+|---|---|
+| `config-account-not-declared` | An exact account referenced by configuration is not opened by the journal. |
+| `config-payee-not-declared` | A payee referenced by configuration has no journal declaration. |
+| `config-commodity-not-declared` | A commodity referenced by configuration has no journal declaration. |
+| `config-account-root-unmatched` | A configured report account root is not used by any opened account. |
+| `config-invalid-name` | A configured account, payee or commodity name is invalid. |
 
 These diagnostics point at the declared name itself (the account or
 commodity token, the payee string). Merely `close`ing an account does not

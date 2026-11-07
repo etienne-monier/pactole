@@ -17,6 +17,8 @@ pub use crate::analysis::normalize_lexically;
 
 pub mod analysis;
 pub mod application;
+/// Cross-check of `pactole.toml` references against journal declarations.
+pub mod config_check;
 pub mod errors;
 pub mod loader;
 /// CST-to-domain lowering implementation.
@@ -33,6 +35,7 @@ pub use crate::analysis::{
     analyze_file_with_loader_with_options,
 };
 pub use crate::application::FsLedgerReader;
+pub use crate::config_check::{ConfigDiagnostic, check_config_references};
 pub use crate::errors::PactoleFsStorageError;
 pub use crate::loader::{FsSourceLoader, InMemorySourceLoader, SourceLoadError, SourceLoader};
 pub use crate::printer::{

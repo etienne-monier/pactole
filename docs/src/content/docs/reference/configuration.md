@@ -66,15 +66,24 @@ The severity of the business checks. Each key accepts three levels:
 |---|---|---|
 | `payee` | `error` | A transaction whose payee has no `payee` declaration (`payee-not-declared`). |
 | `unused` | `warn` | A declaration nothing ever uses: `account-unused`, `commodity-unused` and `payee-unused`. |
+| `config` | `warn` | An account, payee, commodity or account root named by this configuration but not declared or used by the journal. |
 
 ```toml
 [validation]
 payee = "warn"
 unused = "off"
+config = "warn"
 ```
 
 Every other business check — account lifecycles, declared commodities,
 balancing, balance assertions — is always an error.
+
+The `config` check cross-checks references such as `import.bank_account`,
+`import.default_counter_account`, import rules, report account roots and
+uncategorized accounts against the journal. Set it to `off` when a
+configuration is intentionally shared by journals with different
+declarations, or to `error` to make mismatches blocking. The LSP reports these
+diagnostics on the corresponding `pactole.toml` value.
 
 See [Diagnostics and project analysis](/reference/diagnostics/) for the full
 list of codes.

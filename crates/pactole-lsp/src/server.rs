@@ -23,7 +23,7 @@ use lsp_types::{
 use pactole_storage_fs::analyze_file_with_loader_with_options;
 
 use crate::config::{Config, workspace_root_from_initialize_params};
-use crate::diagnostics::{project_diagnostics, standalone_diagnostics};
+use crate::diagnostics::{config_diagnostics, project_diagnostics, standalone_diagnostics};
 use crate::documents::{Documents, DocumentsSourceLoader, SnapshotSourceLoader};
 
 /// Delay used to coalesce bursts of document edits before analysis.
@@ -219,7 +219,10 @@ fn schedule_analysis(
 }
 
 /// Processes LSP messages and publishes analysis results until shutdown.
-fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error + Sync + Send>> {
+fn main_loop(
+    connection: Connection,
+    mut config: Config,
+) -> Result<(), Box<dyn Error + Sync + Send>> {
     let mut documents = Documents::new();
     // URIs published with non-empty diagnostics by the last `publish_for`
     // call, so a subsequent analysis that no longer covers one of them
@@ -288,7 +291,7 @@ fn main_loop(connection: Connection, config: Config) -> Result<(), Box<dyn Error
             Message::Notification(note) => {
                 handle_notification(
                     &connection,
-                    &config,
+                    &mut config,
                     &mut documents,
                     &mut published,
                     &analysis_jobs,
@@ -509,7 +512,7 @@ fn handle_request(
 /// Applies one LSP notification to document state or server lifecycle.
 fn handle_notification(
     connection: &Connection,
-    config: &Config,
+    config: &mut Config,
     documents: &mut Documents,
     published: &mut HashSet<Url>,
     analysis_jobs: &Sender<AnalysisJob>,
@@ -530,6 +533,7 @@ fn handle_notification(
                 params.text_document.text.len()
             );
             documents.open(uri.clone(), params.text_document.text);
+            reload_config_if_tracked(config, documents, &uri);
             if !schedule_analysis(config, documents, &uri, analysis_jobs) {
                 publish_for(connection, config, documents, published, &uri)?;
             }
@@ -546,6 +550,7 @@ fn handle_notification(
             if let Some(change) = params.content_changes.into_iter().next_back() {
                 log::debug!("didChange: uri={} len={}", uri, change.text.len());
                 documents.change(uri.clone(), change.text);
+                reload_config_if_tracked(config, documents, &uri);
                 if !schedule_analysis(config, documents, &uri, analysis_jobs) {
                     publish_for(connection, config, documents, published, &uri)?;
                 }
@@ -562,13 +567,41 @@ fn handle_notification(
             // Clear diagnostics for the now-closed document.
             publish_diagnostics(connection, &params.text_document.uri, Vec::new())?;
             published.remove(&params.text_document.uri);
+            let config_changed =
+                reload_config_if_tracked(config, documents, &params.text_document.uri);
             if config.journal_file.is_some() {
                 schedule_analysis(config, documents, &params.text_document.uri, analysis_jobs);
+            } else if config_changed {
+                publish_for(
+                    connection,
+                    config,
+                    documents,
+                    published,
+                    &params.text_document.uri,
+                )?;
             }
         }
         _ => {}
     }
     Ok(())
+}
+
+/// Reloads the layered configuration when `uri` is one of the tracked
+/// `pactole.toml` layers, and reports whether it was.
+///
+/// The open-buffer text (or, on close, the file on disk) wins over the last
+/// loaded layer, so validation settings and configuration-reference
+/// diagnostics follow unsaved editor edits. Reloading on close too means a
+/// discarded buffer does not keep shadowing the file.
+fn reload_config_if_tracked(config: &mut Config, documents: &Documents, uri: &Url) -> bool {
+    let Some(path) = uri.to_file_path().ok() else {
+        return false;
+    };
+    if !config.is_config_file(&path) {
+        return false;
+    }
+    config.reload_from_documents(documents);
+    true
 }
 
 /// Recomputes and publishes diagnostics for `uri` and, when a `journal_file`
@@ -643,6 +676,20 @@ fn collect_diagnostics(
             for (path, diagnostics) in project_diagnostics(project) {
                 if let Some(file_uri) = path_to_url(&path) {
                     publications.insert(file_uri, diagnostics);
+                }
+            }
+            // The configuration references are cross-checked against the same
+            // project, so a partial analysis suppresses the references whose
+            // declaration may be in the lost content, and unsaved buffers are
+            // already reflected in the project. Each diagnostic points at the
+            // exact TOML value it came from.
+            let sources = config.config_sources(documents);
+            for (path, diagnostics) in config_diagnostics(config.resolved(), project, &sources) {
+                if let Some(file_uri) = path_to_url(&path) {
+                    publications
+                        .entry(file_uri)
+                        .or_default()
+                        .extend(diagnostics);
                 }
             }
             log::debug!(

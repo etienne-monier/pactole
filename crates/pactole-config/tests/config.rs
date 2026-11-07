@@ -247,6 +247,7 @@ fn overrides_beat_project_which_beats_global() {
         &Overrides {
             payee: Some(ValidationLevel::Error),
             unused: None,
+            config: None,
         },
     )
     .unwrap();
@@ -269,6 +270,7 @@ fn validation_keys_merge_per_key_and_overrides_win() {
         &Overrides {
             payee: Some(ValidationLevel::Warning),
             unused: Some(ValidationLevel::Error),
+            config: None,
         },
     )
     .unwrap();
@@ -461,4 +463,108 @@ fn load_skips_an_absent_project_layer() {
     // assertion is deliberately independent of whatever global layer the
     // environment may provide.
     let _config = Config::load(None, Some(&missing), &Overrides::default()).unwrap();
+}
+
+#[test]
+fn the_config_validation_level_defaults_to_warn_and_can_be_overridden() {
+    let config = resolve("").unwrap();
+    assert_eq!(config.validation.config, ValidationLevel::Warning);
+
+    let config = resolve("[validation]\nconfig = \"error\"\n").unwrap();
+    assert_eq!(config.validation.config, ValidationLevel::Error);
+
+    let config = Config::resolve(
+        &[source("[validation]\nconfig = \"error\"\n")],
+        &Overrides {
+            config: Some(ValidationLevel::Off),
+            ..Overrides::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(config.validation.config, ValidationLevel::Off);
+
+    let error = resolve("[validation]\nconfig = \"loud\"\n").unwrap_err();
+    assert!(
+        matches!(error, ConfigError::Invalid { .. }),
+        "unexpected: {error}"
+    );
+}
+
+#[test]
+fn references_record_names_key_paths_and_their_origins() {
+    use pactole_config::ConfigReferenceKind;
+
+    let global = Source {
+        path: Path::new("global.toml"),
+        contents: "[reports]\nassets = [\"Assets\"]\n",
+    };
+    let project = Source {
+        path: Path::new("project.toml"),
+        contents: "[import]\n\
+                   bank_account = \"Assets:Checking\"\n\
+                   currency = \"EUR\"\n\
+                   default_counter_account = \"Expenses:ToReview\"\n\
+                   \n\
+                   [import.accounts]\n\
+                   \"123\" = \"Assets:Savings\"\n\
+                   \n\
+                   [[import.rules]]\n\
+                   counter_account = \"Expenses:Food\"\n\
+                   payee = \"Employer\"\n",
+    };
+
+    let config = Config::resolve(&[global, project], &Overrides::default()).unwrap();
+    let references = config.references();
+
+    let find = |path: &str| {
+        references
+            .iter()
+            .find(|reference| reference.key_path.to_string() == path)
+            .unwrap_or_else(|| panic!("no reference at `{path}`: {references:?}"))
+    };
+
+    let bank = find("import.bank_account");
+    assert_eq!(bank.kind, ConfigReferenceKind::Account);
+    assert_eq!(bank.name, "Assets:Checking");
+    assert_eq!(bank.origin, Path::new("project.toml"));
+
+    let currency = find("import.currency");
+    assert_eq!(currency.kind, ConfigReferenceKind::Commodity);
+    assert_eq!(currency.name, "EUR");
+
+    let mapping = find("import.accounts.123");
+    assert_eq!(mapping.kind, ConfigReferenceKind::Account);
+    assert_eq!(mapping.name, "Assets:Savings");
+
+    let rule_payee = find("import.rules[0].payee");
+    assert_eq!(rule_payee.kind, ConfigReferenceKind::Payee);
+    assert_eq!(rule_payee.name, "Employer");
+
+    // A lower layer keeps the origin of the list it supplied.
+    let asset_root = find("reports.assets[0]");
+    assert_eq!(asset_root.kind, ConfigReferenceKind::AccountRoot);
+    assert_eq!(asset_root.origin, Path::new("global.toml"));
+}
+
+#[test]
+fn a_higher_layer_replaces_the_origin_of_a_redefined_list() {
+    let global = Source {
+        path: Path::new("global.toml"),
+        contents: "[reports]\nassets = [\"Assets\"]\n",
+    };
+    let project = Source {
+        path: Path::new("project.toml"),
+        contents: "[reports]\nassets = [\"Actifs\"]\n",
+    };
+
+    let config = Config::resolve(&[global, project], &Overrides::default()).unwrap();
+
+    let roots: Vec<_> = config
+        .references()
+        .iter()
+        .filter(|reference| reference.key_path.to_string().starts_with("reports.assets"))
+        .collect();
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].name, "Actifs");
+    assert_eq!(roots[0].origin, Path::new("project.toml"));
 }

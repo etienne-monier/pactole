@@ -94,6 +94,23 @@ pub enum DiagnosticCode {
     PayeeUnused,
     /// A `poptag` directive tries to remove a tag that is not active.
     TagNotActive,
+
+    // ---- Configuration references ----
+    /// A `pactole.toml` value references an account that is not opened by the
+    /// journal.
+    ConfigAccountNotDeclared,
+    /// A `pactole.toml` value references an account root that no opened
+    /// account uses.
+    ConfigAccountRootUnmatched,
+    /// A `pactole.toml` value references a payee that is not declared by the
+    /// journal.
+    ConfigPayeeNotDeclared,
+    /// A `pactole.toml` value references a commodity that is not declared by
+    /// the journal.
+    ConfigCommodityNotDeclared,
+    /// A `pactole.toml` value is not a valid account, payee or commodity
+    /// name.
+    ConfigInvalidName,
 }
 
 impl DiagnosticCode {
@@ -131,6 +148,11 @@ impl DiagnosticCode {
         Self::CommodityUnused,
         Self::PayeeUnused,
         Self::TagNotActive,
+        Self::ConfigAccountNotDeclared,
+        Self::ConfigAccountRootUnmatched,
+        Self::ConfigPayeeNotDeclared,
+        Self::ConfigCommodityNotDeclared,
+        Self::ConfigInvalidName,
     ];
 
     /// Returns the stable text form of this code.
@@ -167,6 +189,11 @@ impl DiagnosticCode {
             Self::CommodityUnused => "commodity-unused",
             Self::PayeeUnused => "payee-unused",
             Self::TagNotActive => "tag-not-active",
+            Self::ConfigAccountNotDeclared => "config-account-not-declared",
+            Self::ConfigAccountRootUnmatched => "config-account-root-unmatched",
+            Self::ConfigPayeeNotDeclared => "config-payee-not-declared",
+            Self::ConfigCommodityNotDeclared => "config-commodity-not-declared",
+            Self::ConfigInvalidName => "config-invalid-name",
         }
     }
 

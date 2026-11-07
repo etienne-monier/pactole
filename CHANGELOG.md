@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Configuration reference diagnostics:** `pactole check` and the LSP now
+  cross-check account, payee, commodity and report-root references from
+  `pactole.toml` against the journal. The checks default to warnings and can
+  be configured with `[validation] config = "off" | "warn" | "error"`; LSP
+  diagnostics point at the corresponding TOML value.
+
 - **OFX closing balance display:** `pactole import-ofx` now prints the raw
   `LEDGERBAL` amount and date on stderr, using the configured account mapping
   or the source account identifier when no mapping exists.

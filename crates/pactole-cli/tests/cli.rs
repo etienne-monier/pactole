@@ -2191,6 +2191,125 @@ fn the_project_configuration_overrides_the_global_one() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A journal that exercises every declaration it makes, so that only the
+/// configuration cross-check can produce a diagnostic.
+const CONFIG_REFERENCE_JOURNAL: &str = "2024-01-01 open Assets:Checking\n\
+2024-01-01 open Expenses:Food\n\
+2024-01-01 commodity EUR\n\
+payee \"Employer\"\n\
+2024-01-02 * \"Employer\"\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n\
+\u{20}\u{20}Expenses:Food 10 EUR\n";
+
+/// A configuration referencing an account the journal never opens.
+const MISSING_ACCOUNT_CONFIG: &str = "[import]\n\
+bank_account = \"Assets:Savings\"\n\
+default_counter_account = \"Expenses:Food\"\n";
+
+#[test]
+fn check_warns_about_a_configuration_reference_missing_from_the_journal() {
+    let dir = unique_temp_dir("check-config-reference");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, CONFIG_REFERENCE_JOURNAL).unwrap();
+    std::fs::write(dir.join("pactole.toml"), MISSING_ACCOUNT_CONFIG).unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "OK\n");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("warning: [config-account-not-declared]"),
+        "stderr: {stderr}"
+    );
+    assert!(stderr.contains("import.bank_account"), "stderr: {stderr}");
+
+    // A configuration warning is not blocking by itself, but `--strict`
+    // turns it into a failure.
+    let strict = pactole_cmd()
+        .args(["check", "--strict", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(!strict.status.success());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn check_can_turn_configuration_references_off_or_into_errors() {
+    let dir = unique_temp_dir("check-config-level");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, CONFIG_REFERENCE_JOURNAL).unwrap();
+
+    std::fs::write(
+        dir.join("pactole.toml"),
+        format!("[validation]\nconfig = \"off\"\n{MISSING_ACCOUNT_CONFIG}"),
+    )
+    .unwrap();
+    let off = pactole_cmd()
+        .args(["check", "--strict", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(
+        off.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&off.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&off.stderr).contains("config-"));
+
+    std::fs::write(
+        dir.join("pactole.toml"),
+        format!("[validation]\nconfig = \"error\"\n{MISSING_ACCOUNT_CONFIG}"),
+    )
+    .unwrap();
+    let error = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap()])
+        .output()
+        .expect("failed to run pactole-cli");
+    assert!(!error.status.success());
+    assert!(
+        String::from_utf8_lossy(&error.stderr).contains("error: [config-account-not-declared]"),
+        "stderr: {}",
+        String::from_utf8_lossy(&error.stderr)
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn check_reports_a_configuration_reference_in_json_with_its_key_path() {
+    let dir = unique_temp_dir("check-config-json");
+    let ledger = dir.join("ledger.pactole");
+    std::fs::write(&ledger, CONFIG_REFERENCE_JOURNAL).unwrap();
+    std::fs::write(dir.join("pactole.toml"), MISSING_ACCOUNT_CONFIG).unwrap();
+
+    let output = pactole_cmd()
+        .args(["check", ledger.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let diagnostics = json["diagnostics"].as_array().unwrap();
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic["code"] == "config-account-not-declared")
+        .unwrap_or_else(|| panic!("missing config diagnostic: {json}"));
+    assert_eq!(diagnostic["keyPath"], "import.bank_account");
+    assert_eq!(diagnostic["range"], serde_json::Value::Null);
+    assert_eq!(diagnostic["severity"], "warning");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn serve_exposes_the_reports_api_over_http() {
     use std::io::{Read, Write};

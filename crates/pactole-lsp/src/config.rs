@@ -74,6 +74,9 @@ enum RawValidation {
         #[serde(default)]
         /// Level for unused-declaration diagnostics.
         unused: Option<String>,
+        #[serde(default)]
+        /// Level for configuration-reference diagnostics.
+        config: Option<String>,
     },
 }
 
@@ -93,6 +96,15 @@ impl RawValidation {
         match self {
             Self::Level(level) => Some(level),
             Self::Table { unused, .. } => unused.as_deref(),
+        }
+    }
+
+    /// The level of the configuration-reference checks: the single level for
+    /// the string form, the `config` entry for the table form.
+    fn config(&self) -> Option<&str> {
+        match self {
+            Self::Level(level) => Some(level),
+            Self::Table { config, .. } => config.as_deref(),
         }
     }
 }
@@ -120,6 +132,21 @@ pub struct Config {
     /// [`Config::resolve_declaration_paths`]).
     pub declarations: DeclarationTargets,
 
+    /// The fully resolved layered configuration, including the journal
+    /// references it makes (`Config::references` in `pactole-config`), used
+    /// by the configuration cross-check.
+    resolved: pactole_config::Config,
+
+    /// Paths of the configuration files that make up the layered
+    /// configuration (global first, then project). They are tracked even
+    /// when a file does not exist yet, so opening it in the editor triggers
+    /// a reload.
+    config_files: Vec<PathBuf>,
+
+    /// Workspace root the configuration was resolved against, kept so a
+    /// configuration-file edit can reload the same layers.
+    workspace_root: Option<PathBuf>,
+
     /// The `initializationOptions` payee override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
     payee_override: Option<ValidationLevel>,
@@ -127,6 +154,10 @@ pub struct Config {
     /// The `initializationOptions` unused-declaration override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
     unused_override: Option<ValidationLevel>,
+
+    /// The `initializationOptions` configuration-reference override, kept so
+    /// [`Config::load_layered`] can apply it on top of the file layers.
+    config_override: Option<ValidationLevel>,
 
     /// The `initializationOptions` formatter override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
@@ -209,6 +240,10 @@ impl Config {
             .validation
             .as_ref()
             .and_then(|validation| parse_level(validation.unused()));
+        let config_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.config()));
 
         let format_posting_width_override = raw
             .format
@@ -217,18 +252,27 @@ impl Config {
             .and_then(parse_posting_width);
 
         // Each check falls back to its own default (an undeclared payee is
-        // an error, an unused declaration a warning), not to a single level.
+        // an error, an unused declaration and a configuration reference are
+        // warnings), not to a single level.
         let defaults = ValidationOptions::default();
+        let validation = ValidationOptions {
+            payee: payee_override.unwrap_or(defaults.payee),
+            unused: unused_override.unwrap_or(defaults.unused),
+            config: config_override.unwrap_or(defaults.config),
+        };
+        let mut resolved = pactole_config::Config::default();
+        resolved.validation = validation;
         Config {
             journal_file,
-            validation: ValidationOptions {
-                payee: payee_override.unwrap_or(defaults.payee),
-                unused: unused_override.unwrap_or(defaults.unused),
-            },
+            validation,
             format: FormatOptions::default(),
             declarations: DeclarationTargets::default(),
+            resolved,
+            config_files: Vec::new(),
+            workspace_root: workspace_root.map(Path::to_path_buf),
             payee_override,
             unused_override,
+            config_override,
             format_posting_width_override,
             declaration_paths: DeclarationOptions::default(),
         }
@@ -243,23 +287,70 @@ impl Config {
     /// override) are kept, so a broken configuration file never prevents the
     /// server from starting.
     pub fn load_layered(&mut self, workspace_root: Option<&Path>) {
+        self.reload_layered(workspace_root, None);
+    }
+
+    /// Reloads the layered configuration, preferring an open document buffer
+    /// over the file on disk for each configuration layer.
+    ///
+    /// This is used after the editor opens, edits or closes a `pactole.toml`
+    /// file, so validation settings and configuration-reference diagnostics
+    /// follow unsaved edits. A configuration error is logged and the previous
+    /// settings are kept, exactly like [`Config::load_layered`].
+    pub(crate) fn reload_layered(
+        &mut self,
+        workspace_root: Option<&Path>,
+        documents: Option<&crate::documents::Documents>,
+    ) {
+        if let Some(workspace_root) = workspace_root {
+            self.workspace_root = Some(workspace_root.to_path_buf());
+        }
+        let workspace_root = self.workspace_root.clone();
+
         let project_dir = self
             .journal_file
             .as_deref()
             .and_then(Path::parent)
-            .or(workspace_root);
+            .or(workspace_root.as_deref());
 
         let project = project_dir.map(|dir| dir.join("pactole.toml"));
+
+        // Track the layer paths even when a file does not exist yet: opening
+        // it in the editor must trigger a reload once it has content.
+        let mut config_files = Vec::new();
+        if let Some(global) = pactole_config::default_config_path() {
+            config_files.push(global);
+        }
+        if let Some(project) = project.clone()
+            && !config_files.contains(&project)
+        {
+            config_files.push(project);
+        }
+        self.config_files = config_files;
+
+        let mut owned: Vec<(PathBuf, String)> = Vec::new();
+        for path in &self.config_files {
+            if let Some(contents) = read_layer(path, documents) {
+                owned.push((path.clone(), contents));
+            }
+        }
+        let layers: Vec<pactole_config::Source<'_>> = owned
+            .iter()
+            .map(|(path, contents)| pactole_config::Source { path, contents })
+            .collect();
+
         let overrides = Overrides {
             payee: self.payee_override,
             unused: self.unused_override,
+            config: self.config_override,
         };
 
-        match pactole_config::Config::load(None, project.as_deref(), &overrides) {
+        match pactole_config::Config::resolve(&layers, &overrides) {
             Ok(config) => {
                 self.validation = config.validation;
                 self.format = config.format;
-                self.declaration_paths = config.declaration;
+                self.declaration_paths = config.declaration.clone();
+                self.resolved = config;
             }
             Err(error) => {
                 log::warn!(
@@ -275,6 +366,38 @@ impl Config {
         }
 
         self.resolve_declaration_paths();
+    }
+
+    /// Reloads the layered configuration after an open configuration buffer
+    /// changed, using the same workspace root as the initial load.
+    pub(crate) fn reload_from_documents(&mut self, documents: &crate::documents::Documents) {
+        let workspace_root = self.workspace_root.clone();
+        self.reload_layered(workspace_root.as_deref(), Some(documents));
+    }
+
+    /// Returns whether `path` is one of the configuration layers this server
+    /// watches for edits.
+    pub(crate) fn is_config_file(&self, path: &Path) -> bool {
+        self.config_files.iter().any(|file| file == path)
+    }
+
+    /// Returns the configuration file contents used to resolve the current
+    /// configuration, keyed by path, preferring open editor buffers.
+    pub(crate) fn config_sources(
+        &self,
+        documents: &crate::documents::Documents,
+    ) -> std::collections::HashMap<PathBuf, String> {
+        self.config_files
+            .iter()
+            .filter_map(|path| {
+                read_layer(path, Some(documents)).map(|contents| (path.clone(), contents))
+            })
+            .collect()
+    }
+
+    /// Returns the fully resolved layered configuration.
+    pub(crate) fn resolved(&self) -> &pactole_config::Config {
+        &self.resolved
     }
 
     /// Resolves the raw `[declaration]` paths against the journal's directory.
@@ -308,6 +431,20 @@ impl Config {
             commodities: resolve(&self.declaration_paths.commodities),
         };
     }
+}
+
+/// Reads one configuration layer, preferring an open editor buffer over the
+/// file on disk.
+///
+/// A file that neither has an open buffer nor exists is skipped (returns
+/// `None`), matching the CLI's layering rules.
+fn read_layer(path: &Path, documents: Option<&crate::documents::Documents>) -> Option<String> {
+    if let Some(documents) = documents
+        && let Some(contents) = documents.get_by_path(path)
+    {
+        return Some(contents.to_string());
+    }
+    std::fs::read_to_string(path).ok()
 }
 
 /// Parses one `initializationOptions` validation level, logging and ignoring

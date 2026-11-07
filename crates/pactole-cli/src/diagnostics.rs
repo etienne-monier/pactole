@@ -1,4 +1,4 @@
-use pactole_storage_fs::{Diagnostic, DiagnosticSeverity};
+use pactole_storage_fs::{ConfigDiagnostic, Diagnostic, DiagnosticSeverity};
 
 use pactole_app::{Diagnostic as ApplicationDiagnostic, DiagnosticSeverity as ApplicationSeverity};
 
@@ -15,6 +15,26 @@ pub(crate) fn print(diagnostics: &[Diagnostic]) {
             diagnostic.path.display(),
             diagnostic.span.start.row + 1,
             diagnostic.span.start.column + 1,
+            diagnostic.message,
+        );
+    }
+}
+
+/// Prints configuration diagnostics in the CLI's text format.
+///
+/// A `pactole.toml` value has no source span, so the TOML key path takes the
+/// place of the `line:column` position used for journal diagnostics.
+pub(crate) fn print_config(diagnostics: &[ConfigDiagnostic]) {
+    for diagnostic in diagnostics {
+        let severity = match diagnostic.severity {
+            DiagnosticSeverity::Error => "error",
+            DiagnosticSeverity::Warning => "warning",
+        };
+        let code = format!(" [{}]", diagnostic.code);
+        eprintln!(
+            "{}: {severity}:{code} {}: {}",
+            diagnostic.path.display(),
+            diagnostic.key_path,
             diagnostic.message,
         );
     }

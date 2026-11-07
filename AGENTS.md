@@ -120,10 +120,10 @@ pactole/
       project analysis as the CLI and LSP. The canonical formatter stays in
       `pactole-storage-fs` for now; it is not moved or duplicated into
       `pactole-syntax`.
-    - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `EntrySpans`,
+     - **`analysis.rs`** (public API: `analyze_file`, `ParsedFile`, `ParsedEntry`, `EntrySpans`,
       `PostingSpans`, `ParsedInclude`, `ParsedTagDirective`, `TagDirectiveKind`,
       `LoweringDiagnostic`, `Diagnostic`, `DiagnosticSeverity`,
-      `DiagnosticSource`, `PartialAnalysis`, `FileLoss`): a positioned, directive-by-directive analysis for tooling (editors, a
+       `DiagnosticSource`, `PartialAnalysis`, `FileLoss`, `AnalyzedProject::source_order_journal`): a positioned, directive-by-directive analysis for tooling (editors, a
      future `pactole-lsp`) that needs spans and per-directive diagnostics instead of an
      all-or-nothing `Journal`. Every `Diagnostic` carries a typed `code: DiagnosticCode`
      (re-exported by this crate from `pactole-core`); syntax, lowering, include, analysis and business
@@ -155,6 +155,9 @@ pactole/
       - No `Span`/tree-sitter type leaks into `pactole-core`: `ParsedEntry`/`ParsedInclude`/
        `LoweringDiagnostic` live in `pactole-storage-fs` and only wrap `pactole_syntax::Span`
        around existing `pactole-core` types.
+     - **`config_check.rs`** (public API: `ConfigDiagnostic`, `check_config_references`): cross-checks
+       resolved `pactole.toml` account, payee, commodity and account-root references against
+       journal declarations, honoring `[validation] config` and partial-analysis uncertainty.
      - **`loader.rs`** (public API: `SourceLoader`, `SourceLoadError`, `FsSourceLoader`,
        `InMemorySourceLoader`) and **multi-file analysis** (public API:
        `analyze_file_with_loader`, `AnalyzedProject`, `AnalyzedFile`, in
@@ -508,8 +511,10 @@ pactole/
        defined here and re-exported by `pactole-import`.
    - **Public API**: `Config` (resolved), `Config::resolve(&[Source], &Overrides)` (pure, no I/O),
      `Config::load(explicit, project, &Overrides)` (I/O), `ConfigError`, `Overrides`, `Source`,
-     `ValidationLevel`/`ValidationOptions`, `FormatOptions`, `DeclarationOptions`,
-      `ReportOptions`, `ImportConfig`/`Rule`/`Direction`/`ImportDateField`, `config_dir()`, `default_config_path()`.
+      `ValidationLevel`/`ValidationOptions`, `FormatOptions`, `DeclarationOptions`,
+       `ReportOptions`, `ImportConfig`/`Rule`/`Direction`/`ImportDateField`,
+       `ConfigReference`/`ConfigKeyPath`/`ConfigPathSegment`/`ConfigReferenceKind`,
+       `Config::references()`, `config_dir()`, `default_config_path()`.
 
 ### Planned Crates (not yet created)
 

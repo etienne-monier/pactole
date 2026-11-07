@@ -61,6 +61,8 @@ mod format;
 mod import;
 /// Raw, unmerged TOML structures.
 mod raw;
+/// Journal references made by the resolved configuration.
+mod reference;
 /// Report classification resolution.
 mod reports;
 /// Validation-level resolution.
@@ -69,10 +71,14 @@ mod validation;
 use std::path::{Path, PathBuf};
 
 use crate::raw::{RawDirection, RawFile, RawRule};
+use crate::reference::Origins;
 
 pub use crate::declaration::DeclarationOptions;
 pub use crate::format::FormatOptions;
 pub use crate::import::{Direction, ImportConfig, ImportDateField, Rule};
+pub use crate::reference::{
+    ConfigKeyPath, ConfigPathSegment, ConfigReference, ConfigReferenceKind,
+};
 pub use crate::reports::ReportOptions;
 pub use crate::validation::{ValidationLevel, ValidationOptions};
 
@@ -127,10 +133,13 @@ pub struct Overrides {
     /// Overrides the `unused` validation level (LSP `initializationOptions`).
     /// `None` leaves the file layers untouched.
     pub unused: Option<ValidationLevel>,
+    /// Overrides the `config` validation level (LSP
+    /// `initializationOptions`). `None` leaves the file layers untouched.
+    pub config: Option<ValidationLevel>,
 }
 
 /// The fully resolved Pactole configuration.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Config {
     /// Validation strictness (the `[validation]` section).
     pub validation: ValidationOptions,
@@ -145,6 +154,10 @@ pub struct Config {
     /// Import settings (the `[import]` section), or `None` when no layer
     /// defines it — an import command then fails with a clear message.
     pub import: Option<ImportConfig>,
+    /// Journal declarations referenced by the resolved configuration, with
+    /// the configuration layer that supplied each value. Populated by
+    /// [`Config::resolve`]; see [`Config::references`].
+    references: Vec<ConfigReference>,
 }
 
 impl Config {
@@ -164,6 +177,7 @@ impl Config {
     pub fn resolve(layers: &[Source<'_>], overrides: &Overrides) -> Result<Self, ConfigError> {
         let mut merged = RawFile::default();
         let mut import_path: Option<&Path> = None;
+        let mut origins = Origins::default();
 
         for layer in layers {
             let raw: RawFile =
@@ -178,16 +192,31 @@ impl Config {
             if raw.import.is_some() {
                 import_path = Some(layer.path);
             }
+            origins.record(&raw, layer.path);
             merged.merge(raw);
         }
 
-        Ok(Config {
+        let mut config = Config {
             validation: resolve_validation(&merged, overrides),
             declaration: resolve_declaration(&merged),
             format: resolve_format(&merged),
             reports: resolve_reports(&merged),
             import: resolve_import(&merged, import_path)?,
-        })
+            references: Vec::new(),
+        };
+        config.references = reference::collect(&config, &origins);
+        Ok(config)
+    }
+
+    /// Returns the journal declarations referenced by this configuration.
+    ///
+    /// Each reference names an account, a payee, a commodity or an account
+    /// root together with the TOML key it comes from and the configuration
+    /// layer that supplied the effective value. A front-end can cross-check
+    /// those names against an analyzed journal; `pactole-config` itself knows
+    /// nothing about journals.
+    pub fn references(&self) -> &[ConfigReference] {
+        &self.references
     }
 
     /// Resolves the configuration from disk.
@@ -293,6 +322,14 @@ fn validate_layer(raw: &RawFile, path: &Path) -> Result<(), ConfigError> {
         )));
     }
 
+    if let Some(value) = raw.validation.as_ref().and_then(|v| v.config.as_deref())
+        && ValidationLevel::parse(value).is_none()
+    {
+        return Err(invalid(format!(
+            "invalid validation level `{value}`: expected `off`, `warn` or `error`"
+        )));
+    }
+
     if let Some(posting_width) = raw.format.as_ref().and_then(|f| f.posting_width)
         && posting_width == 0
     {
@@ -317,13 +354,20 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
         .as_ref()
         .and_then(|v| v.unused.as_deref())
         .and_then(ValidationLevel::parse);
+    let config = merged
+        .validation
+        .as_ref()
+        .and_then(|v| v.config.as_deref())
+        .and_then(ValidationLevel::parse);
 
     // Each key falls back to the default of its own check (`payee` is an
-    // error, `unused` a warning) rather than to a single global default.
+    // error, `unused` and `config` are warnings) rather than to a single
+    // global default.
     let defaults = ValidationOptions::default();
     ValidationOptions {
         payee: overrides.payee.or(payee).unwrap_or(defaults.payee),
         unused: overrides.unused.or(unused).unwrap_or(defaults.unused),
+        config: overrides.config.or(config).unwrap_or(defaults.config),
     }
 }
 

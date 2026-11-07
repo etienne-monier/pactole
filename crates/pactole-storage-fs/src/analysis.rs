@@ -652,6 +652,21 @@ impl AnalyzedProject {
         Ok(self.source_order_journal())
     }
 
+    /// Returns the structurally recoverable journal in source order, even when
+    /// part of the project could not be analyzed.
+    ///
+    /// Unlike [`Self::journal`], this never fails: it holds the directives that
+    /// lowered successfully. It is meant for declaration-oriented checks (for
+    /// example the cross-check of `pactole.toml` references) that still make
+    /// sense on a partial project, provided their caller also accounts for
+    /// [`Self::partial`].
+    pub fn source_order_journal(&self) -> Journal {
+        let (entries, _) = source_order_entries(&self.files, &self.source_order, false);
+        Journal {
+            entries: entries.into_iter().map(|entry| entry.entry).collect(),
+        }
+    }
+
     /// Returns the chronologically validated journal, including inferred
     /// transaction amounts, or every diagnostic preventing validation.
     ///
@@ -730,14 +745,6 @@ impl AnalyzedProject {
         }
 
         diagnostics
-    }
-
-    /// Builds a journal from entries in flattened source order.
-    fn source_order_journal(&self) -> Journal {
-        let (entries, _) = source_order_entries(&self.files, &self.source_order, false);
-        Journal {
-            entries: entries.into_iter().map(|entry| entry.entry).collect(),
-        }
     }
 }
 
@@ -1713,6 +1720,7 @@ poptag #missing\n\
         let validation = ValidationOptions {
             payee: ValidationLevel::Warning,
             unused: ValidationLevel::Warning,
+            config: ValidationLevel::Warning,
         };
 
         let project = analyze_file_with_loader_with_options(
@@ -1739,6 +1747,7 @@ poptag #missing\n\
         let validation = ValidationOptions {
             payee: ValidationLevel::Off,
             unused: ValidationLevel::Warning,
+            config: ValidationLevel::Warning,
         };
 
         let project = analyze_file_with_loader_with_options(
@@ -1836,6 +1845,7 @@ poptag #missing\n\
         let project = unused_project(&ValidationOptions {
             payee: ValidationLevel::Error,
             unused: ValidationLevel::Off,
+            config: ValidationLevel::Warning,
         });
 
         assert!(
@@ -1853,6 +1863,7 @@ poptag #missing\n\
         let project = unused_project(&ValidationOptions {
             payee: ValidationLevel::Error,
             unused: ValidationLevel::Error,
+            config: ValidationLevel::Warning,
         });
 
         let diagnostic = project
@@ -1879,6 +1890,7 @@ poptag #missing\n\
             &ValidationOptions {
                 payee: ValidationLevel::Warning,
                 unused: ValidationLevel::Warning,
+                config: ValidationLevel::Warning,
             },
         )
         .unwrap();

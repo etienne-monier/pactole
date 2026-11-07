@@ -33,6 +33,9 @@ pub(crate) struct RawValidation {
     pub(crate) payee: Option<String>,
     /// Validation level for unused declarations.
     pub(crate) unused: Option<String>,
+    /// Validation level for configuration references that name a missing
+    /// journal declaration.
+    pub(crate) config: Option<String>,
 }
 
 /// The `[declaration]` section, unmerged.
@@ -167,6 +170,9 @@ impl RawFile {
             }
             if let Some(unused) = validation.unused {
                 target.unused = Some(unused);
+            }
+            if let Some(config) = validation.config {
+                target.config = Some(config);
             }
         }
 

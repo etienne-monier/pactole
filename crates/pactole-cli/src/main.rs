@@ -108,7 +108,7 @@ fn main() -> ExitCode {
         } => {
             let project_dir = parent_dir(&file);
             match config::load(explicit_config.as_deref(), project_dir.as_deref()) {
-                Ok(config) => check::run(file, strict, format, &config.validation),
+                Ok(config) => check::run(file, strict, format, &config),
                 Err(error) => config::failure(error),
             }
         }

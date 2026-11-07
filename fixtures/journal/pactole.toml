@@ -4,7 +4,6 @@
 
 [reports]
 assets = ["Actifs"]
-liabilities = ["Passif"]
 equity = ["Capitaux"]
 income = ["Revenus"]
 expenses = ["Depenses", "Impots"]

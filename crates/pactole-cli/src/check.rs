@@ -1,12 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use pactole_app::{
-    Diagnostic as ApplicationDiagnostic, DiagnosticSeverity as ApplicationSeverity,
-    DiagnosticsQuery,
+use pactole_config::Config;
+use pactole_storage_fs::{
+    ConfigDiagnostic, Diagnostic, DiagnosticSeverity, FsSourceLoader,
+    analyze_file_with_loader_with_options, check_config_references,
 };
-use pactole_config::ValidationOptions;
-use pactole_storage_fs::{Diagnostic, DiagnosticSeverity};
 
 use crate::commands::CheckFormatArg;
 
@@ -15,40 +14,32 @@ pub(crate) fn run(
     file: PathBuf,
     strict: bool,
     format: CheckFormatArg,
-    validation: &ValidationOptions,
+    config: &Config,
 ) -> ExitCode {
-    let result =
-        match crate::application::service(&file, validation).diagnostics(DiagnosticsQuery {
-            include_warnings: true,
-        }) {
-            Ok(result) => result,
-            Err(error) => {
-                return match format {
-                    CheckFormatArg::Text => failure(&file, error),
-                    CheckFormatArg::Json => {
-                        println!(
-                            "{}",
-                            serde_json::json!({
-                                "ok": false,
-                                "error": {
-                                    "file": file.display().to_string(),
-                                    "message": error.to_string(),
-                                },
-                                "diagnostics": [],
-                            })
-                        );
-                        ExitCode::FAILURE
-                    }
-                };
-            }
+    let project =
+        match analyze_file_with_loader_with_options(&file, &FsSourceLoader, &config.validation) {
+            Ok(project) => project,
+            Err(error) => return failure(format, &file, error),
         };
 
-    let diagnostics = result.diagnostics;
-    let failed = diagnostics.iter().any(ApplicationDiagnostic::is_error)
-        || (strict && diagnostics.iter().any(ApplicationDiagnostic::is_warning));
+    let diagnostics = project.diagnostics();
+    let missing = project
+        .partial()
+        .map(|partial| partial.missing.clone())
+        .unwrap_or_default();
+    let config_diagnostics =
+        check_config_references(config, &project.source_order_journal(), &missing);
+
+    let failed = diagnostics.iter().any(Diagnostic::is_error)
+        || config_diagnostics.iter().any(ConfigDiagnostic::is_error)
+        || (strict
+            && (diagnostics.iter().any(Diagnostic::is_warning)
+                || config_diagnostics.iter().any(ConfigDiagnostic::is_warning)));
+
     match format {
         CheckFormatArg::Text => {
-            crate::diagnostics::print_application(&diagnostics);
+            crate::diagnostics::print(&diagnostics);
+            crate::diagnostics::print_config(&config_diagnostics);
             if failed {
                 ExitCode::FAILURE
             } else {
@@ -57,14 +48,18 @@ pub(crate) fn run(
             }
         }
         CheckFormatArg::Json => {
+            let mut rendered = diagnostics
+                .iter()
+                .map(|diagnostic| {
+                    diagnostic_json_with_file(diagnostic, diagnostic.path.display().to_string())
+                })
+                .collect::<Vec<_>>();
+            rendered.extend(config_diagnostics.iter().map(config_diagnostic_json));
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "ok": !failed,
-                    "diagnostics": diagnostics
-                        .iter()
-                        .map(application_diagnostic_json)
-                        .collect::<Vec<_>>(),
+                    "diagnostics": rendered,
                 }))
                 .unwrap_or_else(|_| String::from("{\"ok\":false,\"diagnostics\":[]}"))
             );
@@ -104,45 +99,19 @@ pub(crate) fn diagnostic_json_with_file(
     })
 }
 
-/// Converts an application diagnostic to the check command's JSON shape.
-pub(crate) fn application_diagnostic_json(diagnostic: &ApplicationDiagnostic) -> serde_json::Value {
+/// Converts a configuration diagnostic to the check command's JSON shape.
+///
+/// A configuration value has no source span: it is located by its TOML key
+/// path instead, so `range` is `null` and `keyPath` carries the position.
+pub(crate) fn config_diagnostic_json(diagnostic: &ConfigDiagnostic) -> serde_json::Value {
     let severity = match diagnostic.severity {
-        ApplicationSeverity::Error => "error",
-        ApplicationSeverity::Warning => "warning",
-    };
-    let (file, range) = match (&diagnostic.source, diagnostic.span) {
-        (Some(source), Some(span)) => (
-            source.0.clone(),
-            serde_json::json!({
-                "start": {
-                    "line": span.start.line + 1,
-                    "column": span.start.column + 1,
-                },
-                "end": {
-                    "line": span.end.line + 1,
-                    "column": span.end.column + 1,
-                },
-            }),
-        ),
-        (Some(source), None) => (source.0.clone(), serde_json::Value::Null),
-        (None, Some(span)) => (
-            String::from("<ledger>"),
-            serde_json::json!({
-                "start": {
-                    "line": span.start.line + 1,
-                    "column": span.start.column + 1,
-                },
-                "end": {
-                    "line": span.end.line + 1,
-                    "column": span.end.column + 1,
-                },
-            }),
-        ),
-        (None, None) => (String::from("<ledger>"), serde_json::Value::Null),
+        DiagnosticSeverity::Error => "error",
+        DiagnosticSeverity::Warning => "warning",
     };
     serde_json::json!({
-        "file": file,
-        "range": range,
+        "file": diagnostic.path.display().to_string(),
+        "range": serde_json::Value::Null,
+        "keyPath": diagnostic.key_path.to_string(),
         "severity": severity,
         "code": diagnostic.code.to_string(),
         "message": diagnostic.message,
@@ -150,7 +119,25 @@ pub(crate) fn application_diagnostic_json(diagnostic: &ApplicationDiagnostic) ->
 }
 
 /// Prints a check error and returns the failure exit code.
-fn failure(file: &Path, error: impl std::fmt::Display) -> ExitCode {
-    eprintln!("{}: error: {error}", file.display());
-    ExitCode::FAILURE
+fn failure(format: CheckFormatArg, file: &Path, error: impl std::fmt::Display) -> ExitCode {
+    match format {
+        CheckFormatArg::Text => {
+            eprintln!("{}: error: {error}", file.display());
+            ExitCode::FAILURE
+        }
+        CheckFormatArg::Json => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "ok": false,
+                    "error": {
+                        "file": file.display().to_string(),
+                        "message": error.to_string(),
+                    },
+                    "diagnostics": [],
+                })
+            );
+            ExitCode::FAILURE
+        }
+    }
 }

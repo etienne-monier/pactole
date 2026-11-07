@@ -48,6 +48,11 @@ pub struct ValidationOptions {
     /// or balance assertion, a commodity declared but never used by any
     /// amount, a payee declared but never used by any transaction.
     pub unused: ValidationLevel,
+    /// Severity of a `pactole.toml` value that references a journal
+    /// declaration which does not exist (the `config` key): an account that
+    /// is not opened, a payee or commodity that is not declared, or an account
+    /// root that no opened account uses.
+    pub config: ValidationLevel,
 }
 
 impl Default for ValidationOptions {
@@ -55,10 +60,15 @@ impl Default for ValidationOptions {
     /// undeclared-payee check is a correctness rule that has always blocked
     /// `pactole check`, whereas unused declarations are only reported for
     /// cleanup, so they never block unless explicitly raised to `error`.
+    ///
+    /// A configuration reference is also a warning by default: a global
+    /// `pactole.toml` may legitimately be shared by several journals, so a
+    /// name it references is not necessarily an error in every project.
     fn default() -> Self {
         Self {
             payee: ValidationLevel::Error,
             unused: ValidationLevel::Warning,
+            config: ValidationLevel::Warning,
         }
     }
 }

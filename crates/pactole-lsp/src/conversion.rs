@@ -53,6 +53,29 @@ fn line_start_byte_offset(source: &str, line: usize) -> usize {
         .unwrap_or(source.len())
 }
 
+/// Converts a byte range within `source` into an LSP [`lsp_types::Range`],
+/// translating both ends to UTF-16 positions.
+///
+/// This is the entry point for non-tree-sitter positions (for example a TOML
+/// value located by `toml_edit`), which only know byte offsets.
+pub fn byte_range_to_range(source: &str, range: std::ops::Range<usize>) -> lsp_types::Range {
+    lsp_types::Range {
+        start: byte_offset_to_position(source, range.start),
+        end: byte_offset_to_position(source, range.end),
+    }
+}
+
+/// Converts a byte offset within `source` into an LSP [`lsp_types::Position`].
+fn byte_offset_to_position(source: &str, byte_offset: usize) -> lsp_types::Position {
+    let byte_offset = byte_offset.min(source.len());
+    let line = source[..byte_offset]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count();
+    let line_start = line_start_byte_offset(source, line);
+    byte_offset_to_utf16_position(source, line, byte_offset - line_start)
+}
+
 /// Converts a [`Point`] into an LSP [`lsp_types::Position`], using `source`
 /// to translate the byte-offset column into a UTF-16 character offset.
 pub fn point_to_position(source: &str, point: &Point) -> lsp_types::Position {
