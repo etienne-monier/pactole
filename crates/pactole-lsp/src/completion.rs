@@ -102,6 +102,12 @@ enum CompletionContext {
 /// Indexes symbols declared or used by one parsed file.
 fn build_index_from_file(file: &ParsedFile) -> SymbolIndex {
     let mut index = SymbolIndex::default();
+    // `pushtag` and `poptag` are source-level directives and therefore are
+    // not represented by `Entry` values. Include their tags so completion
+    // works even when a tag has not yet been used on a transaction.
+    for directive in file.tag_directives() {
+        index.tags.insert(directive.tag.clone());
+    }
     for entry in file.entries() {
         match &entry.entry {
             Entry::Payee(p) => {
@@ -885,6 +891,20 @@ mod tests {
         );
         assert!(keywords.iter().any(|item| item.label == "pushtag"));
         assert!(keywords.iter().any(|item| item.label == "poptag"));
+    }
+
+    #[test]
+    fn tags_from_tag_directives_are_available_for_completion() {
+        let file = pactole_storage_fs::analyze_file(
+            "pushtag #year\n\
+             poptag #quarter\n",
+        );
+        let index = build_index_from_file(&file);
+        let context = context_at("pushtag #", 9, &Position::new(0, 9));
+        let items = completions_for_context(&context, &index, None);
+
+        assert!(items.iter().any(|item| item.label == "year"));
+        assert!(items.iter().any(|item| item.label == "quarter"));
     }
 
     #[test]
