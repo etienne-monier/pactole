@@ -141,6 +141,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   direct prices while retaining unconverted amounts. Commodity kinds and lot
   cost-basis tracking remain out of scope.
 
+### Fixed
+
+- **Editor include-path completion:** the language server no longer keeps the
+  typed path or duplicates the closing quote when completing an `include`
+  path. It proposes subdirectories with a trailing `/`, follows a typed
+  directory prefix, and never offers the current document as its own include.
+
 ## [0.4.0] - 2026-10-25
 
 ### Added

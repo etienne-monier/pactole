@@ -120,6 +120,9 @@ and generic editor configuration examples, including the external formatter.
 - offers the current date as a completion at the beginning of a directive;
   selecting it inserts the date in `YYYY-MM-DD` format and replaces a partial
   date such as `2026-`;
+- completes `include` paths from the including file's directory: `.pactole`
+  files and subdirectories (a trailing `/` lists the next level), without
+  offering the current file as an include of itself;
 - offers a quick fix to insert the date of the day on an undated `open`,
   `close`, `commodity`, `balance` or transaction directive;
 - offers a quick fix to declare a missing payee, account or commodity, either

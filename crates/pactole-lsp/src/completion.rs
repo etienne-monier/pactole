@@ -1,7 +1,7 @@
 //! Completion logic for `.pactole` files.
 
-use std::collections::{BTreeSet, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::BTreeSet;
+use std::path::Path;
 use std::time::Instant;
 
 use lsp_types::{
@@ -11,7 +11,7 @@ use lsp_types::{
 
 use chrono::Local;
 use pactole_core::Entry;
-use pactole_storage_fs::{AnalyzedProject, ParsedFile};
+use pactole_storage_fs::{AnalyzedProject, ParsedFile, normalize_lexically};
 
 use crate::config::Config;
 use crate::conversion::position_to_offset;
@@ -47,6 +47,11 @@ enum CompletionContext {
     IncludePath {
         /// Text already typed by the user.
         prefix: String,
+        /// Whether the opening quote is already present in the document.
+        has_opening_quote: bool,
+        /// UTF-16 code units between the cursor and the closing quote on the
+        /// same line, when the document already has one.
+        closing_quote_gap: Option<u32>,
     },
     /// Completing a transaction payee.
     Payee {
@@ -219,7 +224,16 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
         let before_quote = &line_text[..quote_idx];
         if before_quote.trim_end().ends_with("include") {
             let prefix = line_text[quote_idx + 1..].to_string();
-            return CompletionContext::IncludePath { prefix };
+            let closing_quote_gap = rest
+                .split_once('\n')
+                .map_or(rest, |(line, _)| line)
+                .find('"')
+                .and_then(|index| u32::try_from(rest[..index].encode_utf16().count()).ok());
+            return CompletionContext::IncludePath {
+                prefix,
+                has_opening_quote: true,
+                closing_quote_gap,
+            };
         }
         if before_quote.trim_end().ends_with("payee")
             || (before_quote.matches('"').count() == 0
@@ -397,9 +411,25 @@ fn context_at(text: &str, offset: usize, position: &Position) -> CompletionConte
             prefix: String::new(),
             has_closing_quote: line_text.matches('"').count() >= 2,
         },
-        "include" => CompletionContext::IncludePath {
-            prefix: String::new(),
-        },
+        "include" => {
+            if words.len() == keyword_index + 1 && !trailing_whitespace {
+                // Still typing the keyword itself; do not offer a path yet.
+                return CompletionContext::DirectiveKeyword { date_range: None };
+            }
+            if line_text.contains('"') {
+                // A complete quoted path is already present and the cursor is
+                // past its closing quote: inserting another one would corrupt
+                // the directive.
+                return CompletionContext::Unknown;
+            }
+            CompletionContext::IncludePath {
+                prefix: words
+                    .get(keyword_index + 1..)
+                    .map_or_else(String::new, |tail| tail.join(" ")),
+                has_opening_quote: false,
+                closing_quote_gap: None,
+            }
+        }
         "pushtag" | "poptag" => CompletionContext::Tag {
             prefix: words
                 .get(keyword_index + 1)
@@ -458,41 +488,63 @@ fn completions_for_context_with_range(
                 });
             }
         }
-        CompletionContext::IncludePath { prefix } => {
+        CompletionContext::IncludePath {
+            prefix,
+            has_opening_quote,
+            closing_quote_gap,
+        } => {
             if let Some(dir) = current_doc_path.and_then(|p| p.parent()) {
-                let mut seen: HashSet<PathBuf> = HashSet::new();
-                if let Ok(entries) = dir.read_dir() {
+                let (dir_part, file_prefix) = split_include_prefix(prefix);
+                let mut candidates: Vec<(String, bool)> = Vec::new();
+                if let Ok(entries) = dir.join(&dir_part).read_dir() {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if path.is_file() {
-                            if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                                && ext == "pactole"
-                                && let Some(name) = path.file_name().and_then(|n| n.to_str())
-                                && name.starts_with(prefix)
-                            {
-                                seen.insert(path.clone());
+                        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                            continue;
+                        };
+                        if !name.starts_with(file_prefix) {
+                            continue;
+                        }
+                        if path.is_dir() {
+                            candidates.push((format!("{dir_part}{name}/"), true));
+                        } else if path.extension().and_then(|e| e.to_str()) == Some("pactole") {
+                            // Including the current document would create a
+                            // self-include, which analysis reports as a cycle.
+                            if current_doc_path.is_some_and(|current| {
+                                normalize_lexically(&path) == normalize_lexically(current)
+                            }) {
+                                continue;
                             }
-                        } else if path.is_dir() {
-                            // skip
+                            candidates.push((format!("{dir_part}{name}"), false));
                         }
                     }
                 }
-                for p in seen {
-                    if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                        items.push(CompletionItem {
-                            label: format!("\"{}\"", name),
-                            kind: Some(CompletionItemKind::FILE),
-                            text_edit: replacement_range.map(|range| {
-                                CompletionTextEdit::Edit(TextEdit {
-                                    range,
-                                    new_text: format!("{}\"", name),
-                                })
-                            }),
-                            insert_text: replacement_range.is_none().then(|| format!("{}\"", name)),
-                            insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
-                            ..Default::default()
-                        });
-                    }
+                candidates.sort();
+                candidates.dedup();
+                for (relative, is_dir) in candidates {
+                    let new_text = include_replacement(
+                        &relative,
+                        is_dir,
+                        *has_opening_quote,
+                        closing_quote_gap.is_some(),
+                    );
+                    items.push(CompletionItem {
+                        label: relative,
+                        kind: Some(if is_dir {
+                            CompletionItemKind::FOLDER
+                        } else {
+                            CompletionItemKind::FILE
+                        }),
+                        text_edit: replacement_range.map(|range| {
+                            CompletionTextEdit::Edit(TextEdit {
+                                range,
+                                new_text: new_text.clone(),
+                            })
+                        }),
+                        insert_text: replacement_range.is_none().then_some(new_text),
+                        insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -640,7 +692,7 @@ fn completions_for_context_with_range(
 
 /// Computes the range occupied by the currently typed completion prefix.
 fn replacement_range(ctx: &CompletionContext, position: &Position) -> Option<Range> {
-    let prefix = match ctx {
+    let (prefix, trailing) = match ctx {
         CompletionContext::Account { prefix }
         | CompletionContext::PostingAccount { prefix }
         | CompletionContext::Commodity { prefix }
@@ -648,8 +700,12 @@ fn replacement_range(ctx: &CompletionContext, position: &Position) -> Option<Ran
         | CompletionContext::PriceQuote { prefix }
         | CompletionContext::Tag { prefix }
         | CompletionContext::Link { prefix }
-        | CompletionContext::IncludePath { prefix }
-        | CompletionContext::Payee { prefix, .. } => prefix,
+        | CompletionContext::Payee { prefix, .. } => (prefix, 0),
+        CompletionContext::IncludePath {
+            prefix,
+            closing_quote_gap,
+            ..
+        } => (prefix, closing_quote_gap.unwrap_or(0)),
         _ => return None,
     };
 
@@ -659,8 +715,39 @@ fn replacement_range(ctx: &CompletionContext, position: &Position) -> Option<Ran
             position.line,
             position.character.saturating_sub(prefix_width),
         ),
-        *position,
+        Position::new(position.line, position.character.saturating_add(trailing)),
     ))
+}
+
+/// Splits an include-path completion prefix into the directory part, kept
+/// with its trailing separator, and the file-name part.
+fn split_include_prefix(prefix: &str) -> (String, &str) {
+    match prefix.rfind(['/', '\\']) {
+        Some(index) => (prefix[..index + 1].replace('\\', "/"), &prefix[index + 1..]),
+        None => (String::new(), prefix),
+    }
+}
+
+/// Builds the text inserted when an include-path completion is accepted.
+///
+/// Only the quotes the document is missing are added. A directory keeps its
+/// path open (no closing quote) so the next completion level can list its
+/// contents.
+fn include_replacement(
+    relative: &str,
+    is_dir: bool,
+    has_opening_quote: bool,
+    has_closing_quote: bool,
+) -> String {
+    let mut text = String::new();
+    if !has_opening_quote {
+        text.push('"');
+    }
+    text.push_str(relative);
+    if !is_dir && !has_closing_quote {
+        text.push('"');
+    }
+    text
 }
 
 /// Returns whether a completion value has a valid numeric shape.
@@ -1085,5 +1172,174 @@ mod tests {
                 }
             );
         }
+    }
+
+    /// Creates a clean temporary directory for include-path completion tests.
+    fn include_test_dir(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "pactole-completion-include-test-{}-{label}",
+            std::process::id()
+        ));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Computes include completions for an ASCII `source` at a byte/UTF-16
+    /// `cursor` offset, using `dir` as the current document's directory.
+    fn include_items(source: &str, cursor: usize, dir: &Path) -> Vec<CompletionItem> {
+        let position = Position::new(0, cursor as u32);
+        let context = context_at(source, cursor, &position);
+        completions_for_context_with_range(
+            &context,
+            &SymbolIndex::default(),
+            Some(&dir.join("main.pactole")),
+            replacement_range(&context, &position),
+        )
+    }
+
+    /// Returns the text edit of the include completion `label`.
+    fn include_edit(items: &[CompletionItem], label: &str) -> TextEdit {
+        let item = items
+            .iter()
+            .find(|item| item.label == label)
+            .unwrap_or_else(|| panic!("missing completion item {label}"));
+        match &item.text_edit {
+            Some(CompletionTextEdit::Edit(edit)) => edit.clone(),
+            _ => panic!("completion item {label} has no plain text edit"),
+        }
+    }
+
+    #[test]
+    fn include_completion_keeps_an_existing_closing_quote() {
+        let dir = include_test_dir("closing-quote");
+        std::fs::write(dir.join("fixtures.pactole"), "").unwrap();
+
+        // The editor auto-inserted the closing quote; the cursor sits before it.
+        let source = "include \"fi\"";
+        let items = include_items(source, source.len() - 1, &dir);
+        let edit = include_edit(&items, "fixtures.pactole");
+
+        assert_eq!(
+            edit.range,
+            Range::new(Position::new(0, 9), Position::new(0, 11))
+        );
+        assert_eq!(edit.new_text, "fixtures.pactole");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn include_completion_closes_a_missing_quote() {
+        let dir = include_test_dir("missing-closing-quote");
+        std::fs::write(dir.join("fixtures.pactole"), "").unwrap();
+
+        let source = "include \"fi";
+        let items = include_items(source, source.len(), &dir);
+        let edit = include_edit(&items, "fixtures.pactole");
+
+        assert_eq!(
+            edit.range,
+            Range::new(Position::new(0, 9), Position::new(0, 11))
+        );
+        assert_eq!(edit.new_text, "fixtures.pactole\"");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn include_completion_adds_the_quotes_that_are_missing() {
+        let dir = include_test_dir("missing-quotes");
+        std::fs::write(dir.join("fixtures.pactole"), "").unwrap();
+
+        // Nothing typed after the keyword: both quotes are inserted.
+        let items = include_items("include ", "include ".len(), &dir);
+        let edit = include_edit(&items, "fixtures.pactole");
+        assert_eq!(
+            edit.range,
+            Range::new(Position::new(0, 8), Position::new(0, 8))
+        );
+        assert_eq!(edit.new_text, "\"fixtures.pactole\"");
+
+        // An unquoted prefix is replaced and wrapped in quotes.
+        let items = include_items("include fi", "include fi".len(), &dir);
+        let edit = include_edit(&items, "fixtures.pactole");
+        assert_eq!(
+            edit.range,
+            Range::new(Position::new(0, 8), Position::new(0, 10))
+        );
+        assert_eq!(edit.new_text, "\"fixtures.pactole\"");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn include_completion_replaces_the_whole_path_from_the_middle() {
+        let dir = include_test_dir("middle");
+        std::fs::write(dir.join("fixtures.pactole"), "").unwrap();
+
+        let source = "include \"fixtures.pactole\"";
+        // Cursor is right after `fix`.
+        let items = include_items(source, "include \"fix".len(), &dir);
+        let edit = include_edit(&items, "fixtures.pactole");
+
+        assert_eq!(
+            edit.range,
+            Range::new(Position::new(0, 9), Position::new(0, 25))
+        );
+        assert_eq!(edit.new_text, "fixtures.pactole");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn include_completion_after_a_complete_path_is_unknown() {
+        let source = "include \"fixtures.pactole\"";
+        let position = Position::new(0, source.len() as u32);
+
+        assert_eq!(
+            context_at(source, source.len(), &position),
+            CompletionContext::Unknown
+        );
+    }
+
+    #[test]
+    fn include_keyword_without_a_trailing_space_offers_keywords() {
+        let source = "include";
+        let position = Position::new(0, source.len() as u32);
+
+        assert_eq!(
+            context_at(source, source.len(), &position),
+            CompletionContext::DirectiveKeyword { date_range: None }
+        );
+    }
+
+    #[test]
+    fn include_completion_lists_subdirectories_and_skips_the_current_document() {
+        let dir = include_test_dir("subdirectories");
+        std::fs::write(dir.join("main.pactole"), "").unwrap();
+        std::fs::write(dir.join("other.pactole"), "").unwrap();
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub/nested.pactole"), "").unwrap();
+
+        let source = "include \"";
+        let items = include_items(source, source.len(), &dir);
+        assert!(items.iter().any(|item| item.label == "other.pactole"));
+        assert!(!items.iter().any(|item| item.label == "main.pactole"));
+
+        let items = include_items("include \"su", "include \"su".len(), &dir);
+        let folder = items
+            .iter()
+            .find(|item| item.label == "sub/")
+            .expect("directory completion");
+        assert_eq!(folder.kind, Some(CompletionItemKind::FOLDER));
+        let edit = include_edit(&items, "sub/");
+        assert_eq!(edit.new_text, "sub/");
+
+        let items = include_items("include \"sub/", "include \"sub/".len(), &dir);
+        let edit = include_edit(&items, "sub/nested.pactole");
+        assert_eq!(edit.new_text, "sub/nested.pactole\"");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
