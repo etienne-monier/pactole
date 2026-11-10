@@ -12,7 +12,7 @@ const { locale } = useI18n()
 const parts = computed(() =>
   props.amounts.map((amount) => ({
     commodity: amount.commodity,
-    text: formatDecimal(amount.number, locale.value),
+    text: formatDecimal(amount.number, locale.value, amount.commodity),
   })),
 )
 </script>

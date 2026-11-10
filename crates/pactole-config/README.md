@@ -37,6 +37,11 @@ accounts = "accounts.pactole"
 
 [format]
 posting_width = 50
+default_decimal_places = 2
+
+[format.currencies]
+EUR = 2
+JPY = 0
 
 [import]
 bank_account = "Assets:Checking"
@@ -69,6 +74,9 @@ payee = "Supermarket"
   journal's directory. See the `pactole-lsp` README.
 - `[format] posting_width` is the column at which posting amounts are
   aligned (default 50).
+- `[format] default_decimal_places` is the minimum number of decimal places
+  printed for amounts (default 2). `[format.currencies]` overrides it per
+  commodity, without rounding away existing precision.
 - `[import]` holds the OFX import settings used by `pactole import-ofx`. It
   is `None` when no layer defines the section; an incomplete section is an
   error.

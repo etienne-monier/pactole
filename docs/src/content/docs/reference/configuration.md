@@ -113,10 +113,17 @@ The options of the canonical formatter.
 | Key | Default | Meaning |
 |---|---|---|
 | `posting_width` | `50` | The column at which posting amounts are aligned. |
+| `default_decimal_places` | `2` | Minimum number of decimal places printed for amounts. |
+| `[format.currencies]` | `{}` | Per-commodity decimal-place overrides. |
 
 ```toml
 [format]
 posting_width = 60
+default_decimal_places = 2
+
+[format.currencies]
+EUR = 2
+JPY = 0
 ```
 
 See [Format a ledger](/how-to/format-a-ledger/).

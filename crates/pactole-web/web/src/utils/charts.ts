@@ -6,6 +6,7 @@ import { chartNumber } from '@/i18n/format'
 /** One chart series. `exact` keeps the decimal strings used in tooltips. */
 export interface ChartSeries {
   name: string
+  commodity?: string
   values: (number | null)[]
   exact: string[]
 }
@@ -31,7 +32,7 @@ export interface HistoryPoint {
 
 /** Formatting options shared by the chart builders. */
 export interface ChartOptions {
-  format: (value: string) => string
+  format: (value: string, commodity?: string) => string
 }
 
 function amountFor(amounts: readonly Amount[], commodity: string): Amount | undefined {
@@ -60,6 +61,7 @@ export function rowsToChartData(
     categories: rows.map((row) => categoryLabel(row.label)),
     series: commodities.map((commodity) => ({
       name: commodity,
+      commodity,
       values: rows.map((row) => {
         const amount = amountFor(row.amounts, commodity)
         return amount ? chartNumber(amount.number) : null
@@ -143,8 +145,9 @@ export function historyChartData(
       }
     }
     for (const commodity of commodities) {
-      series.push({
-        name: `${title} · ${commodity}`,
+        series.push({
+          name: `${title} · ${commodity}`,
+          commodity,
         values: points.map((point) => {
           const section = point.report.sections.find(
             (candidate) => sectionLabel(candidate.title ?? point.report.title) === title,
@@ -207,6 +210,7 @@ export function comparisonChartData(
     ] as const) {
       series.push({
         name: `${label} · ${commodity}`,
+        commodity,
         values: categories.map((category) => {
           const value = values.get(category)?.get(commodity)
           return value ? chartNumber(value[period]) : null
@@ -243,7 +247,7 @@ interface TooltipItem {
   name?: string
   seriesName?: string
   marker?: string
-  data?: { value?: number | null; exact?: string }
+  data?: { value?: number | null; exact?: string; commodity?: string }
 }
 
 function tooltipFormatter(options: ChartOptions, tooltipCategories?: readonly string[]) {
@@ -255,10 +259,10 @@ function tooltipFormatter(options: ChartOptions, tooltipCategories?: readonly st
       const exact = item.data?.exact
       const rendered =
         exact !== undefined && exact !== ''
-          ? options.format(exact)
+          ? options.format(exact, item.data?.commodity)
           : item.data?.value === null || item.data?.value === undefined
             ? '—'
-            : options.format(String(item.data.value))
+            : options.format(String(item.data.value), item.data?.commodity)
       return `${item.marker ?? ''}${escapeHtml(item.seriesName ?? '')}: ${escapeHtml(rendered)}`
     })
     return [escapeHtml(title), ...lines].join('<br/>')
@@ -277,11 +281,13 @@ function categoryAxis(data: ChartData) {
   }
 }
 
-function valueAxis(options: ChartOptions) {
+function valueAxis(data: ChartData, options: ChartOptions) {
+  const commodities = [...new Set(data.series.map((series) => series.commodity).filter(Boolean))]
+  const commodity = commodities.length === 1 ? commodities[0] : undefined
   return {
     type: 'value' as const,
     axisLabel: {
-      formatter: (value: number) => options.format(String(value)),
+      formatter: (value: number) => options.format(String(value), commodity),
     },
   }
 }
@@ -309,7 +315,7 @@ export function buildBarOption(data: ChartData, options: ChartOptions): EChartsO
       formatter: tooltipFormatter(options, data.tooltipCategories),
     },
     xAxis: categoryAxis(data),
-    yAxis: valueAxis(options),
+    yAxis: valueAxis(data, options),
     series: data.series.map((series) => ({
       name: series.name,
       type: 'bar' as const,
@@ -317,6 +323,7 @@ export function buildBarOption(data: ChartData, options: ChartOptions): EChartsO
       data: series.values.map((value, index) => ({
         value,
         exact: series.exact[index] ?? '',
+        commodity: series.commodity,
       })),
     })),
   }
@@ -340,7 +347,7 @@ export function buildLineOption(data: ChartData, options: ChartOptions): ECharts
       formatter: tooltipFormatter(options, data.tooltipCategories),
     },
     xAxis: categoryAxis(data),
-    yAxis: valueAxis(options),
+    yAxis: valueAxis(data, options),
     series: data.series.map((series) => ({
       name: series.name,
       type: 'line' as const,
@@ -350,6 +357,7 @@ export function buildLineOption(data: ChartData, options: ChartOptions): ECharts
       data: series.values.map((value, index) => ({
         value,
         exact: series.exact[index] ?? '',
+        commodity: series.commodity,
       })),
     })),
   }

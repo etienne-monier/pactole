@@ -123,6 +123,8 @@ export interface Capabilities {
   write: boolean
   transactions: boolean
   budgets: boolean
+  decimal_places: Record<string, number>
+  default_decimal_places: number
 }
 
 /** Response envelope of the report endpoints. */

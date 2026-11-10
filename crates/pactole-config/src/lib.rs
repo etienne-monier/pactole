@@ -29,6 +29,10 @@
 //!
 //! [format]
 //! posting_width = 50
+//! default_decimal_places = 2
+//! [format.currencies]
+//! EUR = 2
+//! JPY = 0
 //!
 //! [reports]
 //! assets = ["Assets", "Actifs"]
@@ -383,6 +387,24 @@ fn validate_layer(raw: &RawFile, path: &Path) -> Result<(), ConfigError> {
         ));
     }
 
+    if let Some(default_decimal_places) = raw.format.as_ref().and_then(|f| f.default_decimal_places)
+        && default_decimal_places > 28
+    {
+        return Err(invalid(
+            "default_decimal_places must be at most 28".to_string(),
+        ));
+    }
+    if let Some(format) = &raw.format
+        && let Some((currency, decimal_places)) = format
+            .currencies
+            .iter()
+            .find(|(_, decimal_places)| **decimal_places > 28)
+    {
+        return Err(invalid(format!(
+            "decimal places for currency `{currency}` must be at most 28 (got {decimal_places})"
+        )));
+    }
+
     Ok(())
 }
 
@@ -464,6 +486,13 @@ fn resolve_format(merged: &RawFile) -> FormatOptions {
         && posting_width > 0
     {
         options.posting_width = posting_width;
+    }
+
+    if let Some(format) = &merged.format {
+        if let Some(default_decimal_places) = format.default_decimal_places {
+            options.default_decimal_places = default_decimal_places;
+        }
+        options.currency_decimal_places = format.currencies.clone();
     }
 
     options

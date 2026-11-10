@@ -13,7 +13,7 @@ describe('formatDecimal', () => {
   it('groups the integer part and preserves every decimal digit', () => {
     expect(formatDecimal('1234567.8900', 'en')).toBe('1,234,567.8900')
     expect(formatDecimal('0.50', 'en')).toBe('0.50')
-    expect(formatDecimal('-42', 'en')).toBe('-42')
+    expect(formatDecimal('-42', 'en')).toBe('-42.00')
   })
 
   it('uses the locale separators', () => {
@@ -29,7 +29,7 @@ describe('formatDecimal', () => {
 
   it('handles empty and signed values', () => {
     expect(formatDecimal('', 'en')).toBe('')
-    expect(formatDecimal('+12.5', 'en')).toBe('12.5')
+    expect(formatDecimal('+12.5', 'en')).toBe('12.50')
   })
 })
 

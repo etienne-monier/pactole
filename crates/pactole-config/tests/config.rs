@@ -30,6 +30,18 @@ fn empty_layers_yield_defaults() {
 }
 
 #[test]
+fn resolves_default_and_currency_decimal_places() {
+    let config =
+        resolve("[format]\ndefault_decimal_places = 3\n[format.currencies]\nEUR = 2\nJPY = 0\n")
+            .unwrap();
+
+    assert_eq!(config.format.default_decimal_places, 3);
+    assert_eq!(config.format.decimal_places("EUR"), 2);
+    assert_eq!(config.format.decimal_places("JPY"), 0);
+    assert_eq!(config.format.decimal_places("USD"), 3);
+}
+
+#[test]
 fn parses_declaration_files() {
     let config =
         resolve("[declaration]\npayees = \"payees.pactole\"\naccounts = \"accounts.pactole\"\n")

@@ -20,7 +20,7 @@ use pactole_app::{
     Application, ApplicationError, BackendError, BackendOperation, BalanceQuery, ComparisonRequest,
     Diagnostic, DiagnosticsQuery, ExpensesQuery, IncomeQuery, RegisterQuery, ValuationRequest,
 };
-use pactole_config::{ImportConfig, ReportOptions};
+use pactole_config::{FormatOptions, ImportConfig, ReportOptions};
 use pactole_core::{
     AccountClassification, AccountGrouping, AccountName, CommodityName, DiffDirection, DiffMode,
     ExpenseGrouping, ExpenseOptions, IncomeGrouping, Period, ReferenceDate, RegisterFilter,
@@ -51,6 +51,8 @@ pub struct ServerOptions {
     pub reports: ReportOptions,
     /// Import configuration used for the uncategorized expense fallback.
     pub import: Option<ImportConfig>,
+    /// Amount formatting options exposed to the frontend.
+    pub format: FormatOptions,
 }
 
 impl Default for ServerOptions {
@@ -61,6 +63,7 @@ impl Default for ServerOptions {
             source_root: None,
             reports: ReportOptions::default(),
             import: None,
+            format: FormatOptions::default(),
         }
     }
 }
@@ -215,6 +218,8 @@ where
             "write": capabilities.supports(pactole_app::Capability::Write),
             "transactions": capabilities.supports(pactole_app::Capability::Transactions),
             "budgets": capabilities.supports(pactole_app::Capability::Budgets),
+            "decimal_places": state.options.format.currency_decimal_places,
+            "default_decimal_places": state.options.format.default_decimal_places,
         }
     }))
 }

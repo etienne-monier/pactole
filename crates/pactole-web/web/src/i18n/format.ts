@@ -6,6 +6,14 @@ export interface DecimalSeparators {
 }
 
 const separatorCache = new Map<string, DecimalSeparators>()
+let defaultDecimalPlaces = 2
+let currencyDecimalPlaces: Record<string, number> = {}
+
+/** Sets the exact decimal display policy received from the backend. */
+export function setDecimalPlaces(defaultPlaces: number, currencies: Record<string, number>): void {
+  defaultDecimalPlaces = defaultPlaces
+  currencyDecimalPlaces = { ...currencies }
+}
 
 /**
  * Extracts the group, decimal and minus separators of a locale.
@@ -51,7 +59,12 @@ function groupDigits(digits: string, separator: string): string {
  * The decimal part is preserved verbatim: this function never rounds, never
  * parses the value as a `Number`, and never performs arithmetic.
  */
-export function formatDecimal(value: string, locale: string): string {
+export function formatDecimal(
+  value: string,
+  locale: string,
+  commodity?: string,
+  padMinimumPlaces = true,
+): string {
   const trimmed = value.trim()
   if (trimmed === '') {
     return ''
@@ -61,7 +74,18 @@ export function formatDecimal(value: string, locale: string): string {
   const unsigned = trimmed.startsWith('-') || trimmed.startsWith('+') ? trimmed.slice(1) : trimmed
   const [integerPart = '', fraction] = unsigned.split('.')
   const integer = groupDigits(integerPart === '' ? '0' : integerPart, separators.group)
-  const fractionPart = fraction === undefined ? '' : separators.decimal + fraction
+  const places = commodity === undefined
+    ? defaultDecimalPlaces
+    : currencyDecimalPlaces[commodity] ?? defaultDecimalPlaces
+  const paddedFraction = !padMinimumPlaces
+    ? fraction
+    : fraction === undefined
+      ? ''.padEnd(places, '0')
+      : fraction.padEnd(places, '0')
+  if (paddedFraction === undefined) {
+    return `${negative ? separators.minus : ''}${integer}`
+  }
+  const fractionPart = separators.decimal + paddedFraction
   return `${negative ? separators.minus : ''}${integer}${fractionPart}`
 }
 
@@ -69,9 +93,9 @@ export function formatDecimal(value: string, locale: string): string {
 export function formatPercent(value: string, locale: string): string {
   const trimmed = value.trim()
   if (!trimmed.endsWith('%')) {
-    return formatDecimal(trimmed, locale)
+    return formatDecimal(trimmed, locale, undefined, false)
   }
-  return `${formatDecimal(trimmed.slice(0, -1), locale)}%`
+  return `${formatDecimal(trimmed.slice(0, -1), locale, undefined, false)}%`
 }
 
 function parseIsoDate(value: string): Date | null {

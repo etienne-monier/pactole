@@ -68,6 +68,11 @@ pub(crate) struct RawDeclaration {
 pub(crate) struct RawFormat {
     /// Column at which posting amounts are aligned.
     pub(crate) posting_width: Option<usize>,
+    /// Default number of decimal places for amounts.
+    pub(crate) default_decimal_places: Option<u32>,
+    /// Currency-specific number of decimal places.
+    #[serde(default)]
+    pub(crate) currencies: BTreeMap<String, u32>,
 }
 
 /// The `[reports]` section, unmerged.
@@ -222,12 +227,15 @@ impl RawFile {
             }
         }
 
-        if let Some(format) = upper.format
-            && let Some(posting_width) = format.posting_width
-        {
-            self.format
-                .get_or_insert_with(RawFormat::default)
-                .posting_width = Some(posting_width);
+        if let Some(format) = upper.format {
+            let target = self.format.get_or_insert_with(RawFormat::default);
+            if let Some(posting_width) = format.posting_width {
+                target.posting_width = Some(posting_width);
+            }
+            if let Some(default_decimal_places) = format.default_decimal_places {
+                target.default_decimal_places = Some(default_decimal_places);
+            }
+            target.currencies.extend(format.currencies);
         }
 
         if let Some(reports) = upper.reports {

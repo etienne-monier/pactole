@@ -168,7 +168,7 @@ fn print_transaction(transaction: &Transaction, options: &FormatOptions, out: &m
         let mut line = String::new();
         line.push_str(posting.account.as_str());
         if let Some(amount) = &posting.amount {
-            let rendered_amount = format!("{} {}", amount.number, amount.commodity);
+            let rendered_amount = format_amount(amount.number, amount.commodity.as_str(), options);
             append_aligned_amount(
                 &mut line,
                 &rendered_amount,
@@ -176,7 +176,7 @@ fn print_transaction(transaction: &Transaction, options: &FormatOptions, out: &m
             );
         }
         if let Some(cost) = &posting.transaction_cost {
-            append_transaction_cost(&mut line, cost);
+            append_transaction_cost(&mut line, cost, options);
         }
         out.push_str("  ");
         out.push_str(&line);
@@ -226,6 +226,21 @@ fn append_aligned_amount(out: &mut String, amount: &str, posting_width: usize) {
         .max(1);
     out.extend(std::iter::repeat_n(' ', padding));
     out.push_str(amount);
+}
+
+/// Formats an amount with at least the configured number of decimal places.
+/// Existing precision is never discarded or rounded.
+fn format_amount(
+    number: rust_decimal::Decimal,
+    commodity: &str,
+    options: &FormatOptions,
+) -> String {
+    let places = options.decimal_places(commodity);
+    let mut number = number;
+    if number.scale() < places {
+        number.rescale(places);
+    }
+    format!("{number} {commodity}")
 }
 
 /// Whether `value` matches the grammar's `date` rule exactly
@@ -317,6 +332,12 @@ impl<'src> Printer<'src> {
     /// header), otherwise fall back to the node's raw source text
     /// unchanged.
     fn render(&self, node: Node<'_>) -> String {
+        if node.kind() == "amount" {
+            return self.render_amount(node);
+        }
+        if node.is_named() && matches!(node.kind(), "balance" | "price") {
+            return self.render_commodity_numbers(node);
+        }
         // Some directive keywords (`open`, `close`, `commodity`,
         // `balance`, `include`) share their literal token's text as the
         // node kind of their own header node (e.g. the anonymous `"open"`
@@ -331,6 +352,91 @@ impl<'src> Printer<'src> {
         } else {
             self.text(node).to_string()
         }
+    }
+
+    /// Renders a source amount while preserving precision beyond the configured
+    /// minimum and padding shorter values with zeroes.
+    fn render_amount(&self, node: Node<'_>) -> String {
+        let Some(number) = node.child_by_field_name("number") else {
+            let mut cursor = node.walk();
+            let mut children = node.named_children(&mut cursor);
+            let Some(number) = children.next() else {
+                return self.join_children(node);
+            };
+            let Some(commodity) = children.next() else {
+                return self.join_children(node);
+            };
+            return self.format_source_amount(self.text(number), self.text(commodity));
+        };
+        let Some(commodity) = node.child_by_field_name("commodity") else {
+            return self.join_children(node);
+        };
+        self.format_source_amount(self.text(number), self.text(commodity))
+    }
+
+    /// Formats a source amount with the configured commodity precision.
+    fn format_source_amount(&self, number: &str, commodity: &str) -> String {
+        format!(
+            "{} {commodity}",
+            self.format_source_number(number, commodity)
+        )
+    }
+
+    /// Formats a source number with the configured minimum precision.
+    fn format_source_number(&self, number: &str, commodity: &str) -> String {
+        let places = self.options.decimal_places(commodity) as usize;
+        let Some((integer, fraction)) = number.split_once('.') else {
+            return if places == 0 {
+                number.to_string()
+            } else {
+                format!("{number}.{}", "0".repeat(places))
+            };
+        };
+        if fraction.len() >= places {
+            return number.to_string();
+        }
+        format!(
+            "{integer}.{fraction}{}",
+            "0".repeat(places - fraction.len())
+        )
+    }
+
+    /// Renders a balance or price directive, applying the quote commodity's
+    /// precision to its monetary number(s).
+    fn render_commodity_numbers(&self, node: Node<'_>) -> String {
+        let commodity = match node.kind() {
+            "price" => node.child_by_field_name("quote"),
+            "balance" => {
+                let mut cursor = node.walk();
+                node.named_children(&mut cursor)
+                    .find(|child| child.kind() == "commodity_name")
+            }
+            _ => None,
+        };
+        let Some(commodity) = commodity else {
+            return self.join_children(node);
+        };
+        let commodity = self.text(commodity);
+        let mut cursor = node.walk();
+        let mut out = String::new();
+        let mut prev_glue_after = false;
+        for child in node.children(&mut cursor) {
+            let text = if child.is_named()
+                && ((node.kind() == "price" && child.kind() == "number")
+                    || (node.kind() == "balance" && matches!(child.kind(), "number" | "tolerance")))
+            {
+                self.format_source_number(self.text(child), commodity)
+            } else {
+                self.render(child)
+            };
+            let is_glue_token = !child.is_named() && (text == "=" || text == ":" || text == ",");
+            if !out.is_empty() && !prev_glue_after && !is_glue_token {
+                out.push(' ');
+            }
+            out.push_str(&text);
+            prev_glue_after = !child.is_named() && (text == "=" || text == ",");
+        }
+        out
     }
 
     /// Render a directive header, `property` or `amount` node onto a
@@ -385,7 +491,7 @@ impl<'src> Printer<'src> {
                 // is a fielded child of the header node and gets rendered
                 // inline by `join_children`.
                 _ => {
-                    out.push_str(&self.join_children(child));
+                    out.push_str(&self.render(child));
                     out.push('\n');
                 }
             }
@@ -493,21 +599,23 @@ impl<'src> Printer<'src> {
 }
 
 /// Appends a posting's transaction-cost annotation to a formatted line.
-fn append_transaction_cost(line: &mut String, cost: &pactole_core::TransactionCost) {
+fn append_transaction_cost(
+    line: &mut String,
+    cost: &pactole_core::TransactionCost,
+    options: &FormatOptions,
+) {
+    let rendered_amount =
+        format_amount(cost.amount.number, cost.amount.commodity.as_str(), options);
     line.push(' ');
     match cost.annotation {
         pactole_core::TransactionCostAnnotation::Unit => {
             line.push('@');
             line.push(' ');
-            line.push_str(&cost.amount.number.to_string());
-            line.push(' ');
-            line.push_str(cost.amount.commodity.as_str());
+            line.push_str(&rendered_amount);
         }
         pactole_core::TransactionCostAnnotation::Total => {
             line.push_str("@@ ");
-            line.push_str(&cost.amount.number.to_string());
-            line.push(' ');
-            line.push_str(cost.amount.commodity.as_str());
+            line.push_str(&rendered_amount);
         }
     }
 }
@@ -698,7 +806,14 @@ mod tests {
                        Expenses:Groceries 45.30 EUR\n  \
                        Assets:Checking -1.00 EUR\n";
 
-        let formatted = format_with_options(source, &FormatOptions { posting_width: 30 }).unwrap();
+        let formatted = format_with_options(
+            source,
+            &FormatOptions {
+                posting_width: 30,
+                ..FormatOptions::default()
+            },
+        )
+        .unwrap();
 
         assert_eq!(
             formatted,
@@ -783,13 +898,22 @@ mod tests {
     }
 
     #[test]
+    fn formats_amounts_to_the_configured_currency_precision() {
+        let source = "2026-09-03 * \"Shop\"\n  Assets:Checking  25 EUR\n\n2026-09-03 balance Assets:Checking 25 EUR\n";
+        let formatted = format(source).unwrap();
+
+        assert!(formatted.contains("25.00 EUR"));
+        assert!(formatted.contains("balance Assets:Checking 25.00 EUR"));
+    }
+
+    #[test]
     fn format_preserves_and_canonicalizes_transaction_cost_annotations() {
         let source = "2026-10-25 * \"Exchange\"\n  Assets:USD   -100 USD    @   0.93 EUR\n  Assets:EUR 93 EUR   @@ 93 EUR\n";
 
         let formatted = format(source).unwrap();
 
         assert!(formatted.contains("@ 0.93 EUR"));
-        assert!(formatted.contains("@@ 93 EUR"));
+        assert!(formatted.contains("@@ 93.00 EUR"));
         assert_eq!(format(&formatted).unwrap(), formatted);
     }
 
@@ -849,7 +973,7 @@ mod tests {
 
         let source = super::format_transactions(std::slice::from_ref(&transaction));
         assert!(source.contains("@ 0.93 EUR"));
-        assert!(source.contains("@@ 93 EUR"));
+        assert!(source.contains("@@ 93.00 EUR"));
 
         let parsed = crate::analyze_file(&source);
         assert!(parsed.syntax_diagnostics().is_empty());

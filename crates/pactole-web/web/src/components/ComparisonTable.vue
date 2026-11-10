@@ -12,11 +12,17 @@ const { t, locale } = useI18n()
 
 const percent = computed(() => props.comparison.mode === 'percent')
 
-function renderDifference(value: string | null): string {
+function renderAmount(value: string, commodity: string): string {
+  return formatDecimal(value, locale.value, commodity)
+}
+
+function renderDifference(value: string | null, commodity: string): string {
   if (value === null) {
     return '—'
   }
-  return percent.value ? formatPercent(value, locale.value) : formatDecimal(value, locale.value)
+  return percent.value
+    ? formatPercent(value, locale.value)
+    : formatDecimal(value, locale.value, commodity)
 }
 </script>
 
@@ -37,17 +43,17 @@ function renderDifference(value: string | null): string {
           <span v-if="line.section" class="section-label">{{ translateReportLabel(t, line.section) }} · </span>{{ line.label }}
         </td>
         <td>{{ line.commodity }}</td>
-        <td class="text-right">{{ formatDecimal(line.current, locale) }}</td>
-        <td class="text-right">{{ formatDecimal(line.previous, locale) }}</td>
-        <td class="text-right">{{ renderDifference(line.difference) }}</td>
+        <td class="text-right">{{ renderAmount(line.current, line.commodity) }}</td>
+        <td class="text-right">{{ renderAmount(line.previous, line.commodity) }}</td>
+        <td class="text-right">{{ renderDifference(line.difference, line.commodity) }}</td>
       </tr>
     </tbody>
     <tfoot v-if="comparison.totals.length > 0">
       <tr v-for="(total, index) in comparison.totals" :key="`total-${index}`" class="total-row">
         <td class="text-right" colspan="2">{{ t('common.total') }}</td>
-        <td class="text-right">{{ formatDecimal(total.current, locale) }}</td>
-        <td class="text-right">{{ formatDecimal(total.previous, locale) }}</td>
-        <td class="text-right">{{ renderDifference(total.difference) }}</td>
+        <td class="text-right">{{ renderAmount(total.current, total.commodity) }}</td>
+        <td class="text-right">{{ renderAmount(total.previous, total.commodity) }}</td>
+        <td class="text-right">{{ renderDifference(total.difference, total.commodity) }}</td>
       </tr>
     </tfoot>
   </VTable>

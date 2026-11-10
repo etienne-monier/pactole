@@ -78,6 +78,7 @@ fn main() -> ExitCode {
                         source_root: project_dir,
                         reports: config.reports,
                         import: config.import,
+                        format: config.format,
                     };
                     match tokio::runtime::Builder::new_multi_thread()
                         .enable_all()

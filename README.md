@@ -157,6 +157,11 @@ Override the width in the `[format]` section of `pactole.toml`:
 ```toml
 [format]
 posting_width = 50
+default_decimal_places = 2
+
+[format.currencies]
+EUR = 2
+JPY = 0
 ```
 
 List the transactions of a file, one line per matching posting, with

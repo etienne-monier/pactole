@@ -36,7 +36,10 @@
 //! [`pactole_config::FormatOptions`], with `initializationOptions.format` as
 //! the highest-precedence override.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use pactole_config::{
     DeclarationOptions, FormatOptions, Overrides, ValidationLevel, ValidationOptions,
@@ -217,6 +220,10 @@ pub struct Config {
     /// The `initializationOptions` formatter override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
     format_posting_width_override: Option<usize>,
+    /// The initialization-options default amount precision override.
+    format_default_decimal_places_override: Option<u32>,
+    /// The initialization-options currency precision overrides.
+    format_currency_decimal_places_override: BTreeMap<String, u32>,
 
     /// The raw `[declaration]` paths from the layered configuration files,
     /// kept unresolved so [`Config::load_layered`] can resolve them once the
@@ -321,6 +328,25 @@ impl Config {
             .as_ref()
             .and_then(|format| format.get("posting_width"))
             .and_then(parse_posting_width);
+        let format_default_decimal_places_override = raw
+            .format
+            .as_ref()
+            .and_then(|format| format.get("default_decimal_places"))
+            .and_then(parse_decimal_places);
+        let format_currency_decimal_places_override = raw
+            .format
+            .as_ref()
+            .and_then(|format| format.get("currencies"))
+            .and_then(serde_json::Value::as_object)
+            .map(|currencies| {
+                currencies
+                    .iter()
+                    .filter_map(|(currency, value)| {
+                        parse_decimal_places(value).map(|places| (currency.clone(), places))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
         // Each check falls back to its own default (an undeclared payee is
         // an error, an unused declaration and a configuration reference are
@@ -349,6 +375,8 @@ impl Config {
             unused_override,
             config_override,
             format_posting_width_override,
+            format_default_decimal_places_override,
+            format_currency_decimal_places_override,
             declaration_paths: DeclarationOptions::default(),
             account_unused_override,
             commodity_unused_override,
@@ -431,7 +459,7 @@ impl Config {
         match pactole_config::Config::resolve(&layers, &overrides) {
             Ok(config) => {
                 self.validation = config.validation;
-                self.format = config.format;
+                self.format = config.format.clone();
                 self.declaration_paths = config.declaration.clone();
                 self.resolved = config;
             }
@@ -447,6 +475,12 @@ impl Config {
         if let Some(posting_width) = self.format_posting_width_override {
             self.format.posting_width = posting_width;
         }
+        if let Some(decimal_places) = self.format_default_decimal_places_override {
+            self.format.default_decimal_places = decimal_places;
+        }
+        self.format
+            .currency_decimal_places
+            .extend(self.format_currency_decimal_places_override.clone());
 
         self.resolve_declaration_paths();
     }
@@ -563,6 +597,15 @@ fn parse_posting_width(value: &serde_json::Value) -> Option<usize> {
         return None;
     }
     Some(value)
+}
+
+/// Parses a bounded decimal-place formatter override.
+fn parse_decimal_places(value: &serde_json::Value) -> Option<u32> {
+    let value = value.as_u64()?;
+    let Ok(value) = u32::try_from(value) else {
+        return None;
+    };
+    (value <= 28).then_some(value)
 }
 
 /// Derives the workspace root directory from an [`lsp_types::InitializeParams`],

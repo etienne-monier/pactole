@@ -74,7 +74,7 @@ Diagnostics (`textDocument/publishDiagnostics`), completion
   root is known), `validation` (a `"warn"`/`"error"` string applied to every
   configurable check, or a `{ "payee": ..., "unused": ..., "config": ... }`
   table),
-  `format` (`posting_width`) and the `[declaration]` section of
+  `format` (`posting_width`, `default_decimal_places` and `currencies`) and the `[declaration]` section of
   `pactole.toml` (see below). Validation settings follow the CLI layering:
   user-level `pactole.toml`, then project `pactole.toml` (next to
   `journal_file`, or at the workspace root when none is configured), then
@@ -159,7 +159,11 @@ over both global and project `pactole.toml` files:
 ```json
 {
   "journal_file": "main.pactole",
-  "format": { "posting_width": 60 }
+  "format": {
+    "posting_width": 60,
+    "default_decimal_places": 2,
+    "currencies": { "EUR": 2, "JPY": 0 }
+  }
 }
 ```
 
