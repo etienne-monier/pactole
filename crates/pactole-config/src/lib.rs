@@ -20,6 +20,8 @@
 //! [validation]
 //! payee = "warn" # `off`, `warn` or `error`
 //! unused = "warn" # severity of never-used declarations
+//! # account-unused = "off" # optional per-diagnostic override
+//! # tag-not-active = "off" # optional per-diagnostic override
 //!
 //! [declaration]
 //! payees = "payees.pactole"
@@ -136,6 +138,14 @@ pub struct Overrides {
     /// Overrides the `config` validation level (LSP
     /// `initializationOptions`). `None` leaves the file layers untouched.
     pub config: Option<ValidationLevel>,
+    /// Overrides the account-unused validation level.
+    pub account_unused: Option<ValidationLevel>,
+    /// Overrides the commodity-unused validation level.
+    pub commodity_unused: Option<ValidationLevel>,
+    /// Overrides the payee-unused validation level.
+    pub payee_unused: Option<ValidationLevel>,
+    /// Overrides the tag-not-active validation level.
+    pub tag_not_active: Option<ValidationLevel>,
 }
 
 /// The fully resolved Pactole configuration.
@@ -330,6 +340,41 @@ fn validate_layer(raw: &RawFile, path: &Path) -> Result<(), ConfigError> {
         )));
     }
 
+    for (name, value) in [
+        (
+            "account-unused",
+            raw.validation
+                .as_ref()
+                .and_then(|v| v.account_unused.as_deref()),
+        ),
+        (
+            "commodity-unused",
+            raw.validation
+                .as_ref()
+                .and_then(|v| v.commodity_unused.as_deref()),
+        ),
+        (
+            "payee-unused",
+            raw.validation
+                .as_ref()
+                .and_then(|v| v.payee_unused.as_deref()),
+        ),
+        (
+            "tag-not-active",
+            raw.validation
+                .as_ref()
+                .and_then(|v| v.tag_not_active.as_deref()),
+        ),
+    ] {
+        if let Some(value) = value
+            && ValidationLevel::parse(value).is_none()
+        {
+            return Err(invalid(format!(
+                "invalid validation level for `{name}`: expected `off`, `warn` or `error`"
+            )));
+        }
+    }
+
     if let Some(posting_width) = raw.format.as_ref().and_then(|f| f.posting_width)
         && posting_width == 0
     {
@@ -360,6 +405,27 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
         .and_then(|v| v.config.as_deref())
         .and_then(ValidationLevel::parse);
 
+    let account_unused = merged
+        .validation
+        .as_ref()
+        .and_then(|v| v.account_unused.as_deref())
+        .and_then(ValidationLevel::parse);
+    let commodity_unused = merged
+        .validation
+        .as_ref()
+        .and_then(|v| v.commodity_unused.as_deref())
+        .and_then(ValidationLevel::parse);
+    let payee_unused = merged
+        .validation
+        .as_ref()
+        .and_then(|v| v.payee_unused.as_deref())
+        .and_then(ValidationLevel::parse);
+    let tag_not_active = merged
+        .validation
+        .as_ref()
+        .and_then(|v| v.tag_not_active.as_deref())
+        .and_then(ValidationLevel::parse);
+
     // Each key falls back to the default of its own check (`payee` is an
     // error, `unused` and `config` are warnings) rather than to a single
     // global default.
@@ -368,6 +434,10 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
         payee: overrides.payee.or(payee).unwrap_or(defaults.payee),
         unused: overrides.unused.or(unused).unwrap_or(defaults.unused),
         config: overrides.config.or(config).unwrap_or(defaults.config),
+        account_unused: overrides.account_unused.or(account_unused),
+        commodity_unused: overrides.commodity_unused.or(commodity_unused),
+        payee_unused: overrides.payee_unused.or(payee_unused),
+        tag_not_active: overrides.tag_not_active.or(tag_not_active),
     }
 }
 
@@ -535,5 +605,30 @@ fn read_file_if_exists(path: &Path) -> Result<Option<String>, ConfigError> {
             path: path.to_path_buf(),
             source,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_individual_validation_levels() {
+        let path = Path::new("pactole.toml");
+        let config = Config::resolve(
+            &[Source {
+                path,
+                contents: "[validation]\naccount-unused = \"off\"\ntag-not-active = \"error\"\n",
+            }],
+            &Overrides::default(),
+        )
+        .expect("valid configuration");
+
+        assert_eq!(config.validation.account_unused, Some(ValidationLevel::Off));
+        assert_eq!(
+            config.validation.tag_not_active,
+            Some(ValidationLevel::Error)
+        );
+        assert_eq!(config.validation.commodity_unused, None);
     }
 }

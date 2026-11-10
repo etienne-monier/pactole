@@ -77,6 +77,18 @@ enum RawValidation {
         #[serde(default)]
         /// Level for configuration-reference diagnostics.
         config: Option<String>,
+        #[serde(rename = "account-unused", default)]
+        /// Level for unused-account diagnostics.
+        account_unused: Option<String>,
+        #[serde(rename = "commodity-unused", default)]
+        /// Level for unused-commodity diagnostics.
+        commodity_unused: Option<String>,
+        #[serde(rename = "payee-unused", default)]
+        /// Level for unused-payee diagnostics.
+        payee_unused: Option<String>,
+        #[serde(rename = "tag-not-active", default)]
+        /// Level for inactive-tag diagnostics.
+        tag_not_active: Option<String>,
     },
 }
 
@@ -105,6 +117,40 @@ impl RawValidation {
         match self {
             Self::Level(level) => Some(level),
             Self::Table { config, .. } => config.as_deref(),
+        }
+    }
+
+    /// Returns the account-unused level for this validation shape.
+    fn account_unused(&self) -> Option<&str> {
+        match self {
+            Self::Level(level) => Some(level),
+            Self::Table { account_unused, .. } => account_unused.as_deref(),
+        }
+    }
+
+    /// Returns the commodity-unused level for this validation shape.
+    fn commodity_unused(&self) -> Option<&str> {
+        match self {
+            Self::Level(level) => Some(level),
+            Self::Table {
+                commodity_unused, ..
+            } => commodity_unused.as_deref(),
+        }
+    }
+
+    /// Returns the payee-unused level for this validation shape.
+    fn payee_unused(&self) -> Option<&str> {
+        match self {
+            Self::Level(level) => Some(level),
+            Self::Table { payee_unused, .. } => payee_unused.as_deref(),
+        }
+    }
+
+    /// Returns the tag-not-active level for this validation shape.
+    fn tag_not_active(&self) -> Option<&str> {
+        match self {
+            Self::Level(level) => Some(level),
+            Self::Table { tag_not_active, .. } => tag_not_active.as_deref(),
         }
     }
 }
@@ -158,6 +204,15 @@ pub struct Config {
     /// The `initializationOptions` configuration-reference override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
     config_override: Option<ValidationLevel>,
+
+    /// The `initializationOptions` account-unused override.
+    account_unused_override: Option<ValidationLevel>,
+    /// The `initializationOptions` commodity-unused override.
+    commodity_unused_override: Option<ValidationLevel>,
+    /// The `initializationOptions` payee-unused override.
+    payee_unused_override: Option<ValidationLevel>,
+    /// The `initializationOptions` tag-not-active override.
+    tag_not_active_override: Option<ValidationLevel>,
 
     /// The `initializationOptions` formatter override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
@@ -244,6 +299,22 @@ impl Config {
             .validation
             .as_ref()
             .and_then(|validation| parse_level(validation.config()));
+        let account_unused_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.account_unused()));
+        let commodity_unused_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.commodity_unused()));
+        let payee_unused_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.payee_unused()));
+        let tag_not_active_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.tag_not_active()));
 
         let format_posting_width_override = raw
             .format
@@ -259,6 +330,10 @@ impl Config {
             payee: payee_override.unwrap_or(defaults.payee),
             unused: unused_override.unwrap_or(defaults.unused),
             config: config_override.unwrap_or(defaults.config),
+            account_unused: account_unused_override,
+            commodity_unused: commodity_unused_override,
+            payee_unused: payee_unused_override,
+            tag_not_active: tag_not_active_override,
         };
         let mut resolved = pactole_config::Config::default();
         resolved.validation = validation;
@@ -275,6 +350,10 @@ impl Config {
             config_override,
             format_posting_width_override,
             declaration_paths: DeclarationOptions::default(),
+            account_unused_override,
+            commodity_unused_override,
+            payee_unused_override,
+            tag_not_active_override,
         }
     }
 
@@ -343,6 +422,10 @@ impl Config {
             payee: self.payee_override,
             unused: self.unused_override,
             config: self.config_override,
+            account_unused: self.account_unused_override,
+            commodity_unused: self.commodity_unused_override,
+            payee_unused: self.payee_unused_override,
+            tag_not_active: self.tag_not_active_override,
         };
 
         match pactole_config::Config::resolve(&layers, &overrides) {

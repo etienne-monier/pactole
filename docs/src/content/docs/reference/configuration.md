@@ -67,16 +67,34 @@ The severity of the business checks. Each key accepts three levels:
 | `payee` | `error` | A transaction whose payee has no `payee` declaration (`payee-not-declared`). |
 | `unused` | `warn` | A declaration nothing ever uses: `account-unused`, `commodity-unused` and `payee-unused`. |
 | `config` | `warn` | An account, payee, commodity or account root named by this configuration but not declared or used by the journal. |
+| `account-unused` | `warn` | An opened account that no transaction or balance assertion uses. Overrides `unused` for accounts. |
+| `commodity-unused` | `warn` | A declared commodity that no amount, price or account restriction uses. Overrides `unused` for commodities. |
+| `payee-unused` | `warn` | A declared payee that no transaction uses. Overrides `unused` for payees. |
+| `tag-not-active` | `warn` | A `poptag` that removes a tag which is not active. |
 
 ```toml
 [validation]
 payee = "warn"
 unused = "off"
 config = "warn"
+tag-not-active = "warn"
+# Individual levels override their group setting:
+# account-unused = "off"
 ```
 
 Every other business check — account lifecycles, declared commodities,
 balancing, balance assertions — is always an error.
+
+A single lint can also be disabled for the directive immediately following a
+comment:
+
+```pactole
+; pactole[allow(account-unused)]
+2026-01-01 open Assets:FutureProject
+```
+
+Local `allow` comments apply only to configurable lints; they cannot suppress
+syntax, include, analysis or accounting errors.
 
 The `config` check cross-checks references such as `import.bank_account`,
 `import.default_counter_account`, import rules, report account roots and

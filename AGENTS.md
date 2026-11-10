@@ -496,7 +496,10 @@ pactole/
        diagnostics for declarations nothing uses: an `open`ed account with no transaction nor
        balance assertion, a `commodity` never used by any amount (nor restricted to an account by
        an `open`), and a `payee` never used by a transaction (`account-unused`,
-       `commodity-unused`, `payee-unused`).
+       `commodity-unused`, `payee-unused`). The individual keys `account-unused`,
+       `commodity-unused` and `payee-unused` override this group level; `tag-not-active`
+       controls inactive `poptag` warnings independently. A preceding
+       `; pactole[allow(code)]` comment suppresses a configurable lint for the next directive.
      - `[format] posting_width`: amount alignment column (default 50).
      - `[declaration]` (`payees`, `accounts`, `commodities`): the files an
        editor front-end should insert new declarations into, instead of the

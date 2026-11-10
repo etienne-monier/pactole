@@ -248,6 +248,7 @@ fn overrides_beat_project_which_beats_global() {
             payee: Some(ValidationLevel::Error),
             unused: None,
             config: None,
+            ..Overrides::default()
         },
     )
     .unwrap();
@@ -271,11 +272,38 @@ fn validation_keys_merge_per_key_and_overrides_win() {
             payee: Some(ValidationLevel::Warning),
             unused: Some(ValidationLevel::Error),
             config: None,
+            ..Overrides::default()
         },
     )
     .unwrap();
     assert_eq!(config.validation.payee, ValidationLevel::Warning);
     assert_eq!(config.validation.unused, ValidationLevel::Error);
+}
+
+#[test]
+fn a_higher_precedence_unused_group_replaces_inherited_individual_levels() {
+    let global = source("[validation]\naccount-unused = \"warn\"\ncommodity-unused = \"error\"\n");
+    let project = source("[validation]\nunused = \"off\"\n");
+
+    let config = Config::resolve(&[global, project], &Overrides::default()).unwrap();
+
+    assert_eq!(config.validation.unused, ValidationLevel::Off);
+    assert_eq!(config.validation.account_unused, None);
+    assert_eq!(config.validation.commodity_unused, None);
+}
+
+#[test]
+fn an_individual_level_in_the_same_layer_overrides_its_group() {
+    let global = source("[validation]\naccount-unused = \"warn\"\n");
+    let project = source("[validation]\nunused = \"off\"\naccount-unused = \"error\"\n");
+
+    let config = Config::resolve(&[global, project], &Overrides::default()).unwrap();
+
+    assert_eq!(config.validation.unused, ValidationLevel::Off);
+    assert_eq!(
+        config.validation.account_unused,
+        Some(ValidationLevel::Error)
+    );
 }
 
 #[test]

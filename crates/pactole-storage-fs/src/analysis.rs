@@ -197,11 +197,11 @@ fn business_severity(
     options: &ValidationOptions,
 ) -> Option<DiagnosticSeverity> {
     let level = match code {
-        DiagnosticCode::TagNotActive => return Some(DiagnosticSeverity::Warning),
+        DiagnosticCode::TagNotActive => options.tag_not_active.unwrap_or(ValidationLevel::Warning),
         DiagnosticCode::PayeeNotDeclared => options.payee,
-        DiagnosticCode::AccountUnused
-        | DiagnosticCode::CommodityUnused
-        | DiagnosticCode::PayeeUnused => options.unused,
+        DiagnosticCode::AccountUnused => options.account_unused.unwrap_or(options.unused),
+        DiagnosticCode::CommodityUnused => options.commodity_unused.unwrap_or(options.unused),
+        DiagnosticCode::PayeeUnused => options.payee_unused.unwrap_or(options.unused),
         _ => return Some(DiagnosticSeverity::Error),
     };
 
@@ -299,6 +299,12 @@ impl ParsedFile {
     /// lower at all, or it holds a syntax error.
     pub(crate) fn lost_directives(&self) -> usize {
         self.lost_directives
+    }
+
+    /// Returns whether a local comment immediately preceding `span` allows
+    /// `code` to be ignored for this directive.
+    fn has_local_allow(&self, code: DiagnosticCode, span: Span) -> bool {
+        has_local_allow(self.document.source(), code, span)
     }
 }
 
@@ -678,9 +684,11 @@ impl AnalyzedProject {
         if structural.iter().any(Diagnostic::is_error) {
             return Err(structural);
         }
-        if self.business_diagnostics.iter().any(|diagnostic| {
-            business_severity(diagnostic.code, &self.validation) == Some(DiagnosticSeverity::Error)
-        }) {
+        if self
+            .business_diagnostics
+            .iter()
+            .any(|diagnostic| self.business_severity(diagnostic) == Some(DiagnosticSeverity::Error))
+        {
             return Err(self.diagnostics());
         }
         self.validated_journal
@@ -710,7 +718,7 @@ impl AnalyzedProject {
             Some(Diagnostic {
                 path: diagnostic.path.clone(),
                 span: diagnostic.span,
-                severity: business_severity(diagnostic.code, &self.validation)?,
+                severity: self.business_severity(diagnostic)?,
                 source: DiagnosticSource::Business,
                 code: diagnostic.code,
                 message: diagnostic.message.clone(),
@@ -718,6 +726,19 @@ impl AnalyzedProject {
         }));
 
         diagnostics
+    }
+
+    /// Returns the configured severity of a business diagnostic, unless the
+    /// directive immediately following it opted out with a local comment.
+    fn business_severity(&self, diagnostic: &BusinessDiagnostic) -> Option<DiagnosticSeverity> {
+        let severity = business_severity(diagnostic.code, &self.validation)?;
+        let suppressed = is_configurable_lint(diagnostic.code)
+            && self
+                .files
+                .iter()
+                .find(|file| file.path == diagnostic.path)
+                .is_some_and(|file| file.file.has_local_allow(diagnostic.code, diagnostic.span));
+        (!suppressed).then_some(severity)
     }
 
     /// Returns syntax, lowering, include and completeness diagnostics,
@@ -793,6 +814,43 @@ fn file_diagnostics(path: &Path, file: &ParsedFile) -> Vec<Diagnostic> {
     diagnostics.extend(analysis_incomplete_diagnostic(path, file));
 
     diagnostics
+}
+
+/// Returns whether a directive is preceded immediately by a local lint
+/// suppression comment such as `; pactole[allow(account-unused)]`.
+fn has_local_allow(source: &str, code: DiagnosticCode, span: Span) -> bool {
+    let Some(previous_line) = span
+        .start
+        .row
+        .checked_sub(1)
+        .and_then(|row| source.lines().nth(row))
+    else {
+        return false;
+    };
+    let comment = previous_line.trim();
+    let Some(specification) = comment
+        .strip_prefix("; pactole[allow(")
+        .and_then(|value| value.strip_suffix(")]"))
+    else {
+        return false;
+    };
+
+    specification
+        .split(',')
+        .map(str::trim)
+        .any(|name| name == code.as_str())
+}
+
+/// Returns whether a diagnostic is allowed to be changed by validation policy.
+fn is_configurable_lint(code: DiagnosticCode) -> bool {
+    matches!(
+        code,
+        DiagnosticCode::PayeeNotDeclared
+            | DiagnosticCode::AccountUnused
+            | DiagnosticCode::CommodityUnused
+            | DiagnosticCode::PayeeUnused
+            | DiagnosticCode::TagNotActive
+    )
 }
 
 /// Builds the notice reporting that part of a file could not be analyzed.
@@ -1721,6 +1779,7 @@ poptag #missing\n\
             payee: ValidationLevel::Warning,
             unused: ValidationLevel::Warning,
             config: ValidationLevel::Warning,
+            ..ValidationOptions::default()
         };
 
         let project = analyze_file_with_loader_with_options(
@@ -1748,6 +1807,7 @@ poptag #missing\n\
             payee: ValidationLevel::Off,
             unused: ValidationLevel::Warning,
             config: ValidationLevel::Warning,
+            ..ValidationOptions::default()
         };
 
         let project = analyze_file_with_loader_with_options(
@@ -1846,6 +1906,7 @@ poptag #missing\n\
             payee: ValidationLevel::Error,
             unused: ValidationLevel::Off,
             config: ValidationLevel::Warning,
+            ..ValidationOptions::default()
         });
 
         assert!(
@@ -1859,11 +1920,66 @@ poptag #missing\n\
     }
 
     #[test]
+    fn local_allow_comment_suppresses_only_the_following_lint() {
+        let source = "; pactole[allow(account-unused)]\n\
+                     2026-01-01 open Assets:Unused\n\
+                     2026-01-01 commodity USD\n\
+                     payee \"Never\"\n";
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert("/journal/main.pactole", source);
+
+        let project =
+            analyze_file_with_loader(Path::new("/journal/main.pactole"), &loader).unwrap();
+        let codes: Vec<DiagnosticCode> = project
+            .diagnostics()
+            .into_iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect();
+
+        assert!(!codes.contains(&DiagnosticCode::AccountUnused));
+        assert!(codes.contains(&DiagnosticCode::CommodityUnused));
+        assert!(codes.contains(&DiagnosticCode::PayeeUnused));
+    }
+
+    #[test]
+    fn individual_unused_levels_override_the_unused_group() {
+        let project = unused_project(&ValidationOptions {
+            unused: ValidationLevel::Error,
+            account_unused: Some(ValidationLevel::Off),
+            commodity_unused: Some(ValidationLevel::Warning),
+            payee_unused: Some(ValidationLevel::Warning),
+            ..ValidationOptions::default()
+        });
+
+        let diagnostics = project.diagnostics();
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::AccountUnused)
+        );
+        assert_eq!(
+            diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic.code == DiagnosticCode::CommodityUnused)
+                .map(|diagnostic| diagnostic.severity),
+            Some(DiagnosticSeverity::Warning)
+        );
+        assert_eq!(
+            diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic.code == DiagnosticCode::PayeeUnused)
+                .map(|diagnostic| diagnostic.severity),
+            Some(DiagnosticSeverity::Warning)
+        );
+    }
+
+    #[test]
     fn error_level_makes_an_unused_declaration_blocking() {
         let project = unused_project(&ValidationOptions {
             payee: ValidationLevel::Error,
             unused: ValidationLevel::Error,
             config: ValidationLevel::Warning,
+            ..ValidationOptions::default()
         });
 
         let diagnostic = project
@@ -1891,6 +2007,7 @@ poptag #missing\n\
                 payee: ValidationLevel::Warning,
                 unused: ValidationLevel::Warning,
                 config: ValidationLevel::Warning,
+                ..ValidationOptions::default()
             },
         )
         .unwrap();

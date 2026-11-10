@@ -60,6 +60,9 @@ payee = "Supermarket"
   commodity no amount uses (and no `open` restricts an account to), a payee
   no transaction uses. They are reported as warnings by default, dropped
   entirely under `off`, and blocking under `error`.
+  The individual keys `account-unused`, `commodity-unused` and `payee-unused`
+  override this group setting. `tag-not-active` controls inactive `poptag`
+  warnings independently.
 - `[declaration]` (`payees`, `accounts`, `commodities`) names the files where
   an editor front-end should insert a new declaration, instead of the current
   document. Paths are kept raw here; the consumer resolves them against the

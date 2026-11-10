@@ -53,6 +53,14 @@ pub struct ValidationOptions {
     /// is not opened, a payee or commodity that is not declared, or an account
     /// root that no opened account uses.
     pub config: ValidationLevel,
+    /// Severity of an opened account that is never used.
+    pub account_unused: Option<ValidationLevel>,
+    /// Severity of a declared commodity that is never used.
+    pub commodity_unused: Option<ValidationLevel>,
+    /// Severity of a declared payee that is never used.
+    pub payee_unused: Option<ValidationLevel>,
+    /// Severity of a `poptag` that removes an inactive tag.
+    pub tag_not_active: Option<ValidationLevel>,
 }
 
 impl Default for ValidationOptions {
@@ -69,6 +77,10 @@ impl Default for ValidationOptions {
             payee: ValidationLevel::Error,
             unused: ValidationLevel::Warning,
             config: ValidationLevel::Warning,
+            account_unused: None,
+            commodity_unused: None,
+            payee_unused: None,
+            tag_not_active: None,
         }
     }
 }

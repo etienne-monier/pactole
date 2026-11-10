@@ -180,10 +180,10 @@ reported), `warn` (reported as a warning) or `error` (blocking).
 | `transaction-weight-unrepresentable` | — | error | The exact sum of posting weights cannot be represented as a `Decimal`. An inexact `@` product is reported as `transaction-cost-inconsistent`. |
 | `commodity-not-allowed` | — | error | A posting uses a commodity excluded by the account's `open` restriction. |
 | `balance-assertion-failed` | — | error | A `balance` assertion differs from the computed balance beyond its tolerance. |
-| `account-unused` | `unused` | warn | An account is opened but neither a transaction nor a balance assertion uses it. |
-| `commodity-unused` | `unused` | warn | A commodity is declared but no amount, price directive, transaction-cost annotation or `open` restriction uses it. |
-| `payee-unused` | `unused` | warn | A payee is declared but no transaction uses it. |
-| `tag-not-active` | — | warn | A `poptag` directive tries to remove a tag that is not active. `--strict` treats the warning as a failure. |
+| `account-unused` | `account-unused` or `unused` | warn | An account is opened but neither a transaction nor a balance assertion uses it. |
+| `commodity-unused` | `commodity-unused` or `unused` | warn | A commodity is declared but no amount, price directive, transaction-cost annotation or `open` restriction uses it. |
+| `payee-unused` | `payee-unused` or `unused` | warn | A payee is declared but no transaction uses it. |
+| `tag-not-active` | `tag-not-active` | warn | A `poptag` directive tries to remove a tag that is not active. `--strict` treats the warning as a failure. |
 
 ### Configuration references
 

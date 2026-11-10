@@ -174,7 +174,7 @@ Validation levels can be overridden the same way, globally or per check:
 ```
 
 ```json
-{ "journal_file": "main.pactole", "validation": { "unused": "off" } }
+{ "journal_file": "main.pactole", "validation": { "unused": "off", "tag-not-active": "warn" } }
 ```
 
 Without an override, the server reads the same layered `pactole.toml` as the

@@ -211,7 +211,15 @@ fn completion_items(context: &Context, index: &SymbolIndex) -> Vec<CompletionIte
 
 fn section_keys(section: &str) -> Vec<&'static str> {
     match section {
-        "validation" => vec!["payee", "unused", "config"],
+        "validation" => vec![
+            "payee",
+            "unused",
+            "config",
+            "account-unused",
+            "commodity-unused",
+            "payee-unused",
+            "tag-not-active",
+        ],
         "format" => vec!["posting_width"],
         "declaration" => vec!["payees", "accounts", "commodities"],
         "reports" => vec![

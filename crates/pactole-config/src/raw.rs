@@ -36,6 +36,18 @@ pub(crate) struct RawValidation {
     /// Validation level for configuration references that name a missing
     /// journal declaration.
     pub(crate) config: Option<String>,
+    /// Validation level for an unused account.
+    #[serde(rename = "account-unused")]
+    pub(crate) account_unused: Option<String>,
+    /// Validation level for an unused commodity.
+    #[serde(rename = "commodity-unused")]
+    pub(crate) commodity_unused: Option<String>,
+    /// Validation level for an unused payee declaration.
+    #[serde(rename = "payee-unused")]
+    pub(crate) payee_unused: Option<String>,
+    /// Validation level for an inactive tag pop.
+    #[serde(rename = "tag-not-active")]
+    pub(crate) tag_not_active: Option<String>,
 }
 
 /// The `[declaration]` section, unmerged.
@@ -165,6 +177,15 @@ impl RawFile {
     pub(crate) fn merge(&mut self, upper: RawFile) {
         if let Some(validation) = upper.validation {
             let target = self.validation.get_or_insert_with(RawValidation::default);
+            // A group-level override in a higher-precedence layer must not be
+            // shadowed by individual overrides inherited from a lower layer.
+            // Individual keys from this same layer are applied immediately
+            // afterwards and therefore still take precedence over the group.
+            if validation.unused.is_some() {
+                target.account_unused = None;
+                target.commodity_unused = None;
+                target.payee_unused = None;
+            }
             if let Some(payee) = validation.payee {
                 target.payee = Some(payee);
             }
@@ -173,6 +194,18 @@ impl RawFile {
             }
             if let Some(config) = validation.config {
                 target.config = Some(config);
+            }
+            if let Some(account_unused) = validation.account_unused {
+                target.account_unused = Some(account_unused);
+            }
+            if let Some(commodity_unused) = validation.commodity_unused {
+                target.commodity_unused = Some(commodity_unused);
+            }
+            if let Some(payee_unused) = validation.payee_unused {
+                target.payee_unused = Some(payee_unused);
+            }
+            if let Some(tag_not_active) = validation.tag_not_active {
+                target.tag_not_active = Some(tag_not_active);
             }
         }
 
