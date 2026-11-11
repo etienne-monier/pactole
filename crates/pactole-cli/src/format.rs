@@ -29,7 +29,7 @@ pub(crate) fn run(file: String, write: bool, options: &FormatOptions) -> ExitCod
             return failure(err);
         }
     } else {
-        print!("{formatted}");
+        return crate::output::write_stdout(&formatted);
     }
 
     ExitCode::SUCCESS

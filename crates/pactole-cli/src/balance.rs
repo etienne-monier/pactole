@@ -53,9 +53,7 @@ pub(crate) fn run(
         Err(error) => return crate::application::report_failure(error),
     };
     crate::diagnostics::print_application(&result.diagnostics);
-    print!("{}", result.report.render(format.into()));
-
-    ExitCode::SUCCESS
+    crate::output::write_stdout(&result.report.render(format.into()))
 }
 
 /// Prints a command-level error and returns the failure exit code.

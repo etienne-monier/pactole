@@ -71,8 +71,9 @@ pub(crate) fn run(
     let valuation = result.valuation;
     match format {
         RegisterFormatArg::Text => {
+            let mut output = String::new();
             if let Some(valuation) = &valuation {
-                print!("{}", crate::valuation::render_valuation(valuation));
+                output.push_str(&crate::valuation::render_valuation(valuation));
             }
             for entry in entries {
                 let status = match entry.status {
@@ -96,11 +97,13 @@ pub(crate) fn run(
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                println!(
+                output.push_str(&format!(
                     "{}  {}  {:<40}  {:<25}  {:>15}  {:>15}",
                     entry.date, status, description, entry.account, amount, balance
-                );
+                ));
+                output.push('\n');
             }
+            crate::output::write_stdout(&output)
         }
         RegisterFormatArg::Json => {
             let entries = entries
@@ -148,14 +151,13 @@ pub(crate) fn run(
             } else {
                 entries
             };
-            println!(
-                "{}",
+            let output = format!(
+                "{}\n",
                 serde_json::to_string_pretty(&value).unwrap_or_else(|_| String::from("[]"))
             );
+            crate::output::write_stdout(&output)
         }
     }
-
-    ExitCode::SUCCESS
 }
 
 /// Prints a register-command error and returns the failure exit code.

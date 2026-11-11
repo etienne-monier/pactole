@@ -173,13 +173,12 @@ pub(crate) fn run(
         Err(error) => return crate::application::report_failure(error),
     };
     crate::diagnostics::print_application(&result.diagnostics);
-    if let Some(comparison) = result.comparison {
-        print!("{}", comparison.render(format.into()));
+    let output = if let Some(comparison) = result.comparison {
+        comparison.render(format.into())
     } else {
-        print!("{}", result.current.render(format.into()));
-    }
-
-    ExitCode::SUCCESS
+        result.current.render(format.into())
+    };
+    crate::output::write_stdout(&output)
 }
 
 /// Prints an expense-command error and returns the failure exit code.

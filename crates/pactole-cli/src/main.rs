@@ -31,6 +31,8 @@ mod import_ofx;
 mod income;
 /// Starter-ledger initialization command implementation.
 mod init;
+/// Safe command-output helpers.
+mod output;
 /// Debug parsing command implementation.
 mod parse;
 /// Register-report command implementation.

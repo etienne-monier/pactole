@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Currency-aware amount formatting:** the formatter and imported
+  transactions now apply a configurable minimum number of decimal places per
+  currency through `[format].default_decimal_places` and
+  `[format.currencies]`. Existing precision is preserved and values are never
+  silently rounded or truncated. The setting is also available to the CLI,
+  LSP and web interface.
+
+- **Per-diagnostic validation severity:** `account-unused`,
+  `commodity-unused`, `payee-unused` and `tag-not-active` can now be
+  configured independently in `[validation]`, in addition to the grouped
+  validation levels.
+
 - **Configuration completion (LSP):** added completion for tracked global and
   project `pactole.toml` files. The server offers configuration sections and
   keys, validation levels, journal accounts, payees, commodities and report
@@ -153,6 +165,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cost-basis tracking remain out of scope.
 
 ### Fixed
+
+- **CLI broken-pipe handling:** commands that write reports to stdout now exit
+  cleanly when a downstream command closes the pipe, instead of panicking with
+  a `Broken pipe` error.
+
+- **LSP tag completion:** tags activated by `pushtag` and `poptag` are now
+  included in completion suggestions.
 
 - **Editor include-path completion:** the language server no longer keeps the
   typed path or duplicates the closing quote when completing an `include`
