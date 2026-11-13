@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { fetchIncome } from '@/api/client'
 import type { IncomeParams } from '@/api/types'
 import ChartCard from '@/components/ChartCard.vue'
+import DateField from '@/components/DateField.vue'
 import DiagnosticsCard from '@/components/DiagnosticsCard.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import FilterCard from '@/components/FilterCard.vue'
@@ -102,8 +103,8 @@ const chartOption = computed(() =>
     <PageHeader :title="t('income.title')" :subtitle="t('income.subtitle')" />
 
     <FilterCard @apply="apply" @reset="reset">
-      <VTextField v-model="filters.from" type="date" :label="t('common.from')" />
-      <VTextField v-model="filters.to" type="date" :label="t('common.to')" :error="Boolean(dateError)" :error-messages="dateError ? t('common.invalidDateRange') : undefined" />
+      <DateField v-model="filters.from" :label="t('common.from')" />
+      <DateField v-model="filters.to" :label="t('common.to')" :error="Boolean(dateError)" :error-messages="dateError ? t('common.invalidDateRange') : undefined" />
       <VSelect v-model="filters.by" :items="groupingItems" :label="t('common.groupedBy')" />
       <VTextField
         v-model="filters.depth"
@@ -114,9 +115,8 @@ const chartOption = computed(() =>
         :disabled="filters.by !== 'account'"
       />
       <VTextField v-model="filters.convert_to" :label="t('common.currency')" />
-      <VTextField
+      <DateField
         v-model="filters.at"
-        type="date"
         :label="t('common.valuationDate')"
         :disabled="!filters.convert_to"
       />

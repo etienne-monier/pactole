@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { fetchBalance } from '@/api/client'
 import type { BalanceParams } from '@/api/types'
 import ChartCard from '@/components/ChartCard.vue'
+import DateField from '@/components/DateField.vue'
 import DiagnosticsCard from '@/components/DiagnosticsCard.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import FilterCard from '@/components/FilterCard.vue'
@@ -83,12 +84,11 @@ const chartOption = computed(() =>
     <PageHeader :title="t('balance.title')" :subtitle="t('balance.subtitle')" />
 
     <FilterCard @apply="apply" @reset="reset">
-      <VTextField v-model="filters.as_of" type="date" :label="t('common.asOf')" />
+      <DateField v-model="filters.as_of" :label="t('common.asOf')" />
       <VTextField v-model="filters.depth" type="number" min="1" step="1" :label="t('common.depth')" />
       <VTextField v-model="filters.convert_to" :label="t('common.currency')" />
-      <VTextField
+      <DateField
         v-model="filters.at"
-        type="date"
         :label="t('common.valuationDate')"
         :disabled="!filters.convert_to"
       />

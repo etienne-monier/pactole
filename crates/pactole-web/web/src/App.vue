@@ -7,6 +7,7 @@ import { useDisplay, useTheme } from 'vuetify'
 import { clearApiCache } from '@/api/client'
 import { useCapabilities } from '@/composables/useCapabilities'
 import { useDiagnosticsSummary } from '@/composables/useDiagnosticsSummary'
+import { usePrivacyMode } from '@/composables/usePrivacyMode'
 import { useRefresh } from '@/composables/useRefresh'
 import {
   applyDocumentLocale,
@@ -31,9 +32,13 @@ watch(mdAndUp, (value) => {
 const { capabilities, error: capabilitiesError, load: loadCapabilities } = useCapabilities()
 const { errors, warnings, load: loadDiagnostics } = useDiagnosticsSummary()
 const { requestRefresh } = useRefresh()
+const { amountsHidden, toggleAmountsHidden } = usePrivacyMode()
 
 const diagnosticCount = computed(() => errors.value + warnings.value)
 const diagnosticColor = computed(() => (errors.value > 0 ? 'error' : 'warning'))
+const privacyLabel = computed(() =>
+  amountsHidden.value ? t('common.showAmounts') : t('common.hideAmounts'),
+)
 
 const navItems = computed(() => [
   { route: 'dashboard', icon: 'mdi-view-dashboard-outline', title: t('nav.dashboard') },
@@ -129,6 +134,15 @@ onMounted(() => {
       <VAppBarNavIcon :aria-label="t('common.menu')" @click="drawer = !drawer" />
       <VAppBarTitle class="app-title">{{ t('common.appName') }}</VAppBarTitle>
       <VSpacer />
+
+      <VBtn
+        :icon="amountsHidden ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+        :aria-label="privacyLabel"
+        :title="privacyLabel"
+        :aria-pressed="amountsHidden"
+        :color="amountsHidden ? 'primary' : undefined"
+        @click="toggleAmountsHidden"
+      />
 
       <VBtn
         :icon="theme.global.name.value === 'dark' ? 'mdi-white-balance-sunny' : 'mdi-weather-night'"

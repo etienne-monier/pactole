@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { Amount } from '@/api/types'
+import MaskedValue from '@/components/MaskedValue.vue'
 import { formatDecimal } from '@/i18n/format'
 
 const props = defineProps<{ amounts: readonly Amount[] }>()
@@ -21,7 +22,7 @@ const parts = computed(() =>
   <span class="amount-text">
     <template v-for="(part, index) in parts" :key="`${part.commodity}-${index}`">
       <span v-if="index > 0" class="amount-separator"> · </span>
-      <span class="amount-number">{{ part.text }}</span>
+      <MaskedValue :text="part.text" />
       <span class="amount-commodity">{{ part.commodity }}</span>
     </template>
     <span v-if="parts.length === 0" class="amount-empty">—</span>

@@ -50,6 +50,9 @@ const en = {
     light: 'Light',
     dark: 'Dark',
     invalidDateRange: 'Enter a valid date range.',
+    hideAmounts: 'Hide amounts',
+    showAmounts: 'Show amounts',
+    hiddenAmount: 'Amount hidden. Hover or focus to reveal.',
   },
   nav: {
     dashboard: 'Dashboard',

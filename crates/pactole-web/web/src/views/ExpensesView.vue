@@ -6,6 +6,7 @@ import { fetchExpenses } from '@/api/client'
 import type { ComparisonPeriod } from '@/api/types'
 import ChartCard from '@/components/ChartCard.vue'
 import ComparisonTable from '@/components/ComparisonTable.vue'
+import DateField from '@/components/DateField.vue'
 import DiagnosticsCard from '@/components/DiagnosticsCard.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import FilterCard from '@/components/FilterCard.vue'
@@ -212,8 +213,8 @@ function periodText(period: ComparisonPeriod): string {
     <PageHeader :title="t('expenses.title')" :subtitle="t('expenses.subtitle')" />
 
     <FilterCard @apply="apply" @reset="reset">
-      <VTextField v-model="filters.from" type="date" :label="t('common.from')" />
-      <VTextField v-model="filters.to" type="date" :label="t('common.to')" :error="Boolean(dateError)" :error-messages="dateError ? t('common.invalidDateRange') : undefined" />
+      <DateField v-model="filters.from" :label="t('common.from')" />
+      <DateField v-model="filters.to" :label="t('common.to')" :error="Boolean(dateError)" :error-messages="dateError ? t('common.invalidDateRange') : undefined" />
       <VSelect v-model="filters.by" :items="groupingItems" :label="t('common.groupedBy')" />
       <VTextField
         v-model="filters.depth"
@@ -224,9 +225,8 @@ function periodText(period: ComparisonPeriod): string {
         :disabled="filters.by !== 'account'"
       />
       <VTextField v-model="filters.convert_to" :label="t('common.currency')" />
-      <VTextField
+      <DateField
         v-model="filters.at"
-        type="date"
         :label="t('common.valuationDate')"
         :disabled="!filters.convert_to"
       />
@@ -238,18 +238,16 @@ function periodText(period: ComparisonPeriod): string {
         :hint="comparisonAvailable ? undefined : t('expenses.compareMonthUnavailable')"
         persistent-hint
       />
-      <VTextField
+      <DateField
         v-if="absoluteDraft"
         v-model="filters.compare_from"
-        type="date"
         :label="t('expenses.previousPeriod') + ' — ' + t('common.from')"
         :error="Boolean(comparisonDateError)"
         :error-messages="comparisonDateError ? t('common.invalidDateRange') : undefined"
       />
-      <VTextField
+      <DateField
         v-if="absoluteDraft"
         v-model="filters.compare_to"
-        type="date"
         :label="t('expenses.previousPeriod') + ' — ' + t('common.to')"
         :error="Boolean(comparisonDateError)"
         :error-messages="comparisonDateError ? t('common.invalidDateRange') : undefined"

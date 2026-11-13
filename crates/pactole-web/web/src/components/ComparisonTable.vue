@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { ComparisonReport } from '@/api/types'
+import MaskedValue from '@/components/MaskedValue.vue'
 import { formatDecimal, formatPercent } from '@/i18n/format'
 import { translateReportLabel } from '@/i18n'
 
@@ -43,17 +44,17 @@ function renderDifference(value: string | null, commodity: string): string {
           <span v-if="line.section" class="section-label">{{ translateReportLabel(t, line.section) }} · </span>{{ line.label }}
         </td>
         <td>{{ line.commodity }}</td>
-        <td class="text-right">{{ renderAmount(line.current, line.commodity) }}</td>
-        <td class="text-right">{{ renderAmount(line.previous, line.commodity) }}</td>
-        <td class="text-right">{{ renderDifference(line.difference, line.commodity) }}</td>
+        <td class="text-right"><MaskedValue :text="renderAmount(line.current, line.commodity)" /></td>
+        <td class="text-right"><MaskedValue :text="renderAmount(line.previous, line.commodity)" /></td>
+        <td class="text-right"><MaskedValue :text="renderDifference(line.difference, line.commodity)" /></td>
       </tr>
     </tbody>
     <tfoot v-if="comparison.totals.length > 0">
       <tr v-for="(total, index) in comparison.totals" :key="`total-${index}`" class="total-row">
         <td class="text-right" colspan="2">{{ t('common.total') }}</td>
-        <td class="text-right">{{ renderAmount(total.current, total.commodity) }}</td>
-        <td class="text-right">{{ renderAmount(total.previous, total.commodity) }}</td>
-        <td class="text-right">{{ renderDifference(total.difference, total.commodity) }}</td>
+        <td class="text-right"><MaskedValue :text="renderAmount(total.current, total.commodity)" /></td>
+        <td class="text-right"><MaskedValue :text="renderAmount(total.previous, total.commodity)" /></td>
+        <td class="text-right"><MaskedValue :text="renderDifference(total.difference, total.commodity)" /></td>
       </tr>
     </tfoot>
   </VTable>

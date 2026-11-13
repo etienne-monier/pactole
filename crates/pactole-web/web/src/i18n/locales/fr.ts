@@ -52,6 +52,9 @@ const fr: typeof en = {
     light: 'Clair',
     dark: 'Sombre',
     invalidDateRange: 'Saisissez une période valide.',
+    hideAmounts: 'Masquer les montants',
+    showAmounts: 'Afficher les montants',
+    hiddenAmount: 'Montant masqué. Survolez ou utilisez le focus pour l’afficher.',
   },
   nav: {
     dashboard: 'Tableau de bord',

@@ -6,6 +6,7 @@ import { fetchBalance, fetchRegister } from '@/api/client'
 import type { RegisterParams } from '@/api/types'
 import AmountText from '@/components/AmountText.vue'
 import ChartCard from '@/components/ChartCard.vue'
+import DateField from '@/components/DateField.vue'
 import DiagnosticsCard from '@/components/DiagnosticsCard.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import FilterCard from '@/components/FilterCard.vue'
@@ -145,14 +146,14 @@ const balanceOption = computed(() =>
         <FilterCard @apply="applyFilters" @reset="reset">
             <VAutocomplete v-model="filters.account" :items="accountOptions" :label="t('common.account')"
                 :error-messages="accountError" clearable hide-no-data />
-            <VTextField v-model="filters.from" type="date" :label="t('common.from')" />
-            <VTextField v-model="filters.to" type="date" :label="t('common.to')" />
+            <DateField v-model="filters.from" :label="t('common.from')" />
+            <DateField v-model="filters.to" :label="t('common.to')" />
             <VTextField v-model="filters.payee" :label="t('common.payee')" />
             <VTextField v-model="filters.narration" :label="t('common.narration')" />
             <VTextField v-model="filters.tag" :label="t('common.tag')" />
             <VSelect v-model="filters.status" :items="statusItems" :label="t('common.status')" />
             <VTextField v-model="filters.convert_to" :label="t('common.currency')" />
-            <VTextField v-model="filters.at" type="date" :label="t('common.valuationDate')"
+            <DateField v-model="filters.at" :label="t('common.valuationDate')"
                 :disabled="!filters.convert_to" />
             <VSwitch v-model="includeWarnings" :label="t('common.showWarnings')" hide-details />
         </FilterCard>

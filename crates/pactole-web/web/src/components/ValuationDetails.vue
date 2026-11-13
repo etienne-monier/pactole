@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 
 import type { Valuation } from '@/api/types'
+import MaskedValue from '@/components/MaskedValue.vue'
 import { formatDate } from '@/i18n/format'
 
 defineProps<{ valuation: Valuation | null }>()
@@ -17,7 +18,8 @@ const { t, locale } = useI18n()
     </div>
     <ul v-if="valuation.prices.length > 0" class="valuation-list">
       <li v-for="(price, index) in valuation.prices" :key="index">
-        {{ price.base }} → {{ price.quote }} = {{ price.rate }} ({{ formatDate(price.date, locale) }})
+         {{ price.base }} → {{ price.quote }} = <MaskedValue :text="price.rate" />
+         ({{ formatDate(price.date, locale) }})
       </li>
     </ul>
     <div v-if="valuation.missing.length > 0" class="valuation-missing">

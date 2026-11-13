@@ -63,5 +63,12 @@ export const vuetify = createVuetify({
       density: "compact",
       hideDetails: "auto",
     },
+    VDateInput: {
+      variant: "outlined",
+      density: "compact",
+      hideDetails: "auto",
+      prependIcon: null,
+      prependInnerIcon: "$calendar",
+    },
   },
 });
