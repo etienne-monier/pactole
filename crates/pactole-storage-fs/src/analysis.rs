@@ -186,12 +186,11 @@ impl BusinessDiagnostic {
 
 /// Severity of a business diagnostic under the given validation options.
 ///
-/// Two business checks are configurable through the `[validation]` section of
-/// `pactole.toml`: `PayeeNotDeclared` (the `payee` key, an error by default)
-/// and the unused-declaration kinds (the `unused` key, a warning by default),
-/// each reported as a warning under [`ValidationLevel::Warning`] and dropped
-/// entirely under [`ValidationLevel::Off`]. Every other kind stays an error
-/// whatever the configuration says.
+/// Configurable business checks are controlled through the `[validation]`
+/// section of `pactole.toml`; each is reported as a warning under
+/// [`ValidationLevel::Warning`] and dropped entirely under
+/// [`ValidationLevel::Off`]. Every other kind stays an error whatever the
+/// configuration says.
 fn business_severity(
     code: DiagnosticCode,
     options: &ValidationOptions,
@@ -202,6 +201,7 @@ fn business_severity(
         DiagnosticCode::AccountUnused => options.account_unused.unwrap_or(options.unused),
         DiagnosticCode::CommodityUnused => options.commodity_unused.unwrap_or(options.unused),
         DiagnosticCode::PayeeUnused => options.payee_unused.unwrap_or(options.unused),
+        DiagnosticCode::UnclassifiedAccount => options.unclassified,
         _ => return Some(DiagnosticSeverity::Error),
     };
 
@@ -850,6 +850,7 @@ fn is_configurable_lint(code: DiagnosticCode) -> bool {
             | DiagnosticCode::CommodityUnused
             | DiagnosticCode::PayeeUnused
             | DiagnosticCode::TagNotActive
+            | DiagnosticCode::UnclassifiedAccount
     )
 }
 
@@ -966,7 +967,7 @@ pub fn analyze_file_with_loader_with_options(
         business_diagnostics,
         source_order,
         validated_journal,
-        validation: *validation,
+        validation: validation.clone(),
         partial,
     })
 }
@@ -1110,6 +1111,49 @@ fn transaction_postings(entry: &Entry) -> &[pactole_core::Posting] {
     }
 }
 
+/// Builds diagnostics for postings that still use a configured unclassified
+/// account. A configured account also covers all of its descendants.
+fn unclassified_diagnostics(
+    entries: &[LocatedEntry],
+    accounts: &[String],
+) -> Vec<BusinessDiagnostic> {
+    if accounts.is_empty() {
+        return Vec::new();
+    }
+
+    let is_unclassified = |account: &str| {
+        accounts.iter().any(|configured| {
+            account == configured || account.starts_with(&format!("{configured}:"))
+        })
+    };
+
+    entries
+        .iter()
+        .flat_map(|entry| {
+            let Entry::Transaction(transaction) = &entry.entry else {
+                return Vec::new();
+            };
+
+            entry
+                .spans
+                .postings
+                .iter()
+                .zip(&transaction.postings)
+                .filter(|(_, posting)| is_unclassified(posting.account.as_str()))
+                .map(|(spans, posting)| BusinessDiagnostic {
+                    path: entry.path.clone(),
+                    span: spans.account,
+                    code: DiagnosticCode::UnclassifiedAccount,
+                    message: format!(
+                        "account `{}` is configured as unclassified",
+                        posting.account
+                    ),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy)]
 /// Index of a lowered entry in an analyzed file.
 struct EntryRef {
@@ -1186,6 +1230,10 @@ fn validate_project(
         report.issues.iter().map(to_diagnostic).collect();
     diagnostics.extend(tag_diagnostics);
     diagnostics.extend(unused_issues.iter().map(to_diagnostic));
+    diagnostics.extend(unclassified_diagnostics(
+        &located_entries,
+        &validation.unclassified_accounts,
+    ));
 
     // Warnings do not prevent a validated journal: only error-severity
     // business diagnostics do.
@@ -1649,6 +1697,91 @@ poptag #missing\n\
             .find(|diagnostic| diagnostic.code == DiagnosticCode::TagNotActive)
             .expect("an inactive tag should be diagnosed");
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        assert!(project.validated_journal().is_ok());
+    }
+
+    #[test]
+    fn configured_unclassified_accounts_are_warned_on_use() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 commodity EUR\n\
+2026-01-01 open Assets:Checking\n\
+2026-01-01 open Expenses:ToReview\n\
+2026-01-01 open Expenses:ToReview:Food\n\
+payee \"Shop\"\n\
+2026-01-02 * \"Shop\"\n\
+\u{20}\u{20}Expenses:ToReview:Food 10 EUR\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n",
+        );
+        let validation = ValidationOptions {
+            unclassified_accounts: vec!["Expenses:ToReview".to_string()],
+            ..ValidationOptions::default()
+        };
+
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &validation,
+        )
+        .expect("the in-memory journal should load");
+        let diagnostic = project
+            .diagnostics()
+            .into_iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::UnclassifiedAccount)
+            .expect("the unclassified posting should be diagnosed");
+
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        assert_eq!(
+            diagnostic.message,
+            "account `Expenses:ToReview:Food` is configured as unclassified"
+        );
+        assert!(
+            project.validated_journal().is_ok(),
+            "unexpected blocking diagnostics: {:?}",
+            project.diagnostics()
+        );
+    }
+
+    #[test]
+    fn unclassified_account_can_be_made_blocking_or_disabled() {
+        let mut loader = InMemorySourceLoader::new();
+        loader.insert(
+            "/journal/main.pactole",
+            "2026-01-01 commodity EUR\n\
+2026-01-01 open Assets:Checking\n\
+2026-01-01 open Expenses:ToReview\n\
+payee \"Shop\"\n\
+2026-01-02 * \"Shop\"\n\
+\u{20}\u{20}Expenses:ToReview 10 EUR\n\
+\u{20}\u{20}Assets:Checking -10 EUR\n",
+        );
+        let mut validation = ValidationOptions {
+            unclassified_accounts: vec!["Expenses:ToReview".to_string()],
+            unclassified: ValidationLevel::Error,
+            ..ValidationOptions::default()
+        };
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &validation,
+        )
+        .expect("the in-memory journal should load");
+        assert!(project.validated_journal().is_err());
+
+        validation.unclassified = ValidationLevel::Off;
+        let project = analyze_file_with_loader_with_options(
+            Path::new("/journal/main.pactole"),
+            &loader,
+            &validation,
+        )
+        .expect("the in-memory journal should load");
+        assert!(
+            !project
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::UnclassifiedAccount)
+        );
         assert!(project.validated_journal().is_ok());
     }
 

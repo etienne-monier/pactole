@@ -71,6 +71,12 @@ The severity of the business checks. Each key accepts three levels:
 | `commodity-unused` | `warn` | A declared commodity that no amount, price or account restriction uses. Overrides `unused` for commodities. |
 | `payee-unused` | `warn` | A declared payee that no transaction uses. Overrides `unused` for payees. |
 | `tag-not-active` | `warn` | A `poptag` that removes a tag which is not active. |
+| `unclassified` | `warn` | A posting uses one of the accounts listed in `unclassified_accounts`. |
+
+`unclassified_accounts` is a list of account names. Each configured account
+also covers its subaccounts, so `Expenses:ToReview` matches
+`Expenses:ToReview:Food`. The accounts are also checked by the `config`
+validation against the journal's `open` declarations.
 
 ```toml
 [validation]
@@ -78,6 +84,8 @@ payee = "warn"
 unused = "off"
 config = "warn"
 tag-not-active = "warn"
+# unclassified = "warn"
+# unclassified_accounts = ["Expenses:ToReview"]
 # Individual levels override their group setting:
 # account-unused = "off"
 ```

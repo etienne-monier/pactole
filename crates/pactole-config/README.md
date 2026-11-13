@@ -67,7 +67,9 @@ payee = "Supermarket"
   entirely under `off`, and blocking under `error`.
   The individual keys `account-unused`, `commodity-unused` and `payee-unused`
   override this group setting. `tag-not-active` controls inactive `poptag`
-  warnings independently.
+  warnings independently, while `unclassified` controls warnings for accounts
+  listed in `unclassified_accounts`. Configured accounts also cover their
+  subaccounts.
 - `[declaration]` (`payees`, `accounts`, `commodities`) names the files where
   an editor front-end should insert a new declaration, instead of the current
   document. Paths are kept raw here; the consumer resolves them against the

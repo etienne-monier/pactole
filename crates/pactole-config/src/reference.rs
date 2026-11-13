@@ -142,6 +142,9 @@ pub(crate) struct Origins {
     import: Option<PathBuf>,
     /// Report lists, by key name.
     reports: std::collections::BTreeMap<&'static str, PathBuf>,
+    /// Layer that defined the effective `validation.unclassified_accounts`
+    /// list.
+    validation_unclassified_accounts: Option<PathBuf>,
 }
 
 impl Origins {
@@ -173,6 +176,15 @@ impl Origins {
             if import.rules.is_some() {
                 self.rules = Some(path);
             }
+        }
+
+        if raw
+            .validation
+            .as_ref()
+            .and_then(|validation| validation.unclassified_accounts.as_ref())
+            .is_some()
+        {
+            self.validation_unclassified_accounts = Some(path.to_path_buf());
         }
 
         if let Some(reports) = &raw.reports {
@@ -285,6 +297,21 @@ pub(crate) fn collect(config: &Config, origins: &Origins) -> Vec<ConfigReference
                 );
             }
         }
+    }
+
+    for (index, account) in config.validation.unclassified_accounts.iter().enumerate() {
+        let mut key_path = key(&["validation", "unclassified_accounts"]);
+        key_path.index(index);
+        push(
+            &mut references,
+            key_path,
+            ConfigReferenceKind::Account,
+            account,
+            origins
+                .validation_unclassified_accounts
+                .clone()
+                .unwrap_or_default(),
+        );
     }
 
     for (key_name, kind, values) in [

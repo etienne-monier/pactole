@@ -22,6 +22,8 @@
 //! unused = "warn" # severity of never-used declarations
 //! # account-unused = "off" # optional per-diagnostic override
 //! # tag-not-active = "off" # optional per-diagnostic override
+//! # unclassified = "warn" # report use of configured unclassified accounts
+//! # unclassified_accounts = ["Expenses:ToReview"]
 //!
 //! [declaration]
 //! payees = "payees.pactole"
@@ -150,6 +152,8 @@ pub struct Overrides {
     pub payee_unused: Option<ValidationLevel>,
     /// Overrides the tag-not-active validation level.
     pub tag_not_active: Option<ValidationLevel>,
+    /// Overrides the unclassified-account validation level.
+    pub unclassified: Option<ValidationLevel>,
 }
 
 /// The fully resolved Pactole configuration.
@@ -369,6 +373,12 @@ fn validate_layer(raw: &RawFile, path: &Path) -> Result<(), ConfigError> {
                 .as_ref()
                 .and_then(|v| v.tag_not_active.as_deref()),
         ),
+        (
+            "unclassified",
+            raw.validation
+                .as_ref()
+                .and_then(|v| v.unclassified.as_deref()),
+        ),
     ] {
         if let Some(value) = value
             && ValidationLevel::parse(value).is_none()
@@ -447,6 +457,11 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
         .as_ref()
         .and_then(|v| v.tag_not_active.as_deref())
         .and_then(ValidationLevel::parse);
+    let unclassified = merged
+        .validation
+        .as_ref()
+        .and_then(|v| v.unclassified.as_deref())
+        .and_then(ValidationLevel::parse);
 
     // Each key falls back to the default of its own check (`payee` is an
     // error, `unused` and `config` are warnings) rather than to a single
@@ -460,6 +475,15 @@ fn resolve_validation(merged: &RawFile, overrides: &Overrides) -> ValidationOpti
         commodity_unused: overrides.commodity_unused.or(commodity_unused),
         payee_unused: overrides.payee_unused.or(payee_unused),
         tag_not_active: overrides.tag_not_active.or(tag_not_active),
+        unclassified: overrides
+            .unclassified
+            .or(unclassified)
+            .unwrap_or(defaults.unclassified),
+        unclassified_accounts: merged
+            .validation
+            .as_ref()
+            .and_then(|v| v.unclassified_accounts.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -659,5 +683,51 @@ mod tests {
             Some(ValidationLevel::Error)
         );
         assert_eq!(config.validation.commodity_unused, None);
+    }
+
+    #[test]
+    fn resolves_unclassified_accounts_and_level() {
+        let path = Path::new("pactole.toml");
+        let config = Config::resolve(
+            &[Source {
+                path,
+                contents: "[validation]\nunclassified = \"error\"\nunclassified_accounts = [\"Expenses:ToReview\"]\n",
+            }],
+            &Overrides::default(),
+        )
+        .expect("valid configuration");
+
+        assert_eq!(config.validation.unclassified, ValidationLevel::Error);
+        assert_eq!(
+            config.validation.unclassified_accounts,
+            vec!["Expenses:ToReview"]
+        );
+        assert_eq!(config.references().len(), 1);
+        assert_eq!(
+            config.references()[0].key_path.to_string(),
+            "validation.unclassified_accounts[0]"
+        );
+    }
+
+    #[test]
+    fn keeps_the_origin_of_unclassified_accounts_from_the_layer_that_defined_them() {
+        let global_path = Path::new("global/pactole.toml");
+        let project_path = Path::new("project/pactole.toml");
+        let config = Config::resolve(
+            &[
+                Source {
+                    path: global_path,
+                    contents: "[validation]\nunclassified_accounts = [\"Expenses:ToReview\"]\n",
+                },
+                Source {
+                    path: project_path,
+                    contents: "[validation]\nunclassified = \"error\"\n",
+                },
+            ],
+            &Overrides::default(),
+        )
+        .expect("valid configuration");
+
+        assert_eq!(config.references()[0].origin, global_path);
     }
 }

@@ -38,7 +38,7 @@ impl ValidationLevel {
 
 /// How strictly business validation rules are enforced (the `[validation]`
 /// section of `pactole.toml`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationOptions {
     /// Severity of a transaction whose payee has no matching `payee`
     /// declaration in the journal (the `payee` key).
@@ -61,6 +61,12 @@ pub struct ValidationOptions {
     pub payee_unused: Option<ValidationLevel>,
     /// Severity of a `poptag` that removes an inactive tag.
     pub tag_not_active: Option<ValidationLevel>,
+    /// Severity of a posting using one of the configured unclassified
+    /// accounts.
+    pub unclassified: ValidationLevel,
+    /// Accounts whose use means that a transaction still needs to be
+    /// classified. Descendants of a configured account are included.
+    pub unclassified_accounts: Vec<String>,
 }
 
 impl Default for ValidationOptions {
@@ -81,6 +87,8 @@ impl Default for ValidationOptions {
             commodity_unused: None,
             payee_unused: None,
             tag_not_active: None,
+            unclassified: ValidationLevel::Warning,
+            unclassified_accounts: Vec::new(),
         }
     }
 }

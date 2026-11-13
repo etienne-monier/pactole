@@ -94,6 +94,8 @@ pub enum DiagnosticCode {
     PayeeUnused,
     /// A `poptag` directive tries to remove a tag that is not active.
     TagNotActive,
+    /// A transaction posting uses an account configured as unclassified.
+    UnclassifiedAccount,
 
     // ---- Configuration references ----
     /// A `pactole.toml` value references an account that is not opened by the
@@ -148,6 +150,7 @@ impl DiagnosticCode {
         Self::CommodityUnused,
         Self::PayeeUnused,
         Self::TagNotActive,
+        Self::UnclassifiedAccount,
         Self::ConfigAccountNotDeclared,
         Self::ConfigAccountRootUnmatched,
         Self::ConfigPayeeNotDeclared,
@@ -189,6 +192,7 @@ impl DiagnosticCode {
             Self::CommodityUnused => "commodity-unused",
             Self::PayeeUnused => "payee-unused",
             Self::TagNotActive => "tag-not-active",
+            Self::UnclassifiedAccount => "unclassified-account",
             Self::ConfigAccountNotDeclared => "config-account-not-declared",
             Self::ConfigAccountRootUnmatched => "config-account-root-unmatched",
             Self::ConfigPayeeNotDeclared => "config-payee-not-declared",

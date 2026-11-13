@@ -209,7 +209,7 @@ fn schedule_analysis(
         generation: documents.generation(),
         uri: uri.clone(),
         entry,
-        validation: config.validation,
+        validation: config.validation.clone(),
         loader: documents.snapshot_loader(),
     };
     if jobs.send(job).is_err() {

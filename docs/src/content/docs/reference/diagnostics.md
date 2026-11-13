@@ -184,6 +184,7 @@ reported), `warn` (reported as a warning) or `error` (blocking).
 | `commodity-unused` | `commodity-unused` or `unused` | warn | A commodity is declared but no amount, price directive, transaction-cost annotation or `open` restriction uses it. |
 | `payee-unused` | `payee-unused` or `unused` | warn | A payee is declared but no transaction uses it. |
 | `tag-not-active` | `tag-not-active` | warn | A `poptag` directive tries to remove a tag that is not active. `--strict` treats the warning as a failure. |
+| `unclassified-account` | `unclassified` | warn | A transaction posting uses an account configured as unclassified. `--strict` treats the warning as a failure. |
 
 ### Configuration references
 

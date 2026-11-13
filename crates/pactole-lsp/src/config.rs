@@ -92,6 +92,9 @@ enum RawValidation {
         #[serde(rename = "tag-not-active", default)]
         /// Level for inactive-tag diagnostics.
         tag_not_active: Option<String>,
+        #[serde(default)]
+        /// Level for configured unclassified-account diagnostics.
+        unclassified: Option<String>,
     },
 }
 
@@ -156,6 +159,14 @@ impl RawValidation {
             Self::Table { tag_not_active, .. } => tag_not_active.as_deref(),
         }
     }
+
+    /// Returns the level for configured unclassified accounts.
+    fn unclassified(&self) -> Option<&str> {
+        match self {
+            Self::Level(level) => Some(level),
+            Self::Table { unclassified, .. } => unclassified.as_deref(),
+        }
+    }
 }
 
 /// Resolved server configuration.
@@ -216,6 +227,8 @@ pub struct Config {
     payee_unused_override: Option<ValidationLevel>,
     /// The `initializationOptions` tag-not-active override.
     tag_not_active_override: Option<ValidationLevel>,
+    /// The `initializationOptions` unclassified-account override.
+    unclassified_override: Option<ValidationLevel>,
 
     /// The `initializationOptions` formatter override, kept so
     /// [`Config::load_layered`] can apply it on top of the file layers.
@@ -322,6 +335,10 @@ impl Config {
             .validation
             .as_ref()
             .and_then(|validation| parse_level(validation.tag_not_active()));
+        let unclassified_override = raw
+            .validation
+            .as_ref()
+            .and_then(|validation| parse_level(validation.unclassified()));
 
         let format_posting_width_override = raw
             .format
@@ -360,9 +377,11 @@ impl Config {
             commodity_unused: commodity_unused_override,
             payee_unused: payee_unused_override,
             tag_not_active: tag_not_active_override,
+            unclassified: unclassified_override.unwrap_or(defaults.unclassified),
+            unclassified_accounts: defaults.unclassified_accounts,
         };
         let mut resolved = pactole_config::Config::default();
-        resolved.validation = validation;
+        resolved.validation = validation.clone();
         Config {
             journal_file,
             validation,
@@ -382,6 +401,7 @@ impl Config {
             commodity_unused_override,
             payee_unused_override,
             tag_not_active_override,
+            unclassified_override,
         }
     }
 
@@ -454,11 +474,12 @@ impl Config {
             commodity_unused: self.commodity_unused_override,
             payee_unused: self.payee_unused_override,
             tag_not_active: self.tag_not_active_override,
+            unclassified: self.unclassified_override,
         };
 
         match pactole_config::Config::resolve(&layers, &overrides) {
             Ok(config) => {
-                self.validation = config.validation;
+                self.validation = config.validation.clone();
                 self.format = config.format.clone();
                 self.declaration_paths = config.declaration.clone();
                 self.resolved = config;

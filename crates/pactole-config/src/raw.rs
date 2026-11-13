@@ -48,6 +48,10 @@ pub(crate) struct RawValidation {
     /// Validation level for an inactive tag pop.
     #[serde(rename = "tag-not-active")]
     pub(crate) tag_not_active: Option<String>,
+    /// Validation level for use of configured unclassified accounts.
+    pub(crate) unclassified: Option<String>,
+    /// Accounts whose use should be reported as unclassified.
+    pub(crate) unclassified_accounts: Option<Vec<String>>,
 }
 
 /// The `[declaration]` section, unmerged.
@@ -211,6 +215,12 @@ impl RawFile {
             }
             if let Some(tag_not_active) = validation.tag_not_active {
                 target.tag_not_active = Some(tag_not_active);
+            }
+            if let Some(unclassified) = validation.unclassified {
+                target.unclassified = Some(unclassified);
+            }
+            if let Some(accounts) = validation.unclassified_accounts {
+                target.unclassified_accounts = Some(accounts);
             }
         }
 

@@ -219,6 +219,8 @@ fn section_keys(section: &str) -> Vec<&'static str> {
             "commodity-unused",
             "payee-unused",
             "tag-not-active",
+            "unclassified",
+            "unclassified_accounts",
         ],
         "format" => vec!["posting_width"],
         "declaration" => vec!["payees", "accounts", "commodities"],

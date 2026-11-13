@@ -10,7 +10,7 @@ pub(crate) type Service = Application<FsLedgerReader>;
 
 /// Builds the application service backed by the filesystem ledger at `path`.
 pub(crate) fn service(path: &Path, validation: &ValidationOptions) -> Service {
-    Application::new(FsLedgerReader::new(path.to_path_buf(), *validation))
+    Application::new(FsLedgerReader::new(path.to_path_buf(), validation.clone()))
 }
 
 /// Prints an application error and returns the CLI failure exit code.
