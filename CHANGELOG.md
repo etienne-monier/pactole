@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Register link and reference filters:** `pactole register` and the web
+  register endpoint can now filter transactions by exact `^link` or external
+  `(reference)`. Register text and JSON results expose the transaction links
+  and reference used for matching.
+
 - **Currency-aware amount formatting:** the formatter and imported
   transactions now apply a configurable minimum number of decimal places per
   currency through `[format].default_decimal_places` and

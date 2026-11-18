@@ -257,6 +257,8 @@ can be combined; a posting is shown only when all of them match.
 | `--payee <TEXT>`        | Only transactions whose payee contains this text (case-insensitive)         |
 | `--narration <TEXT>`    | Only transactions whose narration contains this text (case-insensitive)     |
 | `--tag <TAG>`           | Only transactions carrying this tag                                         |
+| `--link <LINK>`         | Only transactions carrying this link                                        |
+| `--reference <TEXT>`    | Only transactions with this exact external reference                       |
 | `--status <STATUS>`     | Only transactions with this status: `cleared`, `pending` or `uncleared`     |
 | `--format <FORMAT>`     | Output format: `text` (default) or `json`                                  |
 | `--convert-to <COMMODITY>` | Convert amounts and running balances using market prices                  |
@@ -268,6 +270,8 @@ pactole register ledger.pactole --account Expenses:Groceries
 pactole register ledger.pactole --from 2026-01-01 --to 2026-12-31
 pactole register ledger.pactole --payee Whole --status cleared
 pactole register ledger.pactole --tag food
+pactole register ledger.pactole --link invoice-2026-042
+pactole register ledger.pactole --reference CB-00123
 pactole register ledger.pactole --format json
 pactole register ledger.pactole --convert-to EUR --at 2026-03-31
 ```

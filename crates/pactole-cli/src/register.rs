@@ -18,6 +18,8 @@ pub(crate) fn run(
     payee: Option<String>,
     narration: Option<String>,
     tag: Option<String>,
+    link: Option<String>,
+    reference: Option<String>,
     status: Option<StatusArg>,
     format: RegisterFormatArg,
     convert_to: Option<String>,
@@ -39,6 +41,8 @@ pub(crate) fn run(
         payee,
         narration,
         tag,
+        link,
+        reference,
         status: status.map(TransactionStatus::from),
     };
 
@@ -86,6 +90,25 @@ pub(crate) fn run(
                     .flatten()
                     .collect::<Vec<_>>()
                     .join(" ");
+                let annotations = entry
+                    .links
+                    .iter()
+                    .map(|link| format!("^{link}"))
+                    .chain(
+                        entry
+                            .reference
+                            .iter()
+                            .map(|reference| format!("({reference})")),
+                    )
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let description = if annotations.is_empty() {
+                    description
+                } else if description.is_empty() {
+                    annotations
+                } else {
+                    format!("{description} {annotations}")
+                };
                 let amount = match &entry.amount {
                     Some(amount) => format!("{} {}", amount.number, amount.commodity),
                     None => String::new(),
@@ -116,9 +139,11 @@ pub(crate) fn run(
                             TransactionStatus::Pending => "pending",
                             TransactionStatus::Cleared => "cleared",
                         },
-                        "payee": entry.payee.as_deref(),
-                        "narration": entry.narration.as_deref(),
-                        "account": entry.account.as_str(),
+                    "payee": entry.payee.as_deref(),
+                    "narration": entry.narration.as_deref(),
+                    "links": &entry.links,
+                    "reference": entry.reference.as_deref(),
+                    "account": entry.account.as_str(),
                         "amount": entry.amount.as_ref().map(|amount| serde_json::json!({
                             "number": amount.number.to_string(),
                             "commodity": amount.commodity.as_str(),

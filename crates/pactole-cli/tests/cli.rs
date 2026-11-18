@@ -1230,6 +1230,49 @@ fn register_filters_by_status_and_payee() {
 }
 
 #[test]
+fn register_filters_by_link_and_reference() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!(
+        "pactole-register-links-{}.pactole",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "2024-01-01 open Assets:Checking\n\
+         2024-01-01 commodity EUR\n\
+         payee \"Shop\"\n\
+         2024-01-05 * \"Shop\" \"Purchase\" ^invoice-42 (CB-001)\n\
+         \u{20}\u{20}Assets:Checking 10.00 EUR\n\
+         \u{20}\u{20}Assets:Checking -10.00 EUR\n",
+    )
+    .unwrap();
+
+    let output = pactole_cmd()
+        .args([
+            "register",
+            path.to_str().unwrap(),
+            "--link",
+            "invoice-42",
+            "--reference",
+            "CB-001",
+        ])
+        .output()
+        .expect("failed to run pactole-cli");
+
+    std::fs::remove_file(&path).ok();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Shop"));
+    assert!(stdout.contains("^invoice-42"));
+    assert!(stdout.contains("(CB-001)"));
+}
+
+#[test]
 fn register_reports_error_on_missing_file() {
     let output = pactole_cmd()
         .args(["register", "this-file-does-not-exist.pactole"])

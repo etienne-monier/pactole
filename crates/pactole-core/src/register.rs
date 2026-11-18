@@ -34,6 +34,12 @@ pub struct RegisterFilter {
     /// Only keep transactions carrying this tag.
     pub tag: Option<String>,
 
+    /// Only keep transactions carrying this link.
+    pub link: Option<String>,
+
+    /// Only keep transactions with this external reference.
+    pub reference: Option<String>,
+
     /// Only keep transactions with this status.
     pub status: Option<TransactionStatus>,
 }
@@ -51,6 +57,10 @@ pub struct RegisterEntry {
     pub payee: Option<String>,
     /// Optional transaction narration.
     pub narration: Option<String>,
+    /// Links attached to the transaction.
+    pub links: Vec<String>,
+    /// Optional external reference attached to the transaction.
+    pub reference: Option<String>,
     /// Account of the matched posting.
     pub account: AccountName,
     /// Amount of the matched posting, if it was explicitly or implicitly set.
@@ -106,6 +116,8 @@ pub fn register(journal: &Journal, filter: &RegisterFilter) -> Vec<RegisterEntry
                 status: transaction.status.clone(),
                 payee: transaction.payee.clone(),
                 narration: transaction.narration.clone(),
+                links: transaction.links.clone(),
+                reference: transaction.reference.clone(),
                 account: posting.account.clone(),
                 amount: posting.amount.clone(),
                 balance: running.clone(),
@@ -145,6 +157,16 @@ fn transaction_matches(transaction: &Transaction, filter: &RegisterFilter) -> bo
     }
     if let Some(tag) = &filter.tag
         && !transaction.tags.iter().any(|t| t == tag)
+    {
+        return false;
+    }
+    if let Some(link) = &filter.link
+        && !transaction.links.iter().any(|candidate| candidate == link)
+    {
+        return false;
+    }
+    if let Some(reference) = &filter.reference
+        && transaction.reference.as_deref() != Some(reference.as_str())
     {
         return false;
     }
@@ -215,6 +237,22 @@ mod tests {
             reference: None,
             meta: Metadata::new(),
         })
+    }
+
+    fn annotated_transaction(d: NaiveDate, links: Vec<&str>, reference: Option<&str>) -> Entry {
+        let mut entry = transaction(
+            d,
+            Some("Payee"),
+            Some("Narration"),
+            Vec::new(),
+            TransactionStatus::Cleared,
+            vec![posting("Assets:Checking", Some(("1.00", "EUR")))],
+        );
+        if let Entry::Transaction(transaction) = &mut entry {
+            transaction.links = links.into_iter().map(str::to_string).collect();
+            transaction.reference = reference.map(str::to_string);
+        }
+        entry
     }
 
     #[test]
@@ -384,5 +422,39 @@ mod tests {
         );
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].date, date(2024, 1, 6));
+    }
+
+    #[test]
+    fn filters_by_link_and_reference() {
+        let journal = Journal {
+            entries: vec![
+                annotated_transaction(
+                    date(2024, 1, 5),
+                    vec!["invoice-2026-042", "batch-january"],
+                    Some("CB-00123"),
+                ),
+                annotated_transaction(date(2024, 1, 6), vec!["other"], Some("CB-00124")),
+            ],
+        };
+
+        let entries = register(
+            &journal,
+            &RegisterFilter {
+                link: Some("invoice-2026-042".to_string()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].links, vec!["invoice-2026-042", "batch-january"]);
+
+        let entries = register(
+            &journal,
+            &RegisterFilter {
+                reference: Some("CB-00124".to_string()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].reference.as_deref(), Some("CB-00124"));
     }
 }

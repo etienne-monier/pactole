@@ -122,6 +122,14 @@ pub(crate) enum Command {
         #[arg(long)]
         tag: Option<String>,
 
+        /// Only show transactions carrying this link.
+        #[arg(long)]
+        link: Option<String>,
+
+        /// Only show transactions with this external reference.
+        #[arg(long)]
+        reference: Option<String>,
+
         /// Only show transactions with this status.
         #[arg(long, value_enum)]
         status: Option<StatusArg>,

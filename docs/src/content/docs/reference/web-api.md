@@ -236,6 +236,8 @@ Lists matching postings and their running balances.
 | `payee` | string | Payee substring filter |
 | `narration` | string | Narration substring filter |
 | `tag` | string | Transaction tag |
+| `link` | string | Transaction link |
+| `reference` | string | Exact external transaction reference |
 | `status` | `cleared`, `pending`, `uncleared` | Transaction status |
 | `convert_to` | commodity | Optional market-price valuation |
 | `at` | date | Valuation date |

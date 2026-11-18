@@ -494,6 +494,8 @@ where
             "payee",
             "narration",
             "tag",
+            "link",
+            "reference",
             "status",
             "convert_to",
             "at",
@@ -513,6 +515,8 @@ where
         payee: params.get("payee").cloned(),
         narration: params.get("narration").cloned(),
         tag: params.get("tag").cloned(),
+        link: params.get("link").cloned(),
+        reference: params.get("reference").cloned(),
         status: params
             .get("status")
             .map(|value| parse_status(value))
@@ -532,6 +536,8 @@ where
         "status": status_name(&entry.status),
         "payee": entry.payee,
         "narration": entry.narration,
+        "links": entry.links,
+        "reference": entry.reference,
         "account": entry.account.as_str(),
         "amount": entry.amount.map(|amount| amount_json(&amount)),
         "balance": entry.balance.into_iter().map(|(commodity, number)| json!({ "commodity": commodity.as_str(), "number": number.to_string() })).collect::<Vec<_>>(),
