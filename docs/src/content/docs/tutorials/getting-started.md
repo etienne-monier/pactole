@@ -137,8 +137,14 @@ pactole register ledger.pactole --account Expenses:Groceries
 
 ## Where to go next
 
+- See the [Pactole at a glance](/tutorials/overview/) page for the complete
+  workflow and the different interfaces.
+- Build a balance sheet or spending report with the
+  [financial reports guide](/how-to/produce-financial-reports/).
 - Import a bank statement with the
   [OFX import guide](/how-to/import-ofx-bank-statement/).
+- Start the local dashboard with the
+  [web interface guide](/how-to/use-the-web-interface/).
 - Add another transaction and explore the filters in the
   [command-line reference](/reference/cli/).
 - Learn the meaning of every keyword in the [grammar reference](/reference/grammar/).

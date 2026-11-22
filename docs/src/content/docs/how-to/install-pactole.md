@@ -42,6 +42,18 @@ cd pactole
 cargo install --path crates/pactole-cli
 ```
 
+## Install the language server
+
+For editor diagnostics, completion, navigation and formatting, install the
+language server separately:
+
+```sh
+cargo install pactole-lsp
+```
+
+Then follow [Use the Pactole language server](/how-to/use-the-lsp/) for the
+editor-specific configuration.
+
 ## Update
 
 To update the published version, run:

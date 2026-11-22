@@ -60,11 +60,49 @@ export default defineConfig({
 			sidebar: [
 				{
 					label: 'Tutorials',
-					items: [{ autogenerate: { directory: 'tutorials' } }],
+					items: [
+						'tutorials/overview',
+						'tutorials/getting-started',
+						'tutorials/example-journal',
+					],
 				},
 				{
 					label: 'How-to guides',
-					items: [{ autogenerate: { directory: 'how-to' } }],
+					items: [
+						{
+							label: 'Write and organize a journal',
+							items: [
+								'how-to/install-pactole',
+								'how-to/record-a-transaction',
+								'how-to/reconcile-with-balance-assertions',
+								'how-to/split-a-journal-with-includes',
+								'how-to/format-a-ledger',
+							],
+						},
+						{
+							label: 'Import data',
+							items: [
+								'how-to/import-ofx-bank-statement',
+								'how-to/migrate-from-actual',
+							],
+						},
+						{
+							label: 'Explore and report',
+							items: [
+								'how-to/query-with-register',
+								'how-to/produce-financial-reports',
+								'how-to/value-reports-in-another-currency',
+							],
+						},
+						{
+							label: 'Editors and interfaces',
+							items: [
+								'how-to/configure-editors',
+								'how-to/use-the-lsp',
+								'how-to/use-the-web-interface',
+							],
+						},
+					],
 				},
 				{
 					label: 'Reference',
@@ -72,7 +110,13 @@ export default defineConfig({
 				},
 				{
 					label: 'Explanation',
-					items: [{ autogenerate: { directory: 'explanation' } }],
+					items: [
+						'explanation/why-pactole',
+						'explanation/double-entry-accounting',
+						'explanation/concepts-and-glossary',
+						'explanation/differences-from-beancount',
+						'explanation/plain-text-accounting-landscape',
+					],
 				},
 			],
 		}),

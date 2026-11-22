@@ -391,4 +391,10 @@ payees = "payees.pactole"
 accounts = "accounts.pactole"
 ```
 
-More commands (budgets) are coming.
+The [documentation site](https://etienne-monier.github.io/pactole/) contains a
+[Pactole overview](https://etienne-monier.github.io/pactole/tutorials/overview/),
+a [concepts and glossary page](https://etienne-monier.github.io/pactole/explanation/concepts-and-glossary/),
+and guides for [financial reports](https://etienne-monier.github.io/pactole/how-to/produce-financial-reports/),
+[OFX imports](https://etienne-monier.github.io/pactole/how-to/import-ofx-bank-statement/),
+the [web interface](https://etienne-monier.github.io/pactole/how-to/use-the-web-interface/),
+and the [language server](https://etienne-monier.github.io/pactole/how-to/use-the-lsp/).

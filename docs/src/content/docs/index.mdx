@@ -8,6 +8,9 @@ hero:
     file: ../../assets/pactole-logo.svg
     alt: Pactole
   actions:
+    - text: See how Pactole works
+      link: tutorials/overview/
+      icon: right-arrow
     - text: Getting started
       link: tutorials/getting-started/
       icon: right-arrow
@@ -19,9 +22,11 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-Pactole lets you record your transactions in human-readable, git-friendly
+Pactole lets you record transactions in human-readable, git-friendly
 `.pactole` files — in the spirit of [Beancount](https://beancount.github.io/docs/)
-and Ledger-cli — and parse, check, format and query them from the command line.
+and Ledger-cli. The CLI validates and formats the journal, builds financial
+reports and imports bank statements. A local web interface and a language
+server provide additional ways to explore and edit the same files.
 
 ## How this documentation is organized
 
@@ -30,12 +35,14 @@ this site is split into four sections, each answering a different kind of need.
 
 <CardGrid stagger>
 	<Card title="Tutorials" icon="open-book">
-		Learning-oriented lessons that take you by the hand through your first
-		steps with Pactole. [Start here](/tutorials/getting-started/).
+        Learning-oriented lessons that take you by the hand through your first
+        steps with Pactole. Start with [the overview](/tutorials/overview/) or
+        [Getting started](/tutorials/getting-started/).
 	</Card>
 	<Card title="How-to guides" icon="puzzle">
 		Problem-oriented recipes for accomplishing a specific task, such as
 		[recording a transaction](/how-to/record-a-transaction/),
+		[producing financial reports](/how-to/produce-financial-reports/),
 		[using the language server](/how-to/use-the-lsp/) or [importing an OFX bank
 		statement](/how-to/import-ofx-bank-statement/).
 	</Card>
@@ -47,6 +54,7 @@ this site is split into four sections, each answering a different kind of need.
 	<Card title="Explanation" icon="knowledge">
 		Understanding-oriented discussion of the ideas behind Pactole, from
 		[double-entry accounting](/explanation/double-entry-accounting/) to
+		[the concepts and glossary](/explanation/concepts-and-glossary/) or
 		[how it differs from Beancount](/explanation/differences-from-beancount/).
 	</Card>
 </CardGrid>
@@ -68,5 +76,6 @@ pactole check my-ledger.pactole
 pactole register my-ledger.pactole --account Expenses:Groceries
 ```
 
-Pactole is a work in progress: more commands (querying balances, reports, etc.)
-are coming.
+Reports, imports, the web interface and editor integrations are available in
+addition to the commands shown above. See the
+[overview](/tutorials/overview/) for the recommended workflow.
